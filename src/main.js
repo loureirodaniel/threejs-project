@@ -13,6 +13,64 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setClearColor(0x000000);
 document.body.appendChild(renderer.domElement);
 
+// Create static full-scene grid background
+const gridSize = 50; // Larger size for the entire grid
+const gridDivisions = 25; // Fewer divisions for larger grid sections
+const gridMaterial = new THREE.LineBasicMaterial({ 
+    color: 0x666666, // Light gray grid lines
+    transparent: true, 
+    opacity: 0.4 
+});
+
+// Create grid geometry for entire scene
+const gridGeometry = new THREE.BufferGeometry();
+const gridPoints = [];
+
+// Create horizontal lines covering entire scene
+for (let i = 0; i <= gridDivisions; i++) {
+    const y = (i / gridDivisions - 0.5) * gridSize;
+    gridPoints.push(-gridSize/2, y, 0, gridSize/2, y, 0);
+}
+
+// Create vertical lines covering entire scene
+for (let i = 0; i <= gridDivisions; i++) {
+    const x = (i / gridDivisions - 0.5) * gridSize;
+    gridPoints.push(x, -gridSize/2, 0, x, gridSize/2, 0);
+}
+
+gridGeometry.setAttribute('position', new THREE.Float32BufferAttribute(gridPoints, 3));
+const grid = new THREE.LineSegments(gridGeometry, gridMaterial);
+grid.position.z = -1; // Place grid behind everything
+scene.add(grid);
+
+// Create vignette effect that covers the entire scene
+const vignetteGeometry = new THREE.PlaneGeometry(gridSize * 2, gridSize * 2);
+const vignetteMaterial = new THREE.MeshBasicMaterial({ 
+    color: 0x000000,
+    transparent: true,
+    opacity: 0.85 // Dark vignette effect
+});
+const vignette = new THREE.Mesh(vignetteGeometry, vignetteMaterial);
+vignette.position.z = -0.5; // Position between grid and camera
+scene.add(vignette);
+
+// Create spotlight that removes the vignette effect
+const spotlightRadius = 4; // Larger radius to match bigger grid sections
+const spotlightSegments = 32;
+const spotlightGeometry = new THREE.CircleGeometry(spotlightRadius, spotlightSegments);
+const spotlightMaterial = new THREE.MeshBasicMaterial({ 
+    color: 0x000000,
+    transparent: true,
+    opacity: 0 // Completely transparent to create a "hole" in the vignette
+});
+const spotlight = new THREE.Mesh(spotlightGeometry, spotlightMaterial);
+spotlight.position.z = -0.4; // Position in front of vignette
+scene.add(spotlight);
+
+// Mouse tracking
+const mouse = new THREE.Vector2();
+const raycaster = new THREE.Raycaster();
+
 // Lighting
 const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
 scene.add(ambientLight);
@@ -149,6 +207,23 @@ function onWindowResize() {
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
 }
+
+// Mouse move event for spotlight effect
+window.addEventListener('mousemove', (event) => {
+    // Calculate mouse position in normalized device coordinates (-1 to +1)
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+    
+    // Update spotlight position to follow cursor
+    raycaster.setFromCamera(mouse, camera);
+    const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 1);
+    const intersectionPoint = new THREE.Vector3();
+    raycaster.ray.intersectPlane(plane, intersectionPoint);
+    
+    // Update spotlight position
+    spotlight.position.x = intersectionPoint.x;
+    spotlight.position.y = intersectionPoint.y;
+});
 
 // Animation loop
 function animate() {
