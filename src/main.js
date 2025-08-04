@@ -40,7 +40,7 @@ for (let i = 0; i <= gridDivisions; i++) {
 
 gridGeometry.setAttribute('position', new THREE.Float32BufferAttribute(gridPoints, 3));
 const grid = new THREE.LineSegments(gridGeometry, gridMaterial);
-grid.position.z = -1; // Place grid behind everything
+grid.position.z = -2; // Place grid further back
 scene.add(grid);
 
 // Create vignette effect that covers the entire scene
@@ -48,23 +48,40 @@ const vignetteGeometry = new THREE.PlaneGeometry(gridSize * 2, gridSize * 2);
 const vignetteMaterial = new THREE.MeshBasicMaterial({ 
     color: 0x000000,
     transparent: true,
-    opacity: 0.85 // Dark vignette effect
+    opacity: 1.0 // Completely opaque to hide the grid by default
 });
 const vignette = new THREE.Mesh(vignetteGeometry, vignetteMaterial);
-vignette.position.z = -0.5; // Position between grid and camera
+vignette.position.z = -1; // Position between grid and camera
 scene.add(vignette);
 
-// Create spotlight that removes the vignette effect
-const spotlightRadius = 4; // Larger radius to match bigger grid sections
-const spotlightSegments = 32;
+// Create spotlight that removes the vignette effect with blur
+const spotlightRadius = 2; // Smaller radius for more focused effect
+const spotlightSegments = 64; // More segments for smoother circle
+
+// Create a gradient texture for the spotlight with blur on edges
+const canvas = document.createElement('canvas');
+canvas.width = 256;
+canvas.height = 256;
+const ctx = canvas.getContext('2d');
+
+// Create radial gradient for blur effect
+const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+gradient.addColorStop(0, 'rgba(0, 0, 0, 0)'); // Completely transparent center
+gradient.addColorStop(0.6, 'rgba(0, 0, 0, 0)'); // Still transparent
+gradient.addColorStop(1, 'rgba(0, 0, 0, 1.0)'); // Completely opaque edge matching vignette
+
+ctx.fillStyle = gradient;
+ctx.fillRect(0, 0, 256, 256);
+
+const spotlightTexture = new THREE.CanvasTexture(canvas);
 const spotlightGeometry = new THREE.CircleGeometry(spotlightRadius, spotlightSegments);
 const spotlightMaterial = new THREE.MeshBasicMaterial({ 
-    color: 0x000000,
+    map: spotlightTexture,
     transparent: true,
-    opacity: 0 // Completely transparent to create a "hole" in the vignette
+    side: THREE.DoubleSide
 });
 const spotlight = new THREE.Mesh(spotlightGeometry, spotlightMaterial);
-spotlight.position.z = -0.4; // Position in front of vignette
+spotlight.position.z = -0.8; // Position between vignette and camera
 scene.add(spotlight);
 
 // Mouse tracking
@@ -135,6 +152,30 @@ debugPanel.innerHTML = `
         <input type="range" id="bodySlider" min="12" max="40" value="24" style="width: 100%;">
     </div>
     
+    <div style="margin-bottom: 15px; padding-top: 15px; border-top: 1px solid #333;">
+        <h4 style="margin: 0 0 10px 0; color: #00ff88;">Spotlight Effect</h4>
+        
+        <div style="margin-bottom: 10px;">
+            <label style="display: block; margin-bottom: 5px;">Spotlight Radius: <span id="spotlightRadius">2</span></label>
+            <input type="range" id="spotlightRadiusSlider" min="0.5" max="5" step="0.1" value="2" style="width: 100%;">
+        </div>
+        
+        <div style="margin-bottom: 10px;">
+            <label style="display: block; margin-bottom: 5px;">Blur Amount: <span id="blurAmount">0.6</span></label>
+            <input type="range" id="blurSlider" min="0.1" max="0.9" step="0.1" value="0.6" style="width: 100%;">
+        </div>
+        
+        <div style="margin-bottom: 10px;">
+            <label style="display: block; margin-bottom: 5px;">Vignette Opacity: <span id="vignetteOpacity">1.0</span></label>
+            <input type="range" id="vignetteSlider" min="0.5" max="1.0" step="0.1" value="1.0" style="width: 100%;">
+        </div>
+        
+        <div style="margin-bottom: 10px;">
+            <label style="display: block; margin-bottom: 5px;">Grid Opacity: <span id="gridOpacity">0.4</span></label>
+            <input type="range" id="gridSlider" min="0.1" max="1.0" step="0.1" value="0.4" style="width: 100%;">
+        </div>
+    </div>
+    
     <button id="resetBtn" style="background: #00ff88; color: black; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-family: inherit;">Reset to Default</button>
 `;
 
@@ -159,6 +200,16 @@ const headerSize = document.getElementById('headerSize');
 const bodySize = document.getElementById('bodySize');
 const subtitle = document.getElementById('subtitle');
 const resetBtn = document.getElementById('resetBtn');
+
+// Spotlight effect controls
+const spotlightRadiusSlider = document.getElementById('spotlightRadiusSlider');
+const blurSlider = document.getElementById('blurSlider');
+const vignetteSlider = document.getElementById('vignetteSlider');
+const gridSlider = document.getElementById('gridSlider');
+const spotlightRadiusDisplay = document.getElementById('spotlightRadius');
+const blurAmountDisplay = document.getElementById('blurAmount');
+const vignetteOpacityDisplay = document.getElementById('vignetteOpacity');
+const gridOpacityDisplay = document.getElementById('gridOpacity');
 
 // Function to center the text
 function centerText() {
@@ -189,7 +240,62 @@ resetBtn.addEventListener('click', () => {
     headerSize.textContent = '48';
     bodySize.textContent = '24';
     centerText(); // Re-center after reset
+    
+    // Reset spotlight effect
+    spotlightRadiusSlider.value = 2;
+    blurSlider.value = 0.6;
+    vignetteSlider.value = 1.0;
+    gridSlider.value = 0.4;
+    updateSpotlightEffect();
 });
+
+// Function to update spotlight effect
+function updateSpotlightEffect() {
+    const radius = parseFloat(spotlightRadiusSlider.value);
+    const blur = parseFloat(blurSlider.value);
+    const vignetteOpacity = parseFloat(vignetteSlider.value);
+    const gridOpacity = parseFloat(gridSlider.value);
+    
+    // Update displays
+    spotlightRadiusDisplay.textContent = radius;
+    blurAmountDisplay.textContent = blur;
+    vignetteOpacityDisplay.textContent = vignetteOpacity;
+    gridOpacityDisplay.textContent = gridOpacity;
+    
+    // Update spotlight radius
+    spotlight.geometry.dispose();
+    spotlight.geometry = new THREE.CircleGeometry(radius, 64);
+    
+    // Update gradient texture
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+    
+    const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+    gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    gradient.addColorStop(blur, 'rgba(0, 0, 0, 0)');
+    gradient.addColorStop(1, `rgba(0, 0, 0, ${vignetteOpacity})`);
+    
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 256, 256);
+    
+    spotlight.material.map.dispose();
+    spotlight.material.map = new THREE.CanvasTexture(canvas);
+    spotlight.material.needsUpdate = true;
+    
+    // Update vignette opacity
+    vignette.material.opacity = vignetteOpacity;
+    
+    // Update grid opacity
+    grid.material.opacity = gridOpacity;
+}
+
+// Add event listeners for spotlight controls
+spotlightRadiusSlider.addEventListener('input', updateSpotlightEffect);
+blurSlider.addEventListener('input', updateSpotlightEffect);
+vignetteSlider.addEventListener('input', updateSpotlightEffect);
+gridSlider.addEventListener('input', updateSpotlightEffect);
 
 // Camera position
 camera.position.z = 5;
@@ -198,6 +304,9 @@ camera.position.z = 5;
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.05;
+controls.enableZoom = false; // Disable zoom
+controls.enablePan = true; // Keep panning enabled
+controls.enableRotate = false; // Disable rotation to keep grid static
 
 // Handle window resize
 window.addEventListener('resize', onWindowResize, false);
@@ -214,15 +323,16 @@ window.addEventListener('mousemove', (event) => {
     mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
     
-    // Update spotlight position to follow cursor
-    raycaster.setFromCamera(mouse, camera);
-    const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 1);
-    const intersectionPoint = new THREE.Vector3();
-    raycaster.ray.intersectPlane(plane, intersectionPoint);
+    // Convert screen coordinates to world coordinates for the grid plane
+    const vector = new THREE.Vector3(mouse.x, mouse.y, 0.5);
+    vector.unproject(camera);
+    const dir = vector.sub(camera.position).normalize();
+    const distance = -camera.position.z / dir.z;
+    const pos = camera.position.clone().add(dir.multiplyScalar(distance));
     
     // Update spotlight position
-    spotlight.position.x = intersectionPoint.x;
-    spotlight.position.y = intersectionPoint.y;
+    spotlight.position.x = pos.x;
+    spotlight.position.y = pos.y;
 });
 
 // Animation loop
