@@ -82,6 +82,18 @@ debugPanel.innerHTML = `
 
 document.body.appendChild(debugPanel);
 
+// Animate debug panel appearance
+debugPanel.style.opacity = '0';
+debugPanel.style.transform = 'translateX(20px)';
+
+gsap.to(debugPanel, {
+    opacity: 1,
+    x: 0,
+    duration: 0.8,
+    ease: "power2.out",
+    delay: 0.8
+});
+
 // Add event listeners for the sliders
 const headerSlider = document.getElementById('headerSlider');
 const bodySlider = document.getElementById('bodySlider');
@@ -90,16 +102,25 @@ const bodySize = document.getElementById('bodySize');
 const subtitle = document.getElementById('subtitle');
 const resetBtn = document.getElementById('resetBtn');
 
+// Function to center the text
+function centerText() {
+    titleDiv.style.top = '50%';
+    titleDiv.style.left = '50%';
+    titleDiv.style.transform = 'translate(-50%, -50%)';
+}
+
 headerSlider.addEventListener('input', (e) => {
     const size = e.target.value;
     titleDiv.style.fontSize = size + 'px';
     headerSize.textContent = size;
+    centerText(); // Re-center after font size change
 });
 
 bodySlider.addEventListener('input', (e) => {
     const size = e.target.value;
     subtitle.style.fontSize = size + 'px';
     bodySize.textContent = size;
+    centerText(); // Re-center after font size change
 });
 
 resetBtn.addEventListener('click', () => {
@@ -109,6 +130,7 @@ resetBtn.addEventListener('click', () => {
     subtitle.style.fontSize = '24px';
     headerSize.textContent = '48';
     bodySize.textContent = '24';
+    centerText(); // Re-center after reset
 });
 
 // Camera position
