@@ -1,0 +1,21 @@
+{
+  "name": "threejs-project",
+  "version": "1.0.0",
+  "description": "A Three.js project with modern development setup",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["three.js", "3d", "webgl", "vite"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "three": "^0.158.0"
+  },
+  "devDependencies": {
+    "vite": "^4.5.0"
+  }
+}
