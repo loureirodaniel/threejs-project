@@ -1,7 +1,7 @@
 {
-  "name": "threejs-project",
+  "name": "3d-timeline",
   "version": "1.0.0",
-  "description": "A Three.js project with modern development setup",
+  "description": "A 3D timeline project with Three.js",
   "main": "index.js",
   "scripts": {
     "dev": "vite",
@@ -9,10 +9,16 @@
     "preview": "vite preview",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": ["three.js", "3d", "webgl", "vite"],
+  "keywords": [
+    "three.js",
+    "3d",
+    "webgl",
+    "vite"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "gsap": "^3.13.0",
     "three": "^0.158.0"
   },
   "devDependencies": {
