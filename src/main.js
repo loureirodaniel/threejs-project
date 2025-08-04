@@ -19,30 +19,7 @@ const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
 directionalLight.position.set(10, 10, 5);
 scene.add(directionalLight);
 
-// Create a cube
-const geometry = new THREE.BoxGeometry(1, 1, 1);
-const material = new THREE.MeshPhongMaterial({ 
-    color: 0x00ff00,
-    shininess: 100
-});
-const cube = new THREE.Mesh(geometry, material);
-scene.add(cube);
-
-// Add some additional cubes for visual interest
-for (let i = 0; i < 5; i++) {
-    const cubeGeometry = new THREE.BoxGeometry(0.3, 0.3, 0.3);
-    const cubeMaterial = new THREE.MeshPhongMaterial({ 
-        color: Math.random() * 0xffffff,
-        shininess: 50
-    });
-    const smallCube = new THREE.Mesh(cubeGeometry, cubeMaterial);
-    smallCube.position.set(
-        (Math.random() - 0.5) * 10,
-        (Math.random() - 0.5) * 10,
-        (Math.random() - 0.5) * 10
-    );
-    scene.add(smallCube);
-}
+// Scene is now empty and ready for new objects
 
 // Camera position
 camera.position.z = 5;
@@ -64,10 +41,6 @@ function onWindowResize() {
 // Animation loop
 function animate() {
     requestAnimationFrame(animate);
-    
-    // Rotate the main cube
-    cube.rotation.x += 0.01;
-    cube.rotation.y += 0.01;
     
     // Update controls
     controls.update();
