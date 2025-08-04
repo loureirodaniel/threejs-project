@@ -36,8 +36,19 @@ titleDiv.style.fontSize = '48px';
 titleDiv.style.fontWeight = 'bold';
 titleDiv.style.textShadow = '2px 2px 4px rgba(0,0,0,0.8)';
 titleDiv.style.zIndex = '1000';
+titleDiv.style.opacity = '0';
+titleDiv.style.scale = '0.8';
 titleDiv.innerHTML = 'THREE.JS PROJECT<br><span id="subtitle" style="font-size: 24px; font-weight: normal; color: #cccccc;">Welcome to the 3D World</span>';
 document.body.appendChild(titleDiv);
+
+// Animate text appearance with GSAP
+gsap.to(titleDiv, {
+    opacity: 1,
+    scale: 1,
+    duration: 1.2,
+    ease: "back.out(1.7)",
+    delay: 0.3
+});
 
 // Create debug panel
 const debugPanel = document.createElement('div');
