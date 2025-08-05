@@ -21,8 +21,8 @@ export class TimelineController {
             },
             {
                 name: 'timeline',
-                position: new THREE.Vector3(0, -10, 8),
-                target: new THREE.Vector3(0, -5, 0),
+                position: new THREE.Vector3(-9, -10, 8), // Start at 2010 position
+                target: new THREE.Vector3(-9, -5, 0), // Look at 2010
                 fov: 60
             }
         ];
@@ -39,36 +39,106 @@ export class TimelineController {
         
         // Add touch events for mobile
         let touchStartY = 0;
+        let touchStartX = 0;
         window.addEventListener('touchstart', (e) => {
             touchStartY = e.touches[0].clientY;
+            touchStartX = e.touches[0].clientX;
         }, { passive: true });
         
         window.addEventListener('touchend', (e) => {
             const touchEndY = e.changedTouches[0].clientY;
+            const touchEndX = e.changedTouches[0].clientX;
             const deltaY = touchStartY - touchEndY;
+            const deltaX = touchStartX - touchEndX;
             
-            if (Math.abs(deltaY) > 50) { // Minimum swipe distance
-                if (deltaY > 0) {
-                    this.nextScene();
-                } else {
-                    this.previousScene();
+            if (this.currentSceneIndex === 1) {
+                // In timeline scene, handle horizontal scrolling
+                if (Math.abs(deltaX) > 50) { // Minimum swipe distance
+                    if (deltaX > 0) {
+                        // Swipe left - scroll right in timeline
+                        this.handleTimelineScroll(-1);
+                    } else {
+                        // Swipe right - scroll left in timeline
+                        this.handleTimelineScroll(1);
+                    }
+                }
+            } else {
+                // In initial scene, handle scene transitions
+                if (Math.abs(deltaY) > 50) { // Minimum swipe distance
+                    if (deltaY > 0) {
+                        this.nextScene();
+                    } else {
+                        this.previousScene();
+                    }
                 }
             }
         }, { passive: true });
     }
     
     onScroll(event) {
-        event.preventDefault();
-        
         if (this.isTransitioning) return;
         
         const delta = event.deltaY;
         
-        if (delta > 0) {
-            this.nextScene();
-        } else if (delta < 0) {
-            this.previousScene();
+        // If we're in the timeline scene, handle horizontal scrolling
+        if (this.currentSceneIndex === 1) {
+            this.handleTimelineScroll(delta);
+        } else {
+            // In initial scene, handle scene transitions
+            if (delta > 0) {
+                this.nextScene();
+            } else if (delta < 0) {
+                this.previousScene();
+            }
         }
+    }
+    
+    handleTimelineScroll(delta) {
+        // Horizontal scrolling within timeline (2010-2020)
+        const scrollSpeed = 0.5;
+        const currentX = this.camera.position.x;
+        
+        if (delta > 0) {
+            // Scroll right (towards 2020)
+            const newX = Math.min(currentX + scrollSpeed, 9); // Max at 2020
+            this.camera.position.x = newX;
+        } else if (delta < 0) {
+            // Scroll left (towards 2010)
+            const newX = Math.max(currentX - scrollSpeed, -9); // Min at 2010
+            this.camera.position.x = newX;
+        }
+        
+        // Update camera target to look at the current position
+        this.camera.lookAt(new THREE.Vector3(this.camera.position.x, -5, 0));
+        
+        // Update the current year display
+        this.updateCurrentYear();
+    }
+    
+    getCurrentYear() {
+        // Convert camera X position to year (2010-2020)
+        const currentX = this.camera.position.x;
+        const yearRange = 2020 - 2010; // 10 years
+        const xRange = 18; // -9 to 9
+        
+        // Map X position to year
+        const normalizedX = (currentX + 9) / xRange; // 0 to 1
+        const year = Math.round(2010 + (normalizedX * yearRange));
+        
+        return Math.max(2010, Math.min(2020, year));
+    }
+    
+    updateCurrentYear() {
+        const currentYear = this.getCurrentYear();
+        
+        // Dispatch custom event for year change
+        const event = new CustomEvent('timelineYearChange', {
+            detail: {
+                year: currentYear,
+                position: this.camera.position.x
+            }
+        });
+        window.dispatchEvent(event);
     }
     
     nextScene() {
@@ -183,5 +253,14 @@ export class TimelineController {
     
     isInTransition() {
         return this.isTransitioning;
+    }
+    
+    updateTimelineCameraConfig(config) {
+        // Update the timeline scene configuration
+        if (this.sceneConfigs[1]) { // Timeline scene is at index 1
+            this.sceneConfigs[1].position.set(config.position.x, config.position.y, config.position.z);
+            this.sceneConfigs[1].target.set(config.target.x, config.target.y, config.target.z);
+            this.sceneConfigs[1].fov = config.fov;
+        }
     }
 } 

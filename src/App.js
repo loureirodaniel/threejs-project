@@ -98,6 +98,44 @@ export class App {
         window.addEventListener('sceneTransitionComplete', (event) => {
             this.onSceneTransitionComplete(event.detail);
         });
+        
+        // Timeline year change event
+        window.addEventListener('timelineYearChange', (event) => {
+            this.onTimelineYearChange(event.detail);
+        });
+        
+        // Timeline camera controls
+        controls.cameraXSlider.addEventListener('input', (e) => {
+            this.updateTimelineCamera();
+        });
+        
+        controls.cameraYSlider.addEventListener('input', (e) => {
+            this.updateTimelineCamera();
+        });
+        
+        controls.cameraZSlider.addEventListener('input', (e) => {
+            this.updateTimelineCamera();
+        });
+        
+        controls.targetYSlider.addEventListener('input', (e) => {
+            this.updateTimelineCamera();
+        });
+        
+        controls.cameraFovSlider.addEventListener('input', (e) => {
+            this.updateTimelineCamera();
+        });
+        
+        // Scene navigation buttons
+        controls.goToInitialBtn.addEventListener('click', () => {
+            this.timelineController.transitionToScene(0);
+        });
+        
+        controls.goToTimelineBtn.addEventListener('click', () => {
+            this.timelineController.transitionToScene(1);
+        });
+        
+        // Initialize timeline camera controls with current values
+        this.initializeTimelineCameraControls();
     }
     
     updateSpotlightEffect() {
@@ -165,10 +203,66 @@ export class App {
         // Update UI based on current scene
         if (sceneDetail.sceneName === 'timeline') {
             this.titleOverlay.setTitle('Timeline Scene');
-            this.titleOverlay.setSubtitle('Scroll to navigate through time');
+            this.titleOverlay.setSubtitle('Scroll horizontally to navigate through time');
+            // Initialize year display
+            this.onTimelineYearChange({ year: this.timelineController.getCurrentYear() });
         } else if (sceneDetail.sceneName === 'initial') {
             this.titleOverlay.setTitle('Initial Scene');
             this.titleOverlay.setSubtitle('Scroll down to explore timeline');
+        }
+    }
+    
+    onTimelineYearChange(yearDetail) {
+        if (this.timelineController.getCurrentSceneIndex() === 1) {
+            this.titleOverlay.setTitle(`Timeline - ${yearDetail.year}`);
+            this.titleOverlay.setSubtitle('Scroll horizontally to navigate through time');
+        }
+    }
+    
+    updateTimelineCamera() {
+        const controls = this.debugPanel.getControls();
+        
+        const cameraX = parseFloat(controls.cameraXSlider.value);
+        const cameraY = parseFloat(controls.cameraYSlider.value);
+        const cameraZ = parseFloat(controls.cameraZSlider.value);
+        const targetY = parseFloat(controls.targetYSlider.value);
+        const fov = parseFloat(controls.cameraFovSlider.value);
+        
+        // Update displays
+        controls.cameraXDisplay.textContent = cameraX;
+        controls.cameraYDisplay.textContent = cameraY;
+        controls.cameraZDisplay.textContent = cameraZ;
+        controls.targetYDisplay.textContent = targetY;
+        controls.cameraFovDisplay.textContent = fov;
+        
+        // Update timeline camera configuration
+        this.timelineController.updateTimelineCameraConfig({
+            position: { x: cameraX, y: cameraY, z: cameraZ },
+            target: { x: 0, y: targetY, z: 0 },
+            fov: fov
+        });
+    }
+    
+    initializeTimelineCameraControls() {
+        const controls = this.debugPanel.getControls();
+        
+        // Get current timeline camera configuration
+        const timelineConfig = this.timelineController.sceneConfigs[1];
+        
+        if (timelineConfig) {
+            // Set slider values
+            controls.cameraXSlider.value = timelineConfig.position.x;
+            controls.cameraYSlider.value = timelineConfig.position.y;
+            controls.cameraZSlider.value = timelineConfig.position.z;
+            controls.targetYSlider.value = timelineConfig.target.y;
+            controls.cameraFovSlider.value = timelineConfig.fov;
+            
+            // Update displays
+            controls.cameraXDisplay.textContent = timelineConfig.position.x;
+            controls.cameraYDisplay.textContent = timelineConfig.position.y;
+            controls.cameraZDisplay.textContent = timelineConfig.position.z;
+            controls.targetYDisplay.textContent = timelineConfig.target.y;
+            controls.cameraFovDisplay.textContent = timelineConfig.fov;
         }
     }
     
@@ -190,7 +284,7 @@ export class App {
         }
         
         // Update timeline scene
-        this.timelineScene.update(Date.now());
+        this.timelineScene.update(Date.now(), this.sceneManager.getCamera());
         
         // Render the scene
         this.sceneManager.render();

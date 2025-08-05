@@ -60,6 +60,40 @@ export class DebugPanel {
                 </div>
             </div>
             
+            <div style="margin-bottom: 15px; padding-top: 15px; border-top: 1px solid #333;">
+                <h4 style="margin: 0 0 10px 0; color: #00ff88;">Timeline Camera</h4>
+                
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; margin-bottom: 5px;">Camera X: <span id="cameraX">-9</span></label>
+                    <input type="range" id="cameraXSlider" min="-20" max="20" step="0.5" value="-9" style="width: 100%;">
+                </div>
+                
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; margin-bottom: 5px;">Camera Y: <span id="cameraY">-10</span></label>
+                    <input type="range" id="cameraYSlider" min="-20" max="0" step="0.5" value="-10" style="width: 100%;">
+                </div>
+                
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; margin-bottom: 5px;">Camera Z: <span id="cameraZ">8</span></label>
+                    <input type="range" id="cameraZSlider" min="5" max="20" step="0.5" value="8" style="width: 100%;">
+                </div>
+                
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; margin-bottom: 5px;">Target Y: <span id="targetY">-5</span></label>
+                    <input type="range" id="targetYSlider" min="-10" max="0" step="0.5" value="-5" style="width: 100%;">
+                </div>
+                
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; margin-bottom: 5px;">FOV: <span id="cameraFov">60</span></label>
+                    <input type="range" id="cameraFovSlider" min="30" max="90" step="1" value="60" style="width: 100%;">
+                </div>
+                
+                <div style="margin-bottom: 10px;">
+                    <button id="goToInitialBtn" style="background: #ff6b6b; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-family: inherit; margin-right: 8px;">Go to Initial</button>
+                    <button id="goToTimelineBtn" style="background: #4ecdc4; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-family: inherit;">Go to Timeline</button>
+                </div>
+            </div>
+            
             <button id="resetBtn" style="background: #00ff88; color: black; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-family: inherit;">Reset to Default</button>
         `;
 
@@ -97,6 +131,20 @@ export class DebugPanel {
         this.controls.blurAmountDisplay = document.getElementById('blurAmount');
         this.controls.vignetteOpacityDisplay = document.getElementById('vignetteOpacity');
         this.controls.gridOpacityDisplay = document.getElementById('gridOpacity');
+        
+        // Timeline camera controls
+        this.controls.cameraXSlider = document.getElementById('cameraXSlider');
+        this.controls.cameraYSlider = document.getElementById('cameraYSlider');
+        this.controls.cameraZSlider = document.getElementById('cameraZSlider');
+        this.controls.targetYSlider = document.getElementById('targetYSlider');
+        this.controls.cameraFovSlider = document.getElementById('cameraFovSlider');
+        this.controls.cameraXDisplay = document.getElementById('cameraX');
+        this.controls.cameraYDisplay = document.getElementById('cameraY');
+        this.controls.cameraZDisplay = document.getElementById('cameraZ');
+        this.controls.targetYDisplay = document.getElementById('targetY');
+        this.controls.cameraFovDisplay = document.getElementById('cameraFov');
+        this.controls.goToInitialBtn = document.getElementById('goToInitialBtn');
+        this.controls.goToTimelineBtn = document.getElementById('goToTimelineBtn');
     }
     
     getControls() {

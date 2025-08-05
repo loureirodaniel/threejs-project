@@ -3,10 +3,11 @@ import * as THREE from 'three';
 export class TimelineScene {
     constructor(scene) {
         this.scene = scene;
-        this.timelineElements = [];
+        this.timelinePlanes = [];
         this.timelineGroup = new THREE.Group();
         this.isActive = false;
         this.animationProgress = 0;
+        this.textureLoader = new THREE.TextureLoader();
         
         this.init();
     }
@@ -23,118 +24,78 @@ export class TimelineScene {
     }
     
     createTimelineElements() {
-        // Create timeline line
-        const lineGeometry = new THREE.BufferGeometry().setFromPoints([
-            new THREE.Vector3(-8, 0, 0),
-            new THREE.Vector3(8, 0, 0)
-        ]);
-        const lineMaterial = new THREE.LineBasicMaterial({ 
-            color: 0xffffff, 
-            transparent: true, 
-            opacity: 0.6 
-        });
-        const timelineLine = new THREE.Line(lineGeometry, lineMaterial);
-        this.timelineGroup.add(timelineLine);
-        
-        // Create timeline nodes/events
-        const events = [
-            { year: '2020', title: 'Event 1', position: new THREE.Vector3(-6, 0, 0) },
-            { year: '2021', title: 'Event 2', position: new THREE.Vector3(-2, 0, 0) },
-            { year: '2022', title: 'Event 3', position: new THREE.Vector3(2, 0, 0) },
-            { year: '2023', title: 'Event 4', position: new THREE.Vector3(6, 0, 0) }
+        // Timeline image URLs - first 5 are the same as initial scene, plus 5 new ones
+        this.imageUrls = [
+            // Same 5 images from initial scene
+            'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800&h=600&fit=crop', // Mountain landscape
+            'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800&h=600&fit=crop', // Forest
+            'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&h=600&fit=crop', // Ocean waves
+            'https://images.unsplash.com/photo-1449824913935-59a10b8d2000?w=800&h=600&fit=crop', // City skyline
+            'https://images.unsplash.com/photo-1465101046530-73398c7f28ca?w=800&h=600&fit=crop', // Desert sunset
+            // 5 new images for timeline
+            'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800&h=600&fit=crop', // Mountain landscape
+            'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800&h=600&fit=crop', // Forest
+            'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&h=600&fit=crop', // Ocean waves
+            'https://images.unsplash.com/photo-1449824913935-59a10b8d2000?w=800&h=600&fit=crop', // City skyline
+            'https://images.unsplash.com/photo-1465101046530-73398c7f28ca?w=800&h=600&fit=crop'  // Desert sunset
         ];
         
-        events.forEach((event, index) => {
-            const eventGroup = this.createTimelineEvent(event, index);
-            this.timelineElements.push(eventGroup);
-            this.timelineGroup.add(eventGroup);
-        });
+        // Create 10 timeline image planes (2010-2020)
+        const years = ['2010', '2011', '2012', '2013', '2014', '2015', '2016', '2017', '2018', '2019'];
+        const aspectRatio = 4/3;
+        const width = 1.5;
+        const height = width / aspectRatio;
         
-        // Create floating particles around timeline
-        this.createParticles();
+        years.forEach((year, index) => {
+            const x = (index - 4.5) * 2; // Spread images horizontally from -9 to 9
+            const y = 0;
+            const z = 0;
+            
+            this.createTimelinePlane(index, x, y, z, width, height, year);
+        });
     }
     
-    createTimelineEvent(event, index) {
-        const group = new THREE.Group();
-        
-        // Create node circle
-        const nodeGeometry = new THREE.CircleGeometry(0.3, 32);
-        const nodeMaterial = new THREE.MeshBasicMaterial({ 
-            color: 0x00ffff, 
-            transparent: true, 
-            opacity: 0.8 
+    createTimelinePlane(index, x, y, z, width, height, year) {
+        const texture = this.textureLoader.load(this.imageUrls[index % this.imageUrls.length]);
+        const geometry = new THREE.PlaneGeometry(width, height);
+        const material = new THREE.MeshBasicMaterial({ 
+            map: texture,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.9
         });
-        const node = new THREE.Mesh(nodeGeometry, nodeMaterial);
-        node.position.copy(event.position);
-        group.add(node);
+        const plane = new THREE.Mesh(geometry, material);
+        plane.position.set(x, y, z);
+        plane.rotation.set(0, 0, 0);
         
-        // Create year text (simplified as a small cube for now)
-        const yearGeometry = new THREE.BoxGeometry(0.1, 0.1, 0.1);
-        const yearMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
-        const yearCube = new THREE.Mesh(yearGeometry, yearMaterial);
-        yearCube.position.copy(event.position);
-        yearCube.position.y = 0.8;
-        group.add(yearCube);
+        // Set initial scale to 0 for animation
+        plane.scale.set(0, 0, 0);
         
-        // Create title text (simplified as a small cube for now)
-        const titleGeometry = new THREE.BoxGeometry(0.05, 0.05, 0.05);
-        const titleMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
-        const titleCube = new THREE.Mesh(titleGeometry, titleMaterial);
-        titleCube.position.copy(event.position);
-        titleCube.position.y = -0.8;
-        group.add(titleCube);
-        
-        // Add glow effect
-        const glowGeometry = new THREE.CircleGeometry(0.5, 32);
-        const glowMaterial = new THREE.MeshBasicMaterial({ 
-            color: 0x00ffff, 
-            transparent: true, 
-            opacity: 0.3 
+        // Add year label above the image
+        const yearGeometry = new THREE.PlaneGeometry(0.8, 0.3);
+        const yearMaterial = new THREE.MeshBasicMaterial({ 
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.8
         });
-        const glow = new THREE.Mesh(glowGeometry, glowMaterial);
-        glow.position.copy(event.position);
-        glow.position.z = -0.1;
-        group.add(glow);
+        const yearLabel = new THREE.Mesh(yearGeometry, yearMaterial);
+        yearLabel.position.set(0, height/2 + 0.4, 0.01);
+        plane.add(yearLabel);
         
-        // Store original position for animations
-        group.userData = {
-            originalPosition: event.position.clone(),
-            index: index,
-            year: event.year,
-            title: event.title
+        // Store reference to year label for billboarding
+        plane.userData.yearLabel = yearLabel;
+        
+        // Store animation data
+        plane.userData = {
+            animationStartTime: Date.now() + (index * 200), // Staggered animation
+            animationDuration: 1000,
+            targetScale: 1.0,
+            year: year,
+            originalPosition: new THREE.Vector3(x, y, z)
         };
         
-        return group;
-    }
-    
-    createParticles() {
-        const particleCount = 50;
-        const particleGeometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(particleCount * 3);
-        const colors = new Float32Array(particleCount * 3);
-        
-        for (let i = 0; i < particleCount; i++) {
-            positions[i * 3] = (Math.random() - 0.5) * 20; // x
-            positions[i * 3 + 1] = (Math.random() - 0.5) * 10; // y
-            positions[i * 3 + 2] = (Math.random() - 0.5) * 10; // z
-            
-            colors[i * 3] = Math.random() * 0.5 + 0.5; // r
-            colors[i * 3 + 1] = Math.random() * 0.5 + 0.5; // g
-            colors[i * 3 + 2] = 1.0; // b
-        }
-        
-        particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        particleGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-        
-        const particleMaterial = new THREE.PointsMaterial({
-            size: 0.1,
-            vertexColors: true,
-            transparent: true,
-            opacity: 0.6
-        });
-        
-        this.particles = new THREE.Points(particleGeometry, particleMaterial);
-        this.timelineGroup.add(this.particles);
+        this.timelinePlanes.push(plane);
+        this.timelineGroup.add(plane);
     }
     
     activate() {
@@ -142,7 +103,7 @@ export class TimelineScene {
         this.timelineGroup.visible = true;
         this.animationProgress = 0;
         
-        // Animate timeline elements in
+        // Animate timeline planes in
         this.animateIn();
     }
     
@@ -150,34 +111,34 @@ export class TimelineScene {
         this.isActive = false;
         this.timelineGroup.visible = false;
         
-        // Reset all elements
-        this.timelineElements.forEach((element, index) => {
-            element.position.copy(element.userData.originalPosition);
-            element.scale.setScalar(0);
-            element.material.opacity = 0;
+        // Reset all planes
+        this.timelinePlanes.forEach((plane, index) => {
+            plane.position.copy(plane.userData.originalPosition);
+            plane.scale.setScalar(0);
+            plane.material.opacity = 0.9;
         });
     }
     
     animateIn() {
-        // Staggered animation for timeline elements
-        this.timelineElements.forEach((element, index) => {
+        // Staggered animation for timeline planes
+        this.timelinePlanes.forEach((plane, index) => {
             setTimeout(() => {
-                this.animateElementIn(element);
-            }, index * 200);
+                this.animatePlaneIn(plane);
+            }, index * 150);
         });
     }
     
-    animateElementIn(element) {
-        const originalPosition = element.userData.originalPosition;
-        const targetPosition = originalPosition.clone();
+    animatePlaneIn(plane) {
+        const originalPosition = plane.userData.originalPosition;
         
         // Start from above
-        element.position.copy(originalPosition);
-        element.position.y += 5;
-        element.scale.setScalar(0);
+        plane.position.copy(originalPosition);
+        plane.position.y += 3;
+        plane.scale.setScalar(0);
+        plane.material.opacity = 0;
         
         // Animate to target position
-        const duration = 1000;
+        const duration = 1200;
         const startTime = Date.now();
         
         const animate = () => {
@@ -185,8 +146,9 @@ export class TimelineScene {
             const progress = Math.min(elapsed / duration, 1);
             const easedProgress = this.easeOutBack(progress);
             
-            element.position.y = originalPosition.y + (5 * (1 - easedProgress));
-            element.scale.setScalar(easedProgress);
+            plane.position.y = originalPosition.y + (3 * (1 - easedProgress));
+            plane.scale.setScalar(easedProgress);
+            plane.material.opacity = 0.9 * easedProgress;
             
             if (progress < 1) {
                 requestAnimationFrame(animate);
@@ -202,22 +164,29 @@ export class TimelineScene {
         return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
     }
     
-    update(time) {
+    update(time, camera) {
         if (!this.isActive) return;
         
-        // Animate particles
-        if (this.particles) {
-            this.particles.rotation.y += 0.001;
-            this.particles.rotation.x += 0.0005;
-        }
-        
-        // Animate timeline elements
-        this.timelineElements.forEach((element, index) => {
+        // Animate timeline planes with subtle floating motion
+        this.timelinePlanes.forEach((plane, index) => {
             // Subtle floating animation
-            element.position.y = element.userData.originalPosition.y + Math.sin(time * 0.001 + index) * 0.1;
+            plane.position.y = plane.userData.originalPosition.y + Math.sin(time * 0.001 + index) * 0.05;
             
-            // Subtle rotation
-            element.rotation.z = Math.sin(time * 0.0005 + index) * 0.05;
+            // Billboard effect: only rotate around Y-axis to face camera
+            const direction = new THREE.Vector3();
+            direction.subVectors(camera.position, plane.position);
+            direction.y = 0; // Keep Y component at 0 to maintain upright orientation
+            
+            if (direction.length() > 0.001) {
+                direction.normalize();
+                const angle = Math.atan2(direction.x, direction.z);
+                plane.rotation.y = angle;
+                
+                // Also billboard the year label
+                if (plane.userData.yearLabel) {
+                    plane.userData.yearLabel.rotation.y = angle;
+                }
+            }
         });
     }
     
@@ -227,5 +196,9 @@ export class TimelineScene {
     
     isTimelineActive() {
         return this.isActive;
+    }
+    
+    getTimelinePlanes() {
+        return this.timelinePlanes;
     }
 } 
