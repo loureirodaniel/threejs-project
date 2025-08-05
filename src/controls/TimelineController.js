@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { gsap } from 'gsap';
 
 export class TimelineController {
     constructor(camera, sceneManager, timelineScene) {
@@ -11,6 +12,11 @@ export class TimelineController {
         this.transitionProgress = 0;
         this.transitionDuration = 1.5; // seconds
         this.transitionStartTime = 0;
+        
+        // Image enlargement state
+        this.enlargedImage = null;
+        this.originalImageState = null;
+        this.isImageEnlarged = false;
         
         // Camera positions for different scenes
         this.sceneConfigs = [
@@ -48,6 +54,12 @@ export class TimelineController {
         window.addEventListener('mousemove', this.onMouseMove.bind(this));
         window.addEventListener('mouseup', this.onMouseUp.bind(this));
         
+        // Add click event for image enlargement
+        window.addEventListener('click', this.onClick.bind(this));
+        
+        // Add escape key to close enlarged image
+        window.addEventListener('keydown', this.onKeyDown.bind(this));
+        
         // Add touch events for mobile
         let touchStartY = 0;
         let touchStartX = 0;
@@ -84,6 +96,208 @@ export class TimelineController {
                 }
             }
         }, { passive: true });
+    }
+    
+    onClick(event) {
+        // Only handle clicks in timeline scene
+        if (this.currentSceneIndex !== 1) return;
+        
+        // If an image is already enlarged, close it
+        if (this.isImageEnlarged) {
+            this.closeEnlargedImage();
+            return;
+        }
+        
+        // Check if we're dragging (don't trigger click if dragging)
+        if (this.isDragging) return;
+        
+        // Check if mouse moved significantly since mousedown (indicates drag)
+        const mouseDeltaX = Math.abs(event.clientX - this.dragStartX);
+        const mouseDeltaY = Math.abs(event.clientY - this.dragStartY);
+        if (mouseDeltaX > 5 || mouseDeltaY > 5) return; // Small threshold for click vs drag
+        
+        // Get mouse position
+        const mouse = new THREE.Vector2();
+        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+        
+        // Create raycaster
+        const raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera(mouse, this.camera);
+        
+        // Get timeline planes
+        const timelinePlanes = this.timelineScene.getTimelinePlanes();
+        if (!timelinePlanes) return;
+        
+        // Check for intersections
+        const intersects = raycaster.intersectObjects(timelinePlanes);
+        
+        if (intersects.length > 0) {
+            const clickedPlane = intersects[0].object;
+            this.enlargeImage(clickedPlane);
+        }
+    }
+    
+    onKeyDown(event) {
+        // Close enlarged image with Escape key
+        if (event.key === 'Escape' && this.isImageEnlarged) {
+            this.closeEnlargedImage();
+        }
+    }
+    
+    enlargeImage(plane) {
+        if (this.isImageEnlarged) return;
+        
+        this.enlargedImage = plane;
+        this.isImageEnlarged = true;
+        
+        // Store original state
+        this.originalImageState = {
+            position: plane.position.clone(),
+            scale: plane.scale.clone(),
+            rotation: plane.rotation.clone(),
+            material: plane.material.clone()
+        };
+        
+        // Calculate 70% of viewport size
+        const viewportHeight = 2 * Math.tan((this.camera.fov * Math.PI / 180) / 2) * Math.abs(this.camera.position.z);
+        const viewportWidth = viewportHeight * this.camera.aspect;
+        
+        const targetWidth = viewportWidth * 0.7;
+        const targetHeight = viewportHeight * 0.7;
+        
+        // Calculate scale factor based on original plane size
+        const originalWidth = 1.5; // Original plane width
+        const originalHeight = 1.5 / (4/3); // Original plane height (4:3 aspect ratio)
+        
+        const scaleX = targetWidth / originalWidth;
+        const scaleY = targetHeight / originalHeight;
+        const scale = Math.min(scaleX, scaleY); // Use the smaller scale to maintain aspect ratio
+        
+        // Animate to center and scale up
+        const targetPosition = new THREE.Vector3(0, 0, 0);
+        
+        // Use GSAP for smooth animation
+        gsap.to(plane.position, {
+            x: targetPosition.x,
+            y: targetPosition.y,
+            z: targetPosition.z,
+            duration: 0.8,
+            ease: "back.out(1.7)"
+        });
+        
+        gsap.to(plane.scale, {
+            x: scale,
+            y: scale,
+            z: scale,
+            duration: 0.8,
+            ease: "back.out(1.7)"
+        });
+        
+        // Fade out other planes
+        const timelinePlanes = this.timelineScene.getTimelinePlanes();
+        timelinePlanes.forEach(otherPlane => {
+            if (otherPlane !== plane) {
+                gsap.to(otherPlane.material, {
+                    opacity: 0.1,
+                    duration: 0.5,
+                    ease: "power2.out"
+                });
+            }
+        });
+        
+        // Add close button overlay
+        this.addCloseButton();
+    }
+    
+    closeEnlargedImage() {
+        if (!this.isImageEnlarged || !this.enlargedImage || !this.originalImageState) return;
+        
+        const plane = this.enlargedImage;
+        const originalState = this.originalImageState;
+        
+        // Use GSAP for smooth animation back to original state
+        gsap.to(plane.position, {
+            x: originalState.position.x,
+            y: originalState.position.y,
+            z: originalState.position.z,
+            duration: 0.6,
+            ease: "power2.out"
+        });
+        
+        gsap.to(plane.scale, {
+            x: originalState.scale.x,
+            y: originalState.scale.y,
+            z: originalState.scale.z,
+            duration: 0.6,
+            ease: "power2.out"
+        });
+        
+        // Fade in other planes
+        const timelinePlanes = this.timelineScene.getTimelinePlanes();
+        timelinePlanes.forEach(otherPlane => {
+            if (otherPlane !== plane) {
+                gsap.to(otherPlane.material, {
+                    opacity: 0.9,
+                    duration: 0.5,
+                    ease: "power2.out"
+                });
+            }
+        });
+        
+        // Remove close button
+        this.removeCloseButton();
+        
+        // Reset state
+        this.enlargedImage = null;
+        this.originalImageState = null;
+        this.isImageEnlarged = false;
+    }
+    
+    addCloseButton() {
+        // Remove existing close button if any
+        this.removeCloseButton();
+        
+        // Create close button
+        this.closeButton = document.createElement('div');
+        this.closeButton.innerHTML = '✕';
+        this.closeButton.style.position = 'fixed';
+        this.closeButton.style.top = '20px';
+        this.closeButton.style.right = '20px';
+        this.closeButton.style.width = '50px';
+        this.closeButton.style.height = '50px';
+        this.closeButton.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+        this.closeButton.style.color = 'white';
+        this.closeButton.style.border = '2px solid white';
+        this.closeButton.style.borderRadius = '50%';
+        this.closeButton.style.display = 'flex';
+        this.closeButton.style.alignItems = 'center';
+        this.closeButton.style.justifyContent = 'center';
+        this.closeButton.style.fontSize = '24px';
+        this.closeButton.style.fontWeight = 'bold';
+        this.closeButton.style.cursor = 'pointer';
+        this.closeButton.style.zIndex = '1000';
+        this.closeButton.style.opacity = '0';
+        this.closeButton.style.transition = 'opacity 0.3s ease';
+        
+        // Add click event
+        this.closeButton.addEventListener('click', () => {
+            this.closeEnlargedImage();
+        });
+        
+        document.body.appendChild(this.closeButton);
+        
+        // Fade in
+        setTimeout(() => {
+            this.closeButton.style.opacity = '1';
+        }, 100);
+    }
+    
+    removeCloseButton() {
+        if (this.closeButton) {
+            this.closeButton.remove();
+            this.closeButton = null;
+        }
     }
     
     onScroll(event) {
@@ -155,6 +369,11 @@ export class TimelineController {
             
             // Haptic feedback for drag end
             this.triggerHapticFeedback('end');
+            
+            // Add a small delay to prevent click event from firing after drag
+            setTimeout(() => {
+                this.isDragging = false;
+            }, 100);
         }
     }
     
@@ -596,6 +815,11 @@ export class TimelineController {
         // This method can be overridden or extended to handle scene-specific logic
         console.log(`Transitioning to scene: ${this.sceneConfigs[sceneIndex].name}`);
         
+        // Close any enlarged image when changing scenes
+        if (this.isImageEnlarged) {
+            this.closeEnlargedImage();
+        }
+        
         // Emit custom event for other components to listen to
         const event = new CustomEvent('sceneChange', {
             detail: {
@@ -638,5 +862,13 @@ export class TimelineController {
             this.sceneConfigs[1].target.set(config.target.x, config.target.y, config.target.z);
             this.sceneConfigs[1].fov = config.fov;
         }
+    }
+    
+    isImageCurrentlyEnlarged() {
+        return this.isImageEnlarged;
+    }
+    
+    getEnlargedImage() {
+        return this.enlargedImage;
     }
 } 
