@@ -140,6 +140,15 @@ export class App {
             this.timelineController.transitionToScene(1);
         });
         
+        // Background blur and opacity controls
+        controls.backgroundBlurSlider.addEventListener('input', (e) => {
+            this.updateBackgroundControls();
+        });
+        
+        controls.backgroundOpacitySlider.addEventListener('input', (e) => {
+            this.updateBackgroundControls();
+        });
+        
         // Initialize timeline camera controls with current values
         this.initializeTimelineCameraControls();
     }
@@ -286,6 +295,29 @@ export class App {
         // Update year display if in timeline scene
         if (this.timelineController.getCurrentSceneIndex() === 1) {
             this.timelineController.updateCurrentYear();
+        }
+    }
+    
+    updateBackgroundControls() {
+        const controls = this.debugPanel.getControls();
+        
+        const blurAmount = parseFloat(controls.backgroundBlurSlider.value);
+        const opacity = parseFloat(controls.backgroundOpacitySlider.value);
+        
+        // Update displays
+        controls.backgroundBlurDisplay.textContent = blurAmount;
+        controls.backgroundOpacityDisplay.textContent = opacity;
+        
+        // Update background overlay if it exists
+        if (this.timelineController.backgroundOverlay) {
+            this.timelineController.backgroundOverlay.style.backgroundColor = `rgba(0, 0, 0, ${opacity})`;
+        }
+        
+        // Update scene blur if image is enlarged
+        if (this.timelineController.isImageCurrentlyEnlarged()) {
+            // Reapply scene blur with new settings
+            this.timelineController.removeBackgroundBlur();
+            this.timelineController.addBackgroundBlur();
         }
     }
     

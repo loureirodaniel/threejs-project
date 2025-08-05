@@ -315,6 +315,9 @@ export class TimelineController {
             ease: "power2.out"
         });
         
+        // Remove background blur
+        this.removeBackgroundBlur();
+        
         // Remove close button
         this.removeCloseButton();
         
@@ -411,7 +414,7 @@ export class TimelineController {
         this.backgroundOverlay.style.left = '0';
         this.backgroundOverlay.style.width = '100%';
         this.backgroundOverlay.style.height = '100%';
-        this.backgroundOverlay.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+        this.backgroundOverlay.style.backgroundColor = `rgba(0, 0, 0, ${this.getBackgroundOpacity()})`;
         this.backgroundOverlay.style.zIndex = '999';
         this.backgroundOverlay.style.opacity = '0';
         this.backgroundOverlay.style.transition = 'opacity 0.3s ease';
@@ -423,6 +426,113 @@ export class TimelineController {
         setTimeout(() => {
             this.backgroundOverlay.style.opacity = '1';
         }, 100);
+        
+        // Add background blur to the canvas
+        this.addBackgroundBlur();
+    }
+    
+    addBackgroundBlur() {
+        // Apply blur to all timeline images except the enlarged one
+        this.applySceneBlur();
+    }
+    
+    removeBackgroundBlur() {
+        // Remove blur from all timeline images
+        this.removeSceneBlur();
+    }
+    
+    applySceneBlur() {
+        const timelinePlanes = this.timelineScene.getTimelinePlanes();
+        if (!timelinePlanes) return;
+        
+        const blurAmount = this.getBackgroundBlurAmount();
+        
+        timelinePlanes.forEach(plane => {
+            if (plane !== this.enlargedImage) {
+                // Apply blur effect using post-processing or material modification
+                this.applyBlurToPlane(plane, blurAmount);
+            }
+        });
+    }
+    
+    removeSceneBlur() {
+        const timelinePlanes = this.timelineScene.getTimelinePlanes();
+        if (!timelinePlanes) return;
+        
+        timelinePlanes.forEach(plane => {
+            this.removeBlurFromPlane(plane);
+        });
+    }
+    
+    applyBlurToPlane(plane, blurAmount) {
+        // Store original material properties
+        if (!plane.userData.originalMaterial) {
+            plane.userData.originalMaterial = {
+                opacity: plane.material.opacity,
+                transparent: plane.material.transparent
+            };
+        }
+        
+        // Create a more pronounced blur effect
+        // Reduce opacity significantly to create depth
+        const opacityReduction = Math.min(blurAmount * 0.1, 0.7);
+        plane.material.opacity = Math.max(0.05, plane.userData.originalMaterial.opacity - opacityReduction);
+        plane.material.transparent = true;
+        
+        // Add a desaturation effect to simulate blur
+        if (plane.material.color) {
+            plane.userData.originalColor = plane.userData.originalColor || plane.material.color.clone();
+            const blurFactor = Math.min(blurAmount / 15, 0.5);
+            
+            // Desaturate the color to create a blur-like effect
+            const gray = 0.299 * plane.userData.originalColor.r + 0.587 * plane.userData.originalColor.g + 0.114 * plane.userData.originalColor.b;
+            plane.material.color.setRGB(
+                plane.userData.originalColor.r * (1 - blurFactor) + gray * blurFactor,
+                plane.userData.originalColor.g * (1 - blurFactor) + gray * blurFactor,
+                plane.userData.originalColor.b * (1 - blurFactor) + gray * blurFactor
+            );
+        }
+        
+        // Add a subtle scale effect to enhance the blur perception
+        const scaleReduction = Math.min(blurAmount * 0.02, 0.1);
+        plane.userData.originalScale = plane.userData.originalScale || plane.scale.clone();
+        plane.scale.setScalar(1 - scaleReduction);
+    }
+    
+    removeBlurFromPlane(plane) {
+        // Restore original material properties
+        if (plane.userData.originalMaterial) {
+            plane.material.opacity = plane.userData.originalMaterial.opacity;
+            plane.material.transparent = plane.userData.originalMaterial.transparent;
+        }
+        
+        // Restore original color
+        if (plane.userData.originalColor && plane.material.color) {
+            plane.material.color.copy(plane.userData.originalColor);
+        }
+        
+        // Restore original scale
+        if (plane.userData.originalScale) {
+            plane.scale.copy(plane.userData.originalScale);
+        }
+    }
+    
+    getBackgroundBlurAmount() {
+        // Get blur amount from debug panel or use default
+        const debugPanel = document.querySelector('#backgroundBlurSlider');
+        if (debugPanel) {
+            return parseFloat(debugPanel.value);
+        }
+        return 5; // Default blur amount
+    }
+    
+    getBackgroundOpacity() {
+        // Get background opacity from debug panel or use default
+        const debugPanel = document.querySelector('#backgroundOpacitySlider');
+        if (debugPanel) {
+            return parseFloat(debugPanel.value);
+        }
+        return 0.8; // Default opacity
     }
     
     onScroll(event) {
