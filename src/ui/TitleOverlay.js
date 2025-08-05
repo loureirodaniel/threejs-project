@@ -62,4 +62,19 @@ export class TitleOverlay {
     getSubtitle() {
         return this.subtitle;
     }
+    
+    setTitle(text) {
+        // Extract the subtitle part and keep it
+        const subtitleText = this.subtitle ? this.subtitle.outerHTML : '';
+        this.titleDiv.innerHTML = text + '<br>' + subtitleText;
+        
+        // Re-get the subtitle reference
+        this.subtitle = document.getElementById('subtitle');
+    }
+    
+    setSubtitle(text) {
+        if (this.subtitle) {
+            this.subtitle.textContent = text;
+        }
+    }
 } 

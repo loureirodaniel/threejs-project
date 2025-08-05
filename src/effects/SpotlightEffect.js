@@ -70,4 +70,16 @@ export class SpotlightEffect {
     getSpotlight() {
         return this.spotlight;
     }
+    
+    hide() {
+        if (this.spotlight) {
+            this.spotlight.visible = false;
+        }
+    }
+    
+    show() {
+        if (this.spotlight) {
+            this.spotlight.visible = true;
+        }
+    }
 } 

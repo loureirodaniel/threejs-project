@@ -130,4 +130,16 @@ export class ImagePlanes {
     getPlanes() {
         return this.planes;
     }
+    
+    hide() {
+        this.planes.forEach(plane => {
+            plane.visible = false;
+        });
+    }
+    
+    show() {
+        this.planes.forEach(plane => {
+            plane.visible = true;
+        });
+    }
 } 

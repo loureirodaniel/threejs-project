@@ -1,24 +1,28 @@
 import { SceneManager } from './scene/SceneManager.js';
 import { Lighting } from './scene/Lighting.js';
 import { ImagePlanes } from './scene/ImagePlanes.js';
+import { TimelineScene } from './scene/TimelineScene.js';
 import { GridEffect } from './effects/GridEffect.js';
 import { VignetteEffect } from './effects/VignetteEffect.js';
 import { SpotlightEffect } from './effects/SpotlightEffect.js';
 import { TitleOverlay } from './ui/TitleOverlay.js';
 import { DebugPanel } from './ui/DebugPanel.js';
 import { MouseController } from './controls/MouseController.js';
+import { TimelineController } from './controls/TimelineController.js';
 
 export class App {
     constructor() {
         this.sceneManager = null;
         this.lighting = null;
         this.imagePlanes = null;
+        this.timelineScene = null;
         this.gridEffect = null;
         this.vignetteEffect = null;
         this.spotlightEffect = null;
         this.titleOverlay = null;
         this.debugPanel = null;
         this.mouseController = null;
+        this.timelineController = null;
         
         this.init();
     }
@@ -32,12 +36,14 @@ export class App {
         // Initialize all other components
         this.lighting = new Lighting(scene);
         this.imagePlanes = new ImagePlanes(scene, camera);
+        this.timelineScene = new TimelineScene(scene);
         this.gridEffect = new GridEffect(scene);
         this.vignetteEffect = new VignetteEffect(scene);
         this.spotlightEffect = new SpotlightEffect(scene);
         this.titleOverlay = new TitleOverlay();
         this.debugPanel = new DebugPanel();
         this.mouseController = new MouseController(camera);
+        this.timelineController = new TimelineController(camera, this.sceneManager);
         
         // Setup event listeners
         this.setupEventListeners();
@@ -83,6 +89,15 @@ export class App {
         controls.gridSlider.addEventListener('input', () => {
             this.updateSpotlightEffect();
         });
+        
+        // Timeline scene transition events
+        window.addEventListener('sceneChange', (event) => {
+            this.onSceneChange(event.detail);
+        });
+        
+        window.addEventListener('sceneTransitionComplete', (event) => {
+            this.onSceneTransitionComplete(event.detail);
+        });
     }
     
     updateSpotlightEffect() {
@@ -124,15 +139,58 @@ export class App {
         this.updateSpotlightEffect();
     }
     
+    onSceneChange(sceneDetail) {
+        console.log(`Scene changing to: ${sceneDetail.sceneName}`);
+        
+        if (sceneDetail.sceneName === 'timeline') {
+            // Activate timeline scene
+            this.timelineScene.activate();
+            
+            // Hide initial scene elements
+            this.imagePlanes.hide();
+            this.spotlightEffect.hide();
+        } else if (sceneDetail.sceneName === 'initial') {
+            // Deactivate timeline scene
+            this.timelineScene.deactivate();
+            
+            // Show initial scene elements
+            this.imagePlanes.show();
+            this.spotlightEffect.show();
+        }
+    }
+    
+    onSceneTransitionComplete(sceneDetail) {
+        console.log(`Scene transition complete: ${sceneDetail.sceneName}`);
+        
+        // Update UI based on current scene
+        if (sceneDetail.sceneName === 'timeline') {
+            this.titleOverlay.setTitle('Timeline Scene');
+            this.titleOverlay.setSubtitle('Scroll to navigate through time');
+        } else if (sceneDetail.sceneName === 'initial') {
+            this.titleOverlay.setTitle('Initial Scene');
+            this.titleOverlay.setSubtitle('Scroll down to explore timeline');
+        }
+    }
+    
     animate() {
         requestAnimationFrame(this.animate.bind(this));
         
-        // Update spotlight position based on mouse
-        const worldPos = this.mouseController.getWorldPosition();
-        this.spotlightEffect.setPosition(worldPos.x, worldPos.y);
+        // Update timeline controller
+        this.timelineController.update();
         
-        // Animate image planes
-        this.imagePlanes.animate(Date.now());
+        // Update spotlight position based on mouse (only in initial scene)
+        if (this.timelineController.getCurrentSceneIndex() === 0) {
+            const worldPos = this.mouseController.getWorldPosition();
+            this.spotlightEffect.setPosition(worldPos.x, worldPos.y);
+        }
+        
+        // Animate image planes (only in initial scene)
+        if (this.timelineController.getCurrentSceneIndex() === 0) {
+            this.imagePlanes.animate(Date.now());
+        }
+        
+        // Update timeline scene
+        this.timelineScene.update(Date.now());
         
         // Render the scene
         this.sceneManager.render();

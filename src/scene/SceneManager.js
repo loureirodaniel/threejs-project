@@ -7,6 +7,7 @@ export class SceneManager {
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         this.renderer = new THREE.WebGLRenderer({ antialias: true });
         this.controls = null;
+        this.isTransitioning = false;
         
         this.init();
     }
@@ -30,6 +31,10 @@ export class SceneManager {
         
         // Handle window resize
         window.addEventListener('resize', this.onWindowResize.bind(this), false);
+        
+        // Listen for transition events
+        window.addEventListener('sceneChange', this.onSceneChange.bind(this));
+        window.addEventListener('sceneTransitionComplete', this.onSceneTransitionComplete.bind(this));
     }
     
     onWindowResize() {
@@ -38,8 +43,20 @@ export class SceneManager {
         this.renderer.setSize(window.innerWidth, window.innerHeight);
     }
     
+    onSceneChange(event) {
+        this.isTransitioning = true;
+        this.controls.enabled = false;
+    }
+    
+    onSceneTransitionComplete(event) {
+        this.isTransitioning = false;
+        this.controls.enabled = true;
+    }
+    
     render() {
-        this.controls.update();
+        if (!this.isTransitioning) {
+            this.controls.update();
+        }
         this.renderer.render(this.scene, this.camera);
     }
     
@@ -53,5 +70,9 @@ export class SceneManager {
     
     getRenderer() {
         return this.renderer;
+    }
+    
+    isInTransition() {
+        return this.isTransitioning;
     }
 } 
