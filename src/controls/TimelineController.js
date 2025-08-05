@@ -315,8 +315,7 @@ export class TimelineController {
             ease: "power2.out"
         });
         
-        // Remove background blur
-        this.removeBackgroundBlur();
+
         
         // Remove close button
         this.removeCloseButton();
@@ -399,10 +398,7 @@ export class TimelineController {
             this.backgroundOverlay.remove();
             this.backgroundOverlay = null;
         }
-        if (this.blurredBackground) {
-            this.blurredBackground.remove();
-            this.blurredBackground = null;
-        }
+
     }
     
     addBackgroundOverlay() {
@@ -431,85 +427,10 @@ export class TimelineController {
             this.backgroundOverlay.style.opacity = '1';
         }, 100);
         
-        // Add background blur to the canvas
-        this.addBackgroundBlur();
+
     }
     
-    addBackgroundBlur() {
-        // Create a blurred background canvas
-        this.createBlurredBackground();
-    }
-    
-    removeBackgroundBlur() {
-        // Remove blurred background
-        if (this.blurredBackground) {
-            this.blurredBackground.remove();
-            this.blurredBackground = null;
-        }
-    }
-    
-    createBlurredBackground() {
-        // Remove existing blurred background if any
-        if (this.blurredBackground) {
-            this.blurredBackground.remove();
-        }
-        
-        // Get the original canvas
-        const originalCanvas = document.querySelector('canvas');
-        if (!originalCanvas) return;
-        
-        // Create a container for the blurred background
-        this.blurredBackground = document.createElement('div');
-        this.blurredBackground.style.position = 'fixed';
-        this.blurredBackground.style.top = '0';
-        this.blurredBackground.style.left = '0';
-        this.blurredBackground.style.width = '100%';
-        this.blurredBackground.style.height = '100%';
-        this.blurredBackground.style.zIndex = '998'; // Behind the enlarged image but above other content
-        this.blurredBackground.style.pointerEvents = 'none';
-        this.blurredBackground.style.opacity = '0';
-        this.blurredBackground.style.transition = 'opacity 0.3s ease';
-        
-        // Create a blurred copy of the canvas using toDataURL
-        try {
-            const dataURL = originalCanvas.toDataURL('image/png');
-            const blurredImage = document.createElement('img');
-            blurredImage.src = dataURL;
-            blurredImage.style.width = '100%';
-            blurredImage.style.height = '100%';
-            blurredImage.style.objectFit = 'cover';
-            
-            const blurAmount = this.getBackgroundBlurAmount();
-            blurredImage.style.filter = `blur(${blurAmount}px)`;
-            
-            this.blurredBackground.appendChild(blurredImage);
-            document.body.appendChild(this.blurredBackground);
-            
-            // Fade in the blurred background
-            setTimeout(() => {
-                this.blurredBackground.style.opacity = '1';
-            }, 100);
-        } catch (error) {
-            console.log('Could not create blurred background:', error);
-            // Fallback: create a simple blurred overlay
-            this.blurredBackground.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
-            this.blurredBackground.style.backdropFilter = `blur(${this.getBackgroundBlurAmount()}px)`;
-            document.body.appendChild(this.blurredBackground);
-            
-            setTimeout(() => {
-                this.blurredBackground.style.opacity = '1';
-            }, 100);
-        }
-    }
-    
-    getBackgroundBlurAmount() {
-        // Get blur amount from debug panel or use default
-        const debugPanel = document.querySelector('#backgroundBlurSlider');
-        if (debugPanel) {
-            return parseFloat(debugPanel.value);
-        }
-        return 5; // Default blur amount
-    }
+
     
     getBackgroundOpacity() {
         // Get background opacity from debug panel or use default

@@ -79,9 +79,7 @@ export class App {
             this.updateSpotlightEffect();
         });
         
-        controls.blurSlider.addEventListener('input', () => {
-            this.updateSpotlightEffect();
-        });
+
         
         controls.vignetteSlider.addEventListener('input', () => {
             this.updateSpotlightEffect();
@@ -140,14 +138,7 @@ export class App {
             this.timelineController.transitionToScene(1);
         });
         
-        // Background blur and opacity controls
-        controls.backgroundBlurSlider.addEventListener('input', (e) => {
-            this.updateBackgroundControls();
-        });
-        
-        controls.backgroundOpacitySlider.addEventListener('input', (e) => {
-            this.updateBackgroundControls();
-        });
+
         
         // Initialize timeline camera controls with current values
         this.initializeTimelineCameraControls();
@@ -157,18 +148,16 @@ export class App {
         const controls = this.debugPanel.getControls();
         
         const radius = parseFloat(controls.spotlightRadiusSlider.value);
-        const blur = parseFloat(controls.blurSlider.value);
         const vignetteOpacity = parseFloat(controls.vignetteSlider.value);
         const gridOpacity = parseFloat(controls.gridSlider.value);
         
         // Update displays
         controls.spotlightRadiusDisplay.textContent = radius;
-        controls.blurAmountDisplay.textContent = blur;
         controls.vignetteOpacityDisplay.textContent = vignetteOpacity;
         controls.gridOpacityDisplay.textContent = gridOpacity;
         
         // Update effects
-        this.spotlightEffect.updateSpotlight(radius, blur, vignetteOpacity);
+        this.spotlightEffect.updateSpotlight(radius, vignetteOpacity);
         this.vignetteEffect.setOpacity(vignetteOpacity);
         this.gridEffect.setOpacity(gridOpacity);
     }
@@ -186,7 +175,6 @@ export class App {
         
         // Reset spotlight effect
         controls.spotlightRadiusSlider.value = 2;
-        controls.blurSlider.value = 0.6;
         controls.vignetteSlider.value = 1.0;
         controls.gridSlider.value = 0.4;
         this.updateSpotlightEffect();
@@ -298,28 +286,7 @@ export class App {
         }
     }
     
-    updateBackgroundControls() {
-        const controls = this.debugPanel.getControls();
-        
-        const blurAmount = parseFloat(controls.backgroundBlurSlider.value);
-        const opacity = parseFloat(controls.backgroundOpacitySlider.value);
-        
-        // Update displays
-        controls.backgroundBlurDisplay.textContent = blurAmount;
-        controls.backgroundOpacityDisplay.textContent = opacity;
-        
-        // Update background overlay if it exists
-        if (this.timelineController.backgroundOverlay) {
-            this.timelineController.backgroundOverlay.style.backgroundColor = `rgba(0, 0, 0, ${opacity})`;
-        }
-        
-        // Update blurred background if image is enlarged
-        if (this.timelineController.isImageCurrentlyEnlarged()) {
-            // Recreate the blurred background with new settings
-            this.timelineController.removeBackgroundBlur();
-            this.timelineController.addBackgroundBlur();
-        }
-    }
+
     
     initializeTimelineCameraControls() {
         const controls = this.debugPanel.getControls();

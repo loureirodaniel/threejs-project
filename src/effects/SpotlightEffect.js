@@ -11,17 +11,17 @@ export class SpotlightEffect {
     }
     
     init() {
-        // Create a gradient texture for the spotlight with blur on edges
+        // Create a gradient texture for the spotlight
         const canvas = document.createElement('canvas');
         canvas.width = 256;
         canvas.height = 256;
         const ctx = canvas.getContext('2d');
 
-        // Create radial gradient for blur effect
+        // Create radial gradient
         const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
         gradient.addColorStop(0, 'rgba(0, 0, 0, 0)'); // Completely transparent center
         gradient.addColorStop(0.6, 'rgba(0, 0, 0, 0)'); // Still transparent
-        gradient.addColorStop(1, 'rgba(0, 0, 0, 1.0)'); // Completely opaque edge matching vignette
+        gradient.addColorStop(1, 'rgba(0, 0, 0, 1.0)'); // Completely opaque edge
 
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, 256, 256);
@@ -38,7 +38,7 @@ export class SpotlightEffect {
         this.scene.add(this.spotlight);
     }
     
-    updateSpotlight(radius, blur, vignetteOpacity) {
+    updateSpotlight(radius, vignetteOpacity) {
         // Update spotlight radius
         this.spotlight.geometry.dispose();
         this.spotlight.geometry = new THREE.CircleGeometry(radius, this.spotlightSegments);
@@ -51,7 +51,7 @@ export class SpotlightEffect {
         
         const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
         gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
-        gradient.addColorStop(blur, 'rgba(0, 0, 0, 0)');
+        gradient.addColorStop(0.6, 'rgba(0, 0, 0, 0)');
         gradient.addColorStop(1, `rgba(0, 0, 0, ${vignetteOpacity})`);
         
         ctx.fillStyle = gradient;
