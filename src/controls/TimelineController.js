@@ -69,6 +69,12 @@ export class TimelineController {
         }, { passive: true });
         
         window.addEventListener('touchend', (e) => {
+            // Disable touch events when an image is enlarged
+            if (this.isImageEnlarged) {
+                console.log('Touch events disabled - image is enlarged');
+                return;
+            }
+            
             const touchEndY = e.changedTouches[0].clientY;
             const touchEndX = e.changedTouches[0].clientX;
             const deltaY = touchStartY - touchEndY;
@@ -102,24 +108,35 @@ export class TimelineController {
         // Only handle clicks in timeline scene
         if (this.currentSceneIndex !== 1) return;
         
+        console.log('Click detected in timeline scene');
+        
         // If an image is already enlarged, close it
         if (this.isImageEnlarged) {
+            console.log('Closing enlarged image');
             this.closeEnlargedImage();
             return;
         }
         
         // Check if we're dragging (don't trigger click if dragging)
-        if (this.isDragging) return;
+        if (this.isDragging) {
+            console.log('Ignoring click - dragging detected');
+            return;
+        }
         
         // Check if mouse moved significantly since mousedown (indicates drag)
         const mouseDeltaX = Math.abs(event.clientX - this.dragStartX);
         const mouseDeltaY = Math.abs(event.clientY - this.dragStartY);
-        if (mouseDeltaX > 5 || mouseDeltaY > 5) return; // Small threshold for click vs drag
+        if (mouseDeltaX > 5 || mouseDeltaY > 5) {
+            console.log('Ignoring click - mouse moved too much');
+            return; // Small threshold for click vs drag
+        }
         
         // Get mouse position
         const mouse = new THREE.Vector2();
         mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
         mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+        
+        console.log('Mouse position:', mouse);
         
         // Create raycaster
         const raycaster = new THREE.Raycaster();
@@ -127,13 +144,21 @@ export class TimelineController {
         
         // Get timeline planes
         const timelinePlanes = this.timelineScene.getTimelinePlanes();
-        if (!timelinePlanes) return;
+        if (!timelinePlanes) {
+            console.log('No timeline planes found');
+            return;
+        }
+        
+        console.log('Timeline planes count:', timelinePlanes.length);
         
         // Check for intersections
         const intersects = raycaster.intersectObjects(timelinePlanes);
         
+        console.log('Intersections found:', intersects.length);
+        
         if (intersects.length > 0) {
             const clickedPlane = intersects[0].object;
+            console.log('Enlarging image:', clickedPlane);
             this.enlargeImage(clickedPlane);
         }
     }
@@ -147,6 +172,8 @@ export class TimelineController {
     
     enlargeImage(plane) {
         if (this.isImageEnlarged) return;
+        
+        console.log('Starting image enlargement - bringing to front and reducing other images to 25% opacity');
         
         this.enlargedImage = plane;
         this.isImageEnlarged = true;
@@ -165,6 +192,9 @@ export class TimelineController {
         
         const targetWidth = viewportWidth * 0.7;
         const targetHeight = viewportHeight * 0.7;
+        
+        console.log('Viewport dimensions:', { viewportWidth, viewportHeight });
+        console.log('Target dimensions:', { targetWidth, targetHeight });
         
         // Calculate scale factor based on original plane size
         const originalWidth = 1.5; // Original plane width
@@ -194,17 +224,35 @@ export class TimelineController {
             ease: "back.out(1.7)"
         });
         
-        // Fade out other planes
+        // Bring clicked image to front and fade out other planes
         const timelinePlanes = this.timelineScene.getTimelinePlanes();
         timelinePlanes.forEach(otherPlane => {
             if (otherPlane !== plane) {
+                // Reduce opacity to 25%
                 gsap.to(otherPlane.material, {
-                    opacity: 0.1,
+                    opacity: 0.25,
                     duration: 0.5,
                     ease: "power2.out"
                 });
             }
         });
+        
+        // Bring the clicked image to the front by setting a high z-index
+        console.log('Moving image to front (z: 1)');
+        gsap.to(plane.position, {
+            z: 1, // Move to front
+            duration: 0.8,
+            ease: "back.out(1.7)"
+        });
+        
+        // Also bring the year label to front if it exists
+        if (plane.userData.yearLabel) {
+            gsap.to(plane.userData.yearLabel.position, {
+                z: 1.01, // Slightly in front of the image
+                duration: 0.8,
+                ease: "back.out(1.7)"
+            });
+        }
         
         // Add close button overlay
         this.addCloseButton();
@@ -233,7 +281,23 @@ export class TimelineController {
             ease: "power2.out"
         });
         
-        // Fade in other planes
+        // Restore z-position to original
+        gsap.to(plane.position, {
+            z: originalState.position.z,
+            duration: 0.6,
+            ease: "power2.out"
+        });
+        
+        // Restore year label z-position if it exists
+        if (plane.userData.yearLabel) {
+            gsap.to(plane.userData.yearLabel.position, {
+                z: 0.01, // Back to original position
+                duration: 0.6,
+                ease: "power2.out"
+            });
+        }
+        
+        // Fade in other planes back to original opacity
         const timelinePlanes = this.timelineScene.getTimelinePlanes();
         timelinePlanes.forEach(otherPlane => {
             if (otherPlane !== plane) {
@@ -287,9 +351,29 @@ export class TimelineController {
         
         document.body.appendChild(this.closeButton);
         
-        // Fade in
+        // Create scroll disabled indicator
+        this.scrollIndicator = document.createElement('div');
+        this.scrollIndicator.innerHTML = 'Scroll disabled';
+        this.scrollIndicator.style.position = 'fixed';
+        this.scrollIndicator.style.bottom = '20px';
+        this.scrollIndicator.style.left = '50%';
+        this.scrollIndicator.style.transform = 'translateX(-50%)';
+        this.scrollIndicator.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+        this.scrollIndicator.style.color = 'white';
+        this.scrollIndicator.style.padding = '8px 16px';
+        this.scrollIndicator.style.borderRadius = '20px';
+        this.scrollIndicator.style.fontSize = '14px';
+        this.scrollIndicator.style.fontWeight = 'bold';
+        this.scrollIndicator.style.zIndex = '1000';
+        this.scrollIndicator.style.opacity = '0';
+        this.scrollIndicator.style.transition = 'opacity 0.3s ease';
+        
+        document.body.appendChild(this.scrollIndicator);
+        
+        // Fade in both elements
         setTimeout(() => {
             this.closeButton.style.opacity = '1';
+            this.scrollIndicator.style.opacity = '1';
         }, 100);
     }
     
@@ -298,10 +382,20 @@ export class TimelineController {
             this.closeButton.remove();
             this.closeButton = null;
         }
+        if (this.scrollIndicator) {
+            this.scrollIndicator.remove();
+            this.scrollIndicator = null;
+        }
     }
     
     onScroll(event) {
         if (this.isTransitioning) return;
+        
+        // Disable scrolling when an image is enlarged
+        if (this.isImageEnlarged) {
+            console.log('Scroll disabled - image is enlarged');
+            return;
+        }
         
         const delta = event.deltaY;
         
@@ -320,6 +414,12 @@ export class TimelineController {
     
     onMouseDown(event) {
         if (this.currentSceneIndex === 1) {
+            // Disable dragging when an image is enlarged
+            if (this.isImageEnlarged) {
+                console.log('Drag disabled - image is enlarged');
+                return;
+            }
+            
             this.isDragging = true;
             this.dragStartX = event.clientX;
             this.dragStartY = event.clientY;
@@ -339,6 +439,12 @@ export class TimelineController {
     
     onMouseMove(event) {
         if (this.isDragging && this.currentSceneIndex === 1) {
+            // Disable dragging when an image is enlarged
+            if (this.isImageEnlarged) {
+                console.log('Drag move disabled - image is enlarged');
+                return;
+            }
+            
             const deltaX = event.clientX - this.lastDragX;
             const dragSpeed = 0.01;
             
@@ -378,6 +484,12 @@ export class TimelineController {
     }
     
     handleTimelineScroll(delta) {
+        // Disable scrolling when an image is enlarged
+        if (this.isImageEnlarged) {
+            console.log('Timeline scroll disabled - image is enlarged');
+            return;
+        }
+        
         // Horizontal scrolling within timeline (2010-2019)
         const scrollSpeed = 0.5;
         
@@ -434,6 +546,12 @@ export class TimelineController {
     }
     
     moveTimelineImages(deltaX) {
+        // Disable timeline movement when an image is enlarged
+        if (this.isImageEnlarged) {
+            console.log('Timeline movement disabled - image is enlarged');
+            return;
+        }
+        
         // Track timeline offset for year calculation
         if (!this.timelineOffset) this.timelineOffset = 0;
         const previousOffset = this.timelineOffset;
@@ -457,6 +575,55 @@ export class TimelineController {
             planes.forEach((plane, index) => {
                 const originalX = index * 2; // Original position
                 plane.position.x = originalX - this.timelineOffset;
+            });
+        }
+    }
+    
+    snapToNearestImage() {
+        if (!this.timelineOffset) return;
+        
+        // Define snap positions (every 2 units, corresponding to image positions)
+        const snapPositions = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18];
+        
+        // Find the nearest snap position
+        let nearestPosition = 0;
+        let minDistance = Infinity;
+        
+        snapPositions.forEach(position => {
+            const distance = Math.abs(this.timelineOffset - position);
+            if (distance < minDistance) {
+                minDistance = distance;
+                nearestPosition = position;
+            }
+        });
+        
+        // Only snap if we're not already at a snap position
+        if (Math.abs(this.timelineOffset - nearestPosition) > 0.1) {
+            console.log(`Snapping from ${this.timelineOffset.toFixed(2)} to ${nearestPosition}`);
+            
+            // Animate to the nearest snap position
+            gsap.to(this, {
+                timelineOffset: nearestPosition,
+                duration: 0.3,
+                ease: "power2.out",
+                onUpdate: () => {
+                    // Update timeline images during animation
+                    if (this.timelineScene && this.timelineScene.getTimelinePlanes) {
+                        const planes = this.timelineScene.getTimelinePlanes();
+                        planes.forEach((plane, index) => {
+                            const originalX = index * 2;
+                            plane.position.x = originalX - this.timelineOffset;
+                        });
+                    }
+                    
+                    // Update year display and sync debug panel
+                    this.updateCurrentYear();
+                    this.syncDebugPanel();
+                },
+                onComplete: () => {
+                    // Trigger haptic feedback when snapping completes
+                    this.triggerHapticFeedback('snap');
+                }
             });
         }
     }
