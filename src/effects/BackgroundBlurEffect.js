@@ -9,6 +9,10 @@ export class BackgroundBlurEffect {
         this.blurAmount = 5;
         this.blurOpacity = 0.8;
         
+        // Blur div width adjustments (percentage of viewport)
+        this.leftBlurWidth = 4;   // Default 4% extra width on left
+        this.rightBlurWidth = 4;  // Default 4% extra width on right
+        
         // Only left and right blur overlays
         this.leftBlur = null;
         this.rightBlur = null;
@@ -30,8 +34,6 @@ export class BackgroundBlurEffect {
         this.leftBlur.style.transition = 'opacity 0.3s ease';
         this.leftBlur.style.backdropFilter = `blur(${this.blurAmount}px)`;
         this.leftBlur.style.backgroundColor = `rgba(0, 0, 0, ${this.blurOpacity * 0.3})`;
-        // Add border for debugging alignment (remove later)
-        this.leftBlur.style.borderRight = '2px solid red';
         
         // Create right blur overlay
         this.rightBlur = document.createElement('div');
@@ -42,8 +44,6 @@ export class BackgroundBlurEffect {
         this.rightBlur.style.transition = 'opacity 0.3s ease';
         this.rightBlur.style.backdropFilter = `blur(${this.blurAmount}px)`;
         this.rightBlur.style.backgroundColor = `rgba(0, 0, 0, ${this.blurOpacity * 0.3})`;
-        // Add border for debugging alignment (remove later)
-        this.rightBlur.style.borderLeft = '2px solid blue';
         
         // Add overlays to DOM
         document.body.appendChild(this.leftBlur);
@@ -90,17 +90,17 @@ export class BackgroundBlurEffect {
         console.log('Left blur:', `top: 0, left: 0, width: ${imageLeftPercent}%, height: 100%`);
         console.log('Right blur:', `top: 0, left: ${imageLeftPercent + imageWidthPercent}%, width: ${100 - imageLeftPercent - imageWidthPercent}%, height: 100%`);
         
-        // Position the left and right blur overlays around the enlarged image
-        // Left blur overlay - covers from left edge to left edge of image, full height (exact fit)
+        // Position the left and right blur overlays around the enlarged image with adjustable widths
+        // Left blur overlay - covers from left edge to left edge of image + extra width, full height
         this.leftBlur.style.top = '0';
         this.leftBlur.style.left = '0';
-        this.leftBlur.style.width = `${imageLeftPercent}%`;
+        this.leftBlur.style.width = `${imageLeftPercent + this.leftBlurWidth}%`;
         this.leftBlur.style.height = '100%';
         
-        // Right blur overlay - covers from right edge of image to right edge of screen, full height (exact fit)
+        // Right blur overlay - covers from right edge of image to right edge of screen + extra width, full height
         this.rightBlur.style.top = '0';
-        this.rightBlur.style.left = `${imageLeftPercent + imageWidthPercent}%`;
-        this.rightBlur.style.width = `${100 - imageLeftPercent - imageWidthPercent}%`;
+        this.rightBlur.style.left = `${imageLeftPercent + imageWidthPercent - this.rightBlurWidth}%`;
+        this.rightBlur.style.width = `${100 - imageLeftPercent - imageWidthPercent + this.rightBlurWidth}%`;
         this.rightBlur.style.height = '100%';
         
         // Update blur amount for overlays
@@ -170,10 +170,49 @@ export class BackgroundBlurEffect {
         }
     }
     
+    updateLeftBlurWidth(width) {
+        this.leftBlurWidth = width;
+        if (this.isActive) {
+            this.refreshBlur();
+        }
+        console.log(`BackgroundBlurEffect: Left blur width updated to ${width}%`);
+    }
+    
+    updateRightBlurWidth(width) {
+        this.rightBlurWidth = width;
+        if (this.isActive) {
+            this.refreshBlur();
+        }
+        console.log(`BackgroundBlurEffect: Right blur width updated to ${width}%`);
+    }
+    
     refreshBlur() {
         if (this.isActive) {
+            // Recalculate positions with current width settings
+            const viewportHeight = window.innerHeight;
+            const viewportWidth = window.innerWidth;
+            
+            const imageWidth = viewportWidth * 0.7;
+            const imageHeight = viewportHeight * 0.7;
+            
+            const imageLeft = (viewportWidth - imageWidth) / 2;
+            const imageTop = (viewportHeight - imageHeight) / 2;
+            
+            const imageLeftPercent = Math.round((imageLeft / viewportWidth) * 10000) / 100;
+            const imageTopPercent = Math.round((imageTop / viewportHeight) * 10000) / 100;
+            const imageWidthPercent = Math.round((imageWidth / viewportWidth) * 10000) / 100;
+            const imageHeightPercent = Math.round((imageHeight / viewportHeight) * 10000) / 100;
+            
+            // Update positions with current width settings
+            this.leftBlur.style.width = `${imageLeftPercent + this.leftBlurWidth}%`;
+            this.rightBlur.style.left = `${imageLeftPercent + imageWidthPercent - this.rightBlurWidth}%`;
+            this.rightBlur.style.width = `${100 - imageLeftPercent - imageWidthPercent + this.rightBlurWidth}%`;
+            
+            // Update blur amount and opacity
             this.updateBlurAmount(this.blurAmount);
             this.updateBlurOpacity(this.blurOpacity);
+            
+            console.log(`BackgroundBlurEffect: Blur refreshed with left width: ${this.leftBlurWidth}%, right width: ${this.rightBlurWidth}%`);
         }
     }
     

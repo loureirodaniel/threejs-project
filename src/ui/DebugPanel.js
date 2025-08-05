@@ -140,13 +140,13 @@ export class DebugPanel {
                     </div>
                     
                     <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px;">Left Blur Width: <span id="leftBlurWidth">15</span>%</label>
-                        <input type="range" id="leftBlurWidthSlider" min="0" max="50" step="0.5" value="15" style="width: 100%;">
+                        <label style="display: block; margin-bottom: 5px;">Left Blur Width: <span id="leftBlurWidth">4</span>%</label>
+                        <input type="range" id="leftBlurWidthSlider" min="0" max="50" step="0.5" value="4" style="width: 100%;">
                     </div>
                     
                     <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px;">Right Blur Width: <span id="rightBlurWidth">15</span>%</label>
-                        <input type="range" id="rightBlurWidthSlider" min="0" max="50" step="0.5" value="15" style="width: 100%;">
+                        <label style="display: block; margin-bottom: 5px;">Right Blur Width: <span id="rightBlurWidth">4</span>%</label>
+                        <input type="range" id="rightBlurWidthSlider" min="0" max="50" step="0.5" value="4" style="width: 100%;">
                     </div>
                 </div>
             </div>
@@ -210,6 +210,12 @@ export class DebugPanel {
         this.controls.blurOpacitySlider = document.getElementById('blurOpacitySlider');
         this.controls.backgroundBlurDisplay = document.getElementById('backgroundBlur');
         this.controls.blurOpacityDisplay = document.getElementById('blurOpacity');
+        
+        // Blur div width controls
+        this.controls.leftBlurWidthSlider = document.getElementById('leftBlurWidthSlider');
+        this.controls.rightBlurWidthSlider = document.getElementById('rightBlurWidthSlider');
+        this.controls.leftBlurWidthDisplay = document.getElementById('leftBlurWidth');
+        this.controls.rightBlurWidthDisplay = document.getElementById('rightBlurWidth');
         
         // Debug panel toggle
         this.controls.toggleDebugPanel = document.getElementById('toggleDebugPanel');

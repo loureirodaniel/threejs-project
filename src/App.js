@@ -150,6 +150,15 @@ export class App {
             this.updateBackgroundBlur();
         });
         
+        // Blur width controls
+        controls.leftBlurWidthSlider.addEventListener('input', (e) => {
+            this.updateBackgroundBlur();
+        });
+        
+        controls.rightBlurWidthSlider.addEventListener('input', (e) => {
+            this.updateBackgroundBlur();
+        });
+        
         // Initialize timeline camera controls with current values
         this.initializeTimelineCameraControls();
         
@@ -182,15 +191,21 @@ export class App {
         
         const blurAmount = parseFloat(controls.backgroundBlurSlider.value);
         const blurOpacity = parseFloat(controls.blurOpacitySlider.value);
+        const leftBlurWidth = parseFloat(controls.leftBlurWidthSlider.value);
+        const rightBlurWidth = parseFloat(controls.rightBlurWidthSlider.value);
         
         // Update displays
         controls.backgroundBlurDisplay.textContent = blurAmount;
         controls.blurOpacityDisplay.textContent = blurOpacity;
+        controls.leftBlurWidthDisplay.textContent = leftBlurWidth;
+        controls.rightBlurWidthDisplay.textContent = rightBlurWidth;
         
         // Update background blur effect
         if (this.backgroundBlurEffect) {
             this.backgroundBlurEffect.updateBlurAmount(blurAmount);
             this.backgroundBlurEffect.updateBlurOpacity(blurOpacity);
+            this.backgroundBlurEffect.updateLeftBlurWidth(leftBlurWidth);
+            this.backgroundBlurEffect.updateRightBlurWidth(rightBlurWidth);
         }
     }
     
@@ -214,6 +229,8 @@ export class App {
         // Reset background blur
         controls.backgroundBlurSlider.value = 5;
         controls.blurOpacitySlider.value = 0.8;
+        controls.leftBlurWidthSlider.value = 4;
+        controls.rightBlurWidthSlider.value = 4;
         this.updateBackgroundBlur();
     }
     
