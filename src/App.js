@@ -44,7 +44,7 @@ export class App {
         this.titleOverlay = new TitleOverlay();
         this.debugPanel = new DebugPanel();
         this.mouseController = new MouseController(camera);
-        this.timelineController = new TimelineController(camera, this.sceneManager);
+        this.timelineController = new TimelineController(camera, this.sceneManager, this.timelineScene);
         
         // Setup event listeners
         this.setupEventListeners();

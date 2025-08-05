@@ -90,7 +90,8 @@ export class DebugPanel {
                 
                 <div style="margin-bottom: 10px;">
                     <button id="goToInitialBtn" style="background: #ff6b6b; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-family: inherit; margin-right: 8px;">Go to Initial</button>
-                    <button id="goToTimelineBtn" style="background: #4ecdc4; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-family: inherit;">Go to Timeline</button>
+                    <button id="goToTimelineBtn" style="background: #4ecdc4; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-family: inherit; margin-right: 8px;">Go to Timeline</button>
+                    <button id="testVibrationBtn" style="background: #ffd93d; color: black; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-family: inherit; margin-top: 8px; width: 100%;">Test Vibration</button>
                 </div>
             </div>
             
@@ -145,6 +146,36 @@ export class DebugPanel {
         this.controls.cameraFovDisplay = document.getElementById('cameraFov');
         this.controls.goToInitialBtn = document.getElementById('goToInitialBtn');
         this.controls.goToTimelineBtn = document.getElementById('goToTimelineBtn');
+        this.controls.testVibrationBtn = document.getElementById('testVibrationBtn');
+        
+        // Add vibration test functionality
+        this.controls.testVibrationBtn.addEventListener('click', () => {
+            console.log('=== MANUAL VIBRATION TEST ===');
+            
+            // Test different vibration patterns
+            if (navigator.vibrate) {
+                console.log('Testing short vibration (10ms)...');
+                navigator.vibrate(10);
+                
+                setTimeout(() => {
+                    console.log('Testing medium vibration (50ms)...');
+                    navigator.vibrate(50);
+                }, 1000);
+                
+                setTimeout(() => {
+                    console.log('Testing long vibration (200ms)...');
+                    navigator.vibrate(200);
+                }, 2000);
+                
+                setTimeout(() => {
+                    console.log('Testing pattern vibration [100, 50, 100]...');
+                    navigator.vibrate([100, 50, 100]);
+                }, 3000);
+            } else {
+                console.log('❌ Vibration API not available');
+                alert('Vibration API not supported on this device/browser');
+            }
+        });
     }
     
     getControls() {

@@ -79,24 +79,24 @@ export class TitleOverlay {
     }
     
     animateToTopLeft() {
-        // Animate title to top-left corner with smaller size and damping
+        // Animate title to top-left corner with smaller size
         gsap.to(this.titleDiv, {
             top: '20px',
             left: '20px',
             transform: 'translate(0, 0)',
             fontSize: '24px',
-            duration: 1.2,
-            ease: "back.out(1.7)",
+            duration: 1.0,
+            ease: "power2.inOut",
             delay: 0.2
         });
         
-        // Animate subtitle to smaller size with damping
+        // Animate subtitle to smaller size with stagger effect
         if (this.subtitle) {
             gsap.to(this.subtitle, {
                 fontSize: '14px',
-                duration: 1.2,
-                ease: "back.out(1.7)",
-                delay: 0.2
+                duration: 1.0,
+                ease: "power2.inOut",
+                delay: 0.4 // 0.2s stagger after title starts
             });
         }
     }

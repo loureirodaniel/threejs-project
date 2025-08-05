@@ -107,7 +107,7 @@ export class TimelineScene {
         // Delay image animation to wait for text animation
         setTimeout(() => {
             this.animateIn();
-        }, 1400); // 1.2s text animation + 0.2s delay
+        }, 1200); // 1.0s text animation + 0.2s delay
     }
     
     deactivate() {
