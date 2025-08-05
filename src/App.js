@@ -1,5 +1,6 @@
 import { SceneManager } from './scene/SceneManager.js';
 import { Lighting } from './scene/Lighting.js';
+import { ImagePlanes } from './scene/ImagePlanes.js';
 import { GridEffect } from './effects/GridEffect.js';
 import { VignetteEffect } from './effects/VignetteEffect.js';
 import { SpotlightEffect } from './effects/SpotlightEffect.js';
@@ -11,6 +12,7 @@ export class App {
     constructor() {
         this.sceneManager = null;
         this.lighting = null;
+        this.imagePlanes = null;
         this.gridEffect = null;
         this.vignetteEffect = null;
         this.spotlightEffect = null;
@@ -29,6 +31,7 @@ export class App {
         
         // Initialize all other components
         this.lighting = new Lighting(scene);
+        this.imagePlanes = new ImagePlanes(scene, camera);
         this.gridEffect = new GridEffect(scene);
         this.vignetteEffect = new VignetteEffect(scene);
         this.spotlightEffect = new SpotlightEffect(scene);
@@ -127,6 +130,9 @@ export class App {
         // Update spotlight position based on mouse
         const worldPos = this.mouseController.getWorldPosition();
         this.spotlightEffect.setPosition(worldPos.x, worldPos.y);
+        
+        // Animate image planes
+        this.imagePlanes.animate(Date.now());
         
         // Render the scene
         this.sceneManager.render();
