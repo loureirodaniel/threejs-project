@@ -399,6 +399,10 @@ export class TimelineController {
             this.backgroundOverlay.remove();
             this.backgroundOverlay = null;
         }
+        if (this.blurredBackground) {
+            this.blurredBackground.remove();
+            this.blurredBackground = null;
+        }
     }
     
     addBackgroundOverlay() {
@@ -432,88 +436,69 @@ export class TimelineController {
     }
     
     addBackgroundBlur() {
-        // Apply blur to all timeline images except the enlarged one
-        this.applySceneBlur();
+        // Create a blurred background canvas
+        this.createBlurredBackground();
     }
     
     removeBackgroundBlur() {
-        // Remove blur from all timeline images
-        this.removeSceneBlur();
+        // Remove blurred background
+        if (this.blurredBackground) {
+            this.blurredBackground.remove();
+            this.blurredBackground = null;
+        }
     }
     
-    applySceneBlur() {
-        const timelinePlanes = this.timelineScene.getTimelinePlanes();
-        if (!timelinePlanes) return;
-        
-        const blurAmount = this.getBackgroundBlurAmount();
-        
-        timelinePlanes.forEach(plane => {
-            if (plane !== this.enlargedImage) {
-                // Apply blur effect using post-processing or material modification
-                this.applyBlurToPlane(plane, blurAmount);
-            }
-        });
-    }
-    
-    removeSceneBlur() {
-        const timelinePlanes = this.timelineScene.getTimelinePlanes();
-        if (!timelinePlanes) return;
-        
-        timelinePlanes.forEach(plane => {
-            this.removeBlurFromPlane(plane);
-        });
-    }
-    
-    applyBlurToPlane(plane, blurAmount) {
-        // Store original material properties
-        if (!plane.userData.originalMaterial) {
-            plane.userData.originalMaterial = {
-                opacity: plane.material.opacity,
-                transparent: plane.material.transparent
-            };
+    createBlurredBackground() {
+        // Remove existing blurred background if any
+        if (this.blurredBackground) {
+            this.blurredBackground.remove();
         }
         
-        // Create a more pronounced blur effect
-        // Reduce opacity significantly to create depth
-        const opacityReduction = Math.min(blurAmount * 0.1, 0.7);
-        plane.material.opacity = Math.max(0.05, plane.userData.originalMaterial.opacity - opacityReduction);
-        plane.material.transparent = true;
+        // Get the original canvas
+        const originalCanvas = document.querySelector('canvas');
+        if (!originalCanvas) return;
         
-        // Add a desaturation effect to simulate blur
-        if (plane.material.color) {
-            plane.userData.originalColor = plane.userData.originalColor || plane.material.color.clone();
-            const blurFactor = Math.min(blurAmount / 15, 0.5);
+        // Create a container for the blurred background
+        this.blurredBackground = document.createElement('div');
+        this.blurredBackground.style.position = 'fixed';
+        this.blurredBackground.style.top = '0';
+        this.blurredBackground.style.left = '0';
+        this.blurredBackground.style.width = '100%';
+        this.blurredBackground.style.height = '100%';
+        this.blurredBackground.style.zIndex = '998'; // Behind the enlarged image but above other content
+        this.blurredBackground.style.pointerEvents = 'none';
+        this.blurredBackground.style.opacity = '0';
+        this.blurredBackground.style.transition = 'opacity 0.3s ease';
+        
+        // Create a blurred copy of the canvas using toDataURL
+        try {
+            const dataURL = originalCanvas.toDataURL('image/png');
+            const blurredImage = document.createElement('img');
+            blurredImage.src = dataURL;
+            blurredImage.style.width = '100%';
+            blurredImage.style.height = '100%';
+            blurredImage.style.objectFit = 'cover';
             
-            // Desaturate the color to create a blur-like effect
-            const gray = 0.299 * plane.userData.originalColor.r + 0.587 * plane.userData.originalColor.g + 0.114 * plane.userData.originalColor.b;
-            plane.material.color.setRGB(
-                plane.userData.originalColor.r * (1 - blurFactor) + gray * blurFactor,
-                plane.userData.originalColor.g * (1 - blurFactor) + gray * blurFactor,
-                plane.userData.originalColor.b * (1 - blurFactor) + gray * blurFactor
-            );
-        }
-        
-        // Add a subtle scale effect to enhance the blur perception
-        const scaleReduction = Math.min(blurAmount * 0.02, 0.1);
-        plane.userData.originalScale = plane.userData.originalScale || plane.scale.clone();
-        plane.scale.setScalar(1 - scaleReduction);
-    }
-    
-    removeBlurFromPlane(plane) {
-        // Restore original material properties
-        if (plane.userData.originalMaterial) {
-            plane.material.opacity = plane.userData.originalMaterial.opacity;
-            plane.material.transparent = plane.userData.originalMaterial.transparent;
-        }
-        
-        // Restore original color
-        if (plane.userData.originalColor && plane.material.color) {
-            plane.material.color.copy(plane.userData.originalColor);
-        }
-        
-        // Restore original scale
-        if (plane.userData.originalScale) {
-            plane.scale.copy(plane.userData.originalScale);
+            const blurAmount = this.getBackgroundBlurAmount();
+            blurredImage.style.filter = `blur(${blurAmount}px)`;
+            
+            this.blurredBackground.appendChild(blurredImage);
+            document.body.appendChild(this.blurredBackground);
+            
+            // Fade in the blurred background
+            setTimeout(() => {
+                this.blurredBackground.style.opacity = '1';
+            }, 100);
+        } catch (error) {
+            console.log('Could not create blurred background:', error);
+            // Fallback: create a simple blurred overlay
+            this.blurredBackground.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+            this.blurredBackground.style.backdropFilter = `blur(${this.getBackgroundBlurAmount()}px)`;
+            document.body.appendChild(this.blurredBackground);
+            
+            setTimeout(() => {
+                this.blurredBackground.style.opacity = '1';
+            }, 100);
         }
     }
     

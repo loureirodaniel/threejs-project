@@ -32,105 +32,85 @@ export class DebugPanel {
             <div id="debugPanelContent">
             
             <div style="margin-bottom: 15px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                    <h4 style="margin: 0; color: #00ff88;">Text Controls</h4>
-                    <button id="toggleTextControls" style="background: #333; color: white; border: 1px solid #555; padding: 2px 6px; border-radius: 3px; cursor: pointer; font-family: inherit; font-size: 10px;">−</button>
+                <label style="display: block; margin-bottom: 5px;">Header Font Size: <span id="headerSize">48</span>px</label>
+                <input type="range" id="headerSlider" min="20" max="80" value="48" style="width: 100%;">
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px;">Body Font Size: <span id="bodySize">24</span>px</label>
+                <input type="range" id="bodySlider" min="12" max="40" value="24" style="width: 100%;">
+            </div>
+            
+            <div style="margin-bottom: 15px; padding-top: 15px; border-top: 1px solid #333;">
+                <h4 style="margin: 0 0 10px 0; color: #00ff88;">Spotlight Effect</h4>
+                
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; margin-bottom: 5px;">Spotlight Radius: <span id="spotlightRadius">2</span></label>
+                    <input type="range" id="spotlightRadiusSlider" min="0.5" max="5" step="0.1" value="2" style="width: 100%;">
                 </div>
-                <div id="textControlsContent">
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px;">Header Font Size: <span id="headerSize">48</span>px</label>
-                        <input type="range" id="headerSlider" min="20" max="80" value="48" style="width: 100%;">
-                    </div>
-                    
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px;">Body Font Size: <span id="bodySize">24</span>px</label>
-                        <input type="range" id="bodySlider" min="12" max="40" value="24" style="width: 100%;">
-                    </div>
+                
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; margin-bottom: 5px;">Blur Amount: <span id="blurAmount">0.6</span></label>
+                    <input type="range" id="blurSlider" min="0.1" max="0.9" step="0.1" value="0.6" style="width: 100%;">
+                </div>
+                
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; margin-bottom: 5px;">Vignette Opacity: <span id="vignetteOpacity">1.0</span></label>
+                    <input type="range" id="vignetteSlider" min="0.5" max="1.0" step="0.1" value="1.0" style="width: 100%;">
+                </div>
+                
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; margin-bottom: 5px;">Grid Opacity: <span id="gridOpacity">0.4</span></label>
+                    <input type="range" id="gridSlider" min="0.1" max="1.0" step="0.1" value="0.4" style="width: 100%;">
                 </div>
             </div>
             
             <div style="margin-bottom: 15px; padding-top: 15px; border-top: 1px solid #333;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                    <h4 style="margin: 0; color: #00ff88;">Spotlight Effect</h4>
-                    <button id="toggleSpotlightControls" style="background: #333; color: white; border: 1px solid #555; padding: 2px 6px; border-radius: 3px; cursor: pointer; font-family: inherit; font-size: 10px;">−</button>
+                <h4 style="margin: 0 0 10px 0; color: #00ff88;">Timeline Camera</h4>
+                
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; margin-bottom: 5px;">Camera X: <span id="cameraX">0</span></label>
+                    <input type="range" id="cameraXSlider" min="-5" max="25" step="0.5" value="0" style="width: 100%;">
                 </div>
-                <div id="spotlightControlsContent">
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px;">Spotlight Radius: <span id="spotlightRadius">2</span></label>
-                        <input type="range" id="spotlightRadiusSlider" min="0.5" max="5" step="0.1" value="2" style="width: 100%;">
-                    </div>
-                    
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px;">Blur Amount: <span id="blurAmount">0.6</span></label>
-                        <input type="range" id="blurSlider" min="0.1" max="0.9" step="0.1" value="0.6" style="width: 100%;">
-                    </div>
-                    
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px;">Vignette Opacity: <span id="vignetteOpacity">1.0</span></label>
-                        <input type="range" id="vignetteSlider" min="0.5" max="1.0" step="0.1" value="1.0" style="width: 100%;">
-                    </div>
-                    
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px;">Grid Opacity: <span id="gridOpacity">0.4</span></label>
-                        <input type="range" id="gridSlider" min="0.1" max="1.0" step="0.1" value="0.4" style="width: 100%;">
-                    </div>
+                
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; margin-bottom: 5px;">Camera Y: <span id="cameraY">0</span></label>
+                    <input type="range" id="cameraYSlider" min="-20" max="20" step="0.5" value="0" style="width: 100%;">
                 </div>
-            </div>
-            
-            <div style="margin-bottom: 15px; padding-top: 15px; border-top: 1px solid #333;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                    <h4 style="margin: 0; color: #00ff88;">Timeline Camera</h4>
-                    <button id="toggleCameraControls" style="background: #333; color: white; border: 1px solid #555; padding: 2px 6px; border-radius: 3px; cursor: pointer; font-family: inherit; font-size: 10px;">−</button>
+                
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; margin-bottom: 5px;">Camera Z: <span id="cameraZ">8</span></label>
+                    <input type="range" id="cameraZSlider" min="5" max="20" step="0.5" value="8" style="width: 100%;">
                 </div>
-                <div id="cameraControlsContent">
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px;">Camera X: <span id="cameraX">0</span></label>
-                        <input type="range" id="cameraXSlider" min="-5" max="25" step="0.5" value="0" style="width: 100%;">
-                    </div>
-                    
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px;">Camera Y: <span id="cameraY">0</span></label>
-                        <input type="range" id="cameraYSlider" min="-20" max="20" step="0.5" value="0" style="width: 100%;">
-                    </div>
-                    
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px;">Camera Z: <span id="cameraZ">8</span></label>
-                        <input type="range" id="cameraZSlider" min="5" max="20" step="0.5" value="8" style="width: 100%;">
-                    </div>
-                    
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px;">Target Y: <span id="targetY">0</span></label>
-                        <input type="range" id="targetYSlider" min="-10" max="10" step="0.5" value="0" style="width: 100%;">
-                    </div>
-                    
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px;">FOV: <span id="cameraFov">30</span></label>
-                        <input type="range" id="cameraFovSlider" min="30" max="90" step="1" value="30" style="width: 100%;">
-                    </div>
-                    
-                    <div style="margin-bottom: 10px;">
-                        <button id="goToInitialBtn" style="background: #ff6b6b; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-family: inherit; margin-right: 8px;">Go to Initial</button>
-                        <button id="goToTimelineBtn" style="background: #4ecdc4; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-family: inherit; margin-right: 8px;">Go to Timeline</button>
-                        <button id="testVibrationBtn" style="background: #ffd93d; color: black; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-family: inherit; margin-top: 8px; width: 100%;">Test Vibration</button>
-                    </div>
+                
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; margin-bottom: 5px;">Target Y: <span id="targetY">0</span></label>
+                    <input type="range" id="targetYSlider" min="-10" max="10" step="0.5" value="0" style="width: 100%;">
+                </div>
+                
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; margin-bottom: 5px;">FOV: <span id="cameraFov">30</span></label>
+                    <input type="range" id="cameraFovSlider" min="30" max="90" step="1" value="30" style="width: 100%;">
+                </div>
+                
+                <div style="margin-bottom: 10px;">
+                    <button id="goToInitialBtn" style="background: #ff6b6b; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-family: inherit; margin-right: 8px;">Go to Initial</button>
+                    <button id="goToTimelineBtn" style="background: #4ecdc4; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-family: inherit; margin-right: 8px;">Go to Timeline</button>
+                    <button id="testVibrationBtn" style="background: #ffd93d; color: black; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-family: inherit; margin-top: 8px; width: 100%;">Test Vibration</button>
                 </div>
             </div>
             
             <div style="margin-bottom: 15px; padding-top: 15px; border-top: 1px solid #333;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                    <h4 style="margin: 0; color: #00ff88;">Image Enlargement</h4>
-                    <button id="toggleEnlargementControls" style="background: #333; color: white; border: 1px solid #555; padding: 2px 6px; border-radius: 3px; cursor: pointer; font-family: inherit; font-size: 10px;">−</button>
+                <h4 style="margin: 0 0 10px 0; color: #00ff88;">Image Enlargement</h4>
+                
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; margin-bottom: 5px;">Background Blur: <span id="backgroundBlur">5</span>px</label>
+                    <input type="range" id="backgroundBlurSlider" min="0" max="20" step="0.5" value="5" style="width: 100%;">
                 </div>
-                <div id="enlargementControlsContent">
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px;">Background Blur: <span id="backgroundBlur">5</span>px</label>
-                        <input type="range" id="backgroundBlurSlider" min="0" max="20" step="0.5" value="5" style="width: 100%;">
-                    </div>
-                    
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px;">Background Opacity: <span id="backgroundOpacity">0.8</span></label>
-                        <input type="range" id="backgroundOpacitySlider" min="0" max="1" step="0.1" value="0.8" style="width: 100%;">
-                    </div>
+                
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; margin-bottom: 5px;">Background Opacity: <span id="backgroundOpacity">0.8</span></label>
+                    <input type="range" id="backgroundOpacitySlider" min="0" max="1" step="0.1" value="0.8" style="width: 100%;">
                 </div>
             </div>
             
@@ -198,37 +178,9 @@ export class DebugPanel {
         this.controls.toggleDebugPanel = document.getElementById('toggleDebugPanel');
         this.controls.debugPanelContent = document.getElementById('debugPanelContent');
         
-        // Individual section toggles
-        this.controls.toggleTextControls = document.getElementById('toggleTextControls');
-        this.controls.toggleSpotlightControls = document.getElementById('toggleSpotlightControls');
-        this.controls.toggleCameraControls = document.getElementById('toggleCameraControls');
-        this.controls.toggleEnlargementControls = document.getElementById('toggleEnlargementControls');
-        
-        this.controls.textControlsContent = document.getElementById('textControlsContent');
-        this.controls.spotlightControlsContent = document.getElementById('spotlightControlsContent');
-        this.controls.cameraControlsContent = document.getElementById('cameraControlsContent');
-        this.controls.enlargementControlsContent = document.getElementById('enlargementControlsContent');
-        
         // Add toggle functionality
         this.controls.toggleDebugPanel.addEventListener('click', () => {
             this.togglePanel();
-        });
-        
-        // Add individual section toggle functionality
-        this.controls.toggleTextControls.addEventListener('click', () => {
-            this.toggleSection('textControlsContent', 'toggleTextControls');
-        });
-        
-        this.controls.toggleSpotlightControls.addEventListener('click', () => {
-            this.toggleSection('spotlightControlsContent', 'toggleSpotlightControls');
-        });
-        
-        this.controls.toggleCameraControls.addEventListener('click', () => {
-            this.toggleSection('cameraControlsContent', 'toggleCameraControls');
-        });
-        
-        this.controls.toggleEnlargementControls.addEventListener('click', () => {
-            this.toggleSection('enlargementControlsContent', 'toggleEnlargementControls');
         });
         
         // Add vibration test functionality
@@ -307,47 +259,6 @@ export class DebugPanel {
             // Update toggle button
             this.controls.toggleDebugPanel.textContent = '−';
             this.controls.toggleDebugPanel.title = 'Collapse Debug Panel';
-        }
-    }
-    
-    toggleSection(contentId, toggleId) {
-        const content = this.controls[contentId];
-        const toggle = this.controls[toggleId];
-        
-        if (!content || !toggle) return;
-        
-        const isCollapsed = content.style.height === '0px' || content.style.display === 'none';
-        
-        if (isCollapsed) {
-            // Expand the section
-            content.style.display = 'block';
-            content.style.overflow = 'visible';
-            
-            gsap.to(content, {
-                height: 'auto',
-                opacity: 1,
-                duration: 0.3,
-                ease: "power2.out"
-            });
-            
-            // Update toggle button
-            toggle.textContent = '−';
-            toggle.title = `Collapse ${contentId.replace('Content', '')}`;
-        } else {
-            // Collapse the section
-            gsap.to(content, {
-                height: 0,
-                opacity: 0,
-                duration: 0.3,
-                ease: "power2.out",
-                onComplete: () => {
-                    content.style.overflow = 'hidden';
-                }
-            });
-            
-            // Update toggle button
-            toggle.textContent = '+';
-            toggle.title = `Expand ${contentId.replace('Content', '')}`;
         }
     }
 } 

@@ -313,9 +313,9 @@ export class App {
             this.timelineController.backgroundOverlay.style.backgroundColor = `rgba(0, 0, 0, ${opacity})`;
         }
         
-        // Update scene blur if image is enlarged
+        // Update blurred background if image is enlarged
         if (this.timelineController.isImageCurrentlyEnlarged()) {
-            // Reapply scene blur with new settings
+            // Recreate the blurred background with new settings
             this.timelineController.removeBackgroundBlur();
             this.timelineController.addBackgroundBlur();
         }
