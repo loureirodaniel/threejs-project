@@ -162,18 +162,32 @@ export class TimelineScene {
         
         // Animate timeline planes with subtle floating motion
         this.timelinePlanes.forEach((plane, index) => {
-            // Subtle floating animation
-            plane.position.y = plane.userData.originalPosition.y + Math.sin(time * 0.001 + index) * 0.05;
-            
-            // Billboard effect: only rotate around Y-axis to face camera
-            const direction = new THREE.Vector3();
-            direction.subVectors(camera.position, plane.position);
-            direction.y = 0; // Keep Y component at 0 to maintain upright orientation
-            
-            if (direction.length() > 0.001) {
-                direction.normalize();
-                const angle = Math.atan2(direction.x, direction.z);
-                plane.rotation.y = angle;
+            // Skip floating animation if this plane is currently enlarged
+            if (plane.userData.isEnlarged) {
+                // Only apply billboard effect to enlarged image, no floating
+                const direction = new THREE.Vector3();
+                direction.subVectors(camera.position, plane.position);
+                direction.y = 0; // Keep Y component at 0 to maintain upright orientation
+                
+                if (direction.length() > 0.001) {
+                    direction.normalize();
+                    const angle = Math.atan2(direction.x, direction.z);
+                    plane.rotation.y = angle;
+                }
+            } else {
+                // Normal floating animation for non-enlarged planes
+                plane.position.y = plane.userData.originalPosition.y + Math.sin(time * 0.001 + index) * 0.05;
+                
+                // Billboard effect: only rotate around Y-axis to face camera
+                const direction = new THREE.Vector3();
+                direction.subVectors(camera.position, plane.position);
+                direction.y = 0; // Keep Y component at 0 to maintain upright orientation
+                
+                if (direction.length() > 0.001) {
+                    direction.normalize();
+                    const angle = Math.atan2(direction.x, direction.z);
+                    plane.rotation.y = angle;
+                }
             }
         });
     }

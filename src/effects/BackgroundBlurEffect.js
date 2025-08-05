@@ -30,6 +30,8 @@ export class BackgroundBlurEffect {
         this.leftBlur.style.transition = 'opacity 0.3s ease';
         this.leftBlur.style.backdropFilter = `blur(${this.blurAmount}px)`;
         this.leftBlur.style.backgroundColor = `rgba(0, 0, 0, ${this.blurOpacity * 0.3})`;
+        // Add border for debugging alignment (remove later)
+        this.leftBlur.style.borderRight = '2px solid red';
         
         // Create right blur overlay
         this.rightBlur = document.createElement('div');
@@ -40,6 +42,8 @@ export class BackgroundBlurEffect {
         this.rightBlur.style.transition = 'opacity 0.3s ease';
         this.rightBlur.style.backdropFilter = `blur(${this.blurAmount}px)`;
         this.rightBlur.style.backgroundColor = `rgba(0, 0, 0, ${this.blurOpacity * 0.3})`;
+        // Add border for debugging alignment (remove later)
+        this.rightBlur.style.borderLeft = '2px solid blue';
         
         // Add overlays to DOM
         document.body.appendChild(this.leftBlur);
@@ -65,11 +69,11 @@ export class BackgroundBlurEffect {
         const imageLeft = (viewportWidth - imageWidth) / 2;
         const imageTop = (viewportHeight - imageHeight) / 2;
         
-        // Convert to percentages for CSS positioning
-        const imageLeftPercent = (imageLeft / viewportWidth) * 100;
-        const imageTopPercent = (imageTop / viewportHeight) * 100;
-        const imageWidthPercent = (imageWidth / viewportWidth) * 100;
-        const imageHeightPercent = (imageHeight / viewportHeight) * 100;
+        // Convert to percentages for CSS positioning with more precision
+        const imageLeftPercent = Math.round((imageLeft / viewportWidth) * 10000) / 100;
+        const imageTopPercent = Math.round((imageTop / viewportHeight) * 10000) / 100;
+        const imageWidthPercent = Math.round((imageWidth / viewportWidth) * 10000) / 100;
+        const imageHeightPercent = Math.round((imageHeight / viewportHeight) * 10000) / 100;
         
         console.log('Image dimensions:', {
             width: imageWidth,
@@ -82,24 +86,21 @@ export class BackgroundBlurEffect {
             topPercent: imageTopPercent
         });
         
-        // Add a small buffer to prevent overlap
-        const buffer = 0.5; // 0.5% buffer
-        
-        console.log('Blur overlay positions (with buffer):');
-        console.log('Left blur:', `top: 0, left: 0, width: ${imageLeftPercent - buffer}%, height: 100%`);
-        console.log('Right blur:', `top: 0, left: ${imageLeftPercent + imageWidthPercent + buffer}%, width: ${100 - imageLeftPercent - imageWidthPercent - buffer}%, height: 100%`);
+        console.log('Blur overlay positions (exact fit):');
+        console.log('Left blur:', `top: 0, left: 0, width: ${imageLeftPercent}%, height: 100%`);
+        console.log('Right blur:', `top: 0, left: ${imageLeftPercent + imageWidthPercent}%, width: ${100 - imageLeftPercent - imageWidthPercent}%, height: 100%`);
         
         // Position the left and right blur overlays around the enlarged image
-        // Left blur overlay - covers from left edge to left edge of image, full height (with buffer)
+        // Left blur overlay - covers from left edge to left edge of image, full height (exact fit)
         this.leftBlur.style.top = '0';
         this.leftBlur.style.left = '0';
-        this.leftBlur.style.width = `${imageLeftPercent - buffer}%`;
+        this.leftBlur.style.width = `${imageLeftPercent}%`;
         this.leftBlur.style.height = '100%';
         
-        // Right blur overlay - covers from right edge of image to right edge of screen, full height (with buffer)
+        // Right blur overlay - covers from right edge of image to right edge of screen, full height (exact fit)
         this.rightBlur.style.top = '0';
-        this.rightBlur.style.left = `${imageLeftPercent + imageWidthPercent + buffer}%`;
-        this.rightBlur.style.width = `${100 - imageLeftPercent - imageWidthPercent - buffer}%`;
+        this.rightBlur.style.left = `${imageLeftPercent + imageWidthPercent}%`;
+        this.rightBlur.style.width = `${100 - imageLeftPercent - imageWidthPercent}%`;
         this.rightBlur.style.height = '100%';
         
         // Update blur amount for overlays

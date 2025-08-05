@@ -211,57 +211,61 @@ export class TimelineController {
         // Animate to center and scale up
         const targetPosition = new THREE.Vector3(0, 0, 0);
         
-        // Use GSAP for smooth animation
-        gsap.to(plane.position, {
-            x: targetPosition.x,
-            y: targetPosition.y,
-            z: targetPosition.z,
-            duration: 0.8,
-            ease: "back.out(1.7)"
-        });
+        // Mark this plane as enlarged to disable floating animation
+        plane.userData.isEnlarged = true;
         
-        gsap.to(plane.scale, {
-            x: scale,
-            y: scale,
-            z: scale,
-            duration: 0.8,
-            ease: "back.out(1.7)"
-        });
+        // Kill any existing animations on this plane to prevent conflicts
+        gsap.killTweensOf(plane.position);
+        gsap.killTweensOf(plane.scale);
+        gsap.killTweensOf(plane.material);
         
-        // Bring clicked image to front and fade out other planes
-        const timelinePlanes = this.timelineScene.getTimelinePlanes();
-        timelinePlanes.forEach(otherPlane => {
-            if (otherPlane !== plane) {
-                // Reduce opacity to 25%
-                gsap.to(otherPlane.material, {
-                    opacity: 0.25,
-                    duration: 0.5,
-                    ease: "power2.out"
-                });
-            }
-        });
-        
-        // Make the enlarged image fully opaque
-        gsap.to(plane.material, {
-            opacity: 1.0,
-            duration: 0.5,
-            ease: "power2.out"
-        });
-        
-        // Bring the clicked image to the front by setting a high z-index
-        console.log('Moving image to front (z: 2)');
-        gsap.to(plane.position, {
-            z: 2, // Move to front, above blur overlay
-            duration: 0.8,
-            ease: "back.out(1.7)",
+        // Create a single timeline for all animations to prevent conflicts
+        const tl = gsap.timeline({
             onComplete: () => {
-                // Activate background blur effect after image animation is complete
+                // Activate background blur effect after all animations are complete
                 if (this.backgroundBlurEffect) {
                     console.log('TimelineController: Activating background blur after image animation');
                     this.backgroundBlurEffect.activate();
                 } else {
                     console.log('TimelineController: No background blur effect available');
                 }
+            }
+        });
+        
+        // Animate position, scale, and z-index together in one smooth animation
+        tl.to(plane.position, {
+            x: targetPosition.x,
+            y: targetPosition.y,
+            z: 2, // Move to front, above blur overlay
+            duration: 0.6,
+            ease: "power2.out"
+        }, 0);
+        
+        tl.to(plane.scale, {
+            x: scale,
+            y: scale,
+            z: scale,
+            duration: 0.6,
+            ease: "power2.out"
+        }, 0);
+        
+        // Make the enlarged image fully opaque
+        tl.to(plane.material, {
+            opacity: 1.0,
+            duration: 0.5,
+            ease: "power2.out"
+        }, 0);
+        
+        // Fade out other planes
+        const timelinePlanes = this.timelineScene.getTimelinePlanes();
+        timelinePlanes.forEach(otherPlane => {
+            if (otherPlane !== plane) {
+                // Reduce opacity to 25%
+                tl.to(otherPlane.material, {
+                    opacity: 0.25,
+                    duration: 0.5,
+                    ease: "power2.out"
+                }, 0);
             }
         });
         
@@ -278,50 +282,52 @@ export class TimelineController {
         const plane = this.enlargedImage;
         const originalState = this.originalImageState;
         
-        // Use GSAP for smooth animation back to original state
-        gsap.to(plane.position, {
+        // Kill any existing animations on this plane to prevent conflicts
+        gsap.killTweensOf(plane.position);
+        gsap.killTweensOf(plane.scale);
+        gsap.killTweensOf(plane.material);
+        
+        // Create a single timeline for all close animations to prevent conflicts
+        const closeTl = gsap.timeline();
+        
+        // Animate position and scale together in one smooth animation
+        closeTl.to(plane.position, {
             x: originalState.position.x,
             y: originalState.position.y,
             z: originalState.position.z,
             duration: 0.6,
             ease: "power2.out"
-        });
+        }, 0);
         
-        gsap.to(plane.scale, {
+        closeTl.to(plane.scale, {
             x: originalState.scale.x,
             y: originalState.scale.y,
             z: originalState.scale.z,
             duration: 0.6,
             ease: "power2.out"
-        });
-        
-        // Restore z-position to original
-        gsap.to(plane.position, {
-            z: originalState.position.z,
-            duration: 0.6,
-            ease: "power2.out"
-        });
-        
-
+        }, 0);
         
         // Fade in other planes back to original opacity
         const timelinePlanes = this.timelineScene.getTimelinePlanes();
         timelinePlanes.forEach(otherPlane => {
             if (otherPlane !== plane) {
-                gsap.to(otherPlane.material, {
+                closeTl.to(otherPlane.material, {
                     opacity: 0.9,
                     duration: 0.5,
                     ease: "power2.out"
-                });
+                }, 0);
             }
         });
         
         // Restore the enlarged image opacity to original value
-        gsap.to(plane.material, {
+        closeTl.to(plane.material, {
             opacity: 0.9,
             duration: 0.5,
             ease: "power2.out"
-        });
+        }, 0);
+        
+        // Clear the enlarged flag to re-enable floating animation
+        plane.userData.isEnlarged = false;
         
         // Deactivate background blur effect
         if (this.backgroundBlurEffect) {

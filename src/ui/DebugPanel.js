@@ -138,6 +138,16 @@ export class DebugPanel {
                         <label style="display: block; margin-bottom: 5px;">Blur Opacity: <span id="blurOpacity">0.8</span></label>
                         <input type="range" id="blurOpacitySlider" min="0.1" max="1.0" step="0.1" value="0.8" style="width: 100%;">
                     </div>
+                    
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Left Blur Width: <span id="leftBlurWidth">15</span>%</label>
+                        <input type="range" id="leftBlurWidthSlider" min="0" max="50" step="0.5" value="15" style="width: 100%;">
+                    </div>
+                    
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Right Blur Width: <span id="rightBlurWidth">15</span>%</label>
+                        <input type="range" id="rightBlurWidthSlider" min="0" max="50" step="0.5" value="15" style="width: 100%;">
+                    </div>
                 </div>
             </div>
             
