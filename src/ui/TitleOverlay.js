@@ -77,4 +77,48 @@ export class TitleOverlay {
             this.subtitle.textContent = text;
         }
     }
+    
+    animateToTopLeft() {
+        // Animate title to top-left corner with smaller size and damping
+        gsap.to(this.titleDiv, {
+            top: '20px',
+            left: '20px',
+            transform: 'translate(0, 0)',
+            fontSize: '24px',
+            duration: 1.2,
+            ease: "back.out(1.7)",
+            delay: 0.2
+        });
+        
+        // Animate subtitle to smaller size with damping
+        if (this.subtitle) {
+            gsap.to(this.subtitle, {
+                fontSize: '14px',
+                duration: 1.2,
+                ease: "back.out(1.7)",
+                delay: 0.2
+            });
+        }
+    }
+    
+    animateToCenter() {
+        // Animate title back to center with original size
+        gsap.to(this.titleDiv, {
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            fontSize: '48px',
+            duration: 1.0,
+            ease: "power2.inOut"
+        });
+        
+        // Animate subtitle back to original size
+        if (this.subtitle) {
+            gsap.to(this.subtitle, {
+                fontSize: '24px',
+                duration: 1.0,
+                ease: "power2.inOut"
+            });
+        }
+    }
 } 

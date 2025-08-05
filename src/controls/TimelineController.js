@@ -23,7 +23,7 @@ export class TimelineController {
                 name: 'timeline',
                 position: new THREE.Vector3(0, 0, 8), // Start at 2010 (centered)
                 target: new THREE.Vector3(0, 0, 0), // Look at 2010
-                fov: 60
+                fov: 30
             }
         ];
         

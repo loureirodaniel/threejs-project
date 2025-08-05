@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { gsap } from 'gsap';
 
 export class TimelineScene {
     constructor(scene) {
@@ -103,8 +104,10 @@ export class TimelineScene {
         this.timelineGroup.visible = true;
         this.animationProgress = 0;
         
-        // Animate timeline planes in
-        this.animateIn();
+        // Delay image animation to wait for text animation
+        setTimeout(() => {
+            this.animateIn();
+        }, 1400); // 1.2s text animation + 0.2s delay
     }
     
     deactivate() {
@@ -120,11 +123,11 @@ export class TimelineScene {
     }
     
     animateIn() {
-        // Staggered animation for timeline planes
+        // Staggered animation for timeline planes with longer delay
         this.timelinePlanes.forEach((plane, index) => {
             setTimeout(() => {
                 this.animatePlaneIn(plane);
-            }, index * 150);
+            }, index * 200); // Increased delay between planes
         });
     }
     
@@ -133,29 +136,33 @@ export class TimelineScene {
         
         // Start from above
         plane.position.copy(originalPosition);
-        plane.position.y += 3;
+        plane.position.y += 4;
         plane.scale.setScalar(0);
         plane.material.opacity = 0;
         
-        // Animate to target position
-        const duration = 1200;
-        const startTime = Date.now();
+        // Use GSAP for smooth animation with damping
+        gsap.to(plane.position, {
+            y: originalPosition.y,
+            duration: 1.5,
+            ease: "back.out(1.7)",
+            delay: 0.1
+        });
         
-        const animate = () => {
-            const elapsed = Date.now() - startTime;
-            const progress = Math.min(elapsed / duration, 1);
-            const easedProgress = this.easeOutBack(progress);
-            
-            plane.position.y = originalPosition.y + (3 * (1 - easedProgress));
-            plane.scale.setScalar(easedProgress);
-            plane.material.opacity = 0.9 * easedProgress;
-            
-            if (progress < 1) {
-                requestAnimationFrame(animate);
-            }
-        };
+        gsap.to(plane.scale, {
+            x: 1,
+            y: 1,
+            z: 1,
+            duration: 1.5,
+            ease: "back.out(1.7)",
+            delay: 0.1
+        });
         
-        animate();
+        gsap.to(plane.material, {
+            opacity: 0.9,
+            duration: 1.5,
+            ease: "back.out(1.7)",
+            delay: 0.1
+        });
     }
     
     easeOutBack(t) {

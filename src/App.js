@@ -193,6 +193,9 @@ export class App {
             // Hide initial scene elements
             this.imagePlanes.hide();
             this.spotlightEffect.hide();
+            
+            // Animate title to top-left corner
+            this.titleOverlay.animateToTopLeft();
         } else if (sceneDetail.sceneName === 'initial') {
             // Deactivate timeline scene
             this.timelineScene.deactivate();
@@ -200,6 +203,9 @@ export class App {
             // Show initial scene elements
             this.imagePlanes.show();
             this.spotlightEffect.show();
+            
+            // Animate title back to center
+            this.titleOverlay.animateToCenter();
         }
     }
     

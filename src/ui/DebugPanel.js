@@ -84,8 +84,8 @@ export class DebugPanel {
                 </div>
                 
                 <div style="margin-bottom: 10px;">
-                    <label style="display: block; margin-bottom: 5px;">FOV: <span id="cameraFov">60</span></label>
-                    <input type="range" id="cameraFovSlider" min="30" max="90" step="1" value="60" style="width: 100%;">
+                    <label style="display: block; margin-bottom: 5px;">FOV: <span id="cameraFov">30</span></label>
+                    <input type="range" id="cameraFovSlider" min="30" max="90" step="1" value="30" style="width: 100%;">
                 </div>
                 
                 <div style="margin-bottom: 10px;">
