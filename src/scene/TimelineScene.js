@@ -48,7 +48,7 @@ export class TimelineScene {
         const height = width / aspectRatio;
         
         years.forEach((year, index) => {
-            const x = index * 2; // Start at 0 (2010) and go right, spacing 2 units apart
+            const x = (index * 2) - 2; // Start at -4 (2010) to move first image closer to left, spacing 2 units apart
             const y = 0;
             const z = 0;
             
@@ -71,20 +71,6 @@ export class TimelineScene {
         
         // Set initial scale to 0 for animation
         plane.scale.set(0, 0, 0);
-        
-        // Add year label above the image
-        const yearGeometry = new THREE.PlaneGeometry(0.8, 0.3);
-        const yearMaterial = new THREE.MeshBasicMaterial({ 
-            color: 0xffffff,
-            transparent: true,
-            opacity: 0.8
-        });
-        const yearLabel = new THREE.Mesh(yearGeometry, yearMaterial);
-        yearLabel.position.set(0, height/2 + 0.4, 0.01);
-        plane.add(yearLabel);
-        
-        // Store reference to year label for billboarding
-        plane.userData.yearLabel = yearLabel;
         
         // Store animation data
         plane.userData = {
@@ -188,11 +174,6 @@ export class TimelineScene {
                 direction.normalize();
                 const angle = Math.atan2(direction.x, direction.z);
                 plane.rotation.y = angle;
-                
-                // Also billboard the year label
-                if (plane.userData.yearLabel) {
-                    plane.userData.yearLabel.rotation.y = angle;
-                }
             }
         });
     }

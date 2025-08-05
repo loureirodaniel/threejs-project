@@ -18,6 +18,9 @@ export class TimelineController {
         this.originalImageState = null;
         this.isImageEnlarged = false;
         
+        // Snap functionality
+        this.snapTimeout = null;
+        
         // Camera positions for different scenes
         this.sceneConfigs = [
             {
@@ -29,7 +32,7 @@ export class TimelineController {
             {
                 name: 'timeline',
                 position: new THREE.Vector3(0, 0, 8), // Start at 2010 (centered)
-                target: new THREE.Vector3(0, 0, 0), // Look at 2010
+                target: new THREE.Vector3(0, 10, 0), // Look at center with Target Y: 10.0
                 fov: 30
             }
         ];
@@ -237,6 +240,13 @@ export class TimelineController {
             }
         });
         
+        // Make the enlarged image fully opaque
+        gsap.to(plane.material, {
+            opacity: 1.0,
+            duration: 0.5,
+            ease: "power2.out"
+        });
+        
         // Bring the clicked image to the front by setting a high z-index
         console.log('Moving image to front (z: 1)');
         gsap.to(plane.position, {
@@ -245,14 +255,10 @@ export class TimelineController {
             ease: "back.out(1.7)"
         });
         
-        // Also bring the year label to front if it exists
-        if (plane.userData.yearLabel) {
-            gsap.to(plane.userData.yearLabel.position, {
-                z: 1.01, // Slightly in front of the image
-                duration: 0.8,
-                ease: "back.out(1.7)"
-            });
-        }
+
+        
+        // Add background overlay to obscure other images
+        this.addBackgroundOverlay();
         
         // Add close button overlay
         this.addCloseButton();
@@ -288,14 +294,7 @@ export class TimelineController {
             ease: "power2.out"
         });
         
-        // Restore year label z-position if it exists
-        if (plane.userData.yearLabel) {
-            gsap.to(plane.userData.yearLabel.position, {
-                z: 0.01, // Back to original position
-                duration: 0.6,
-                ease: "power2.out"
-            });
-        }
+
         
         // Fade in other planes back to original opacity
         const timelinePlanes = this.timelineScene.getTimelinePlanes();
@@ -307,6 +306,13 @@ export class TimelineController {
                     ease: "power2.out"
                 });
             }
+        });
+        
+        // Restore the enlarged image opacity to original value
+        gsap.to(plane.material, {
+            opacity: 0.9,
+            duration: 0.5,
+            ease: "power2.out"
         });
         
         // Remove close button
@@ -386,6 +392,37 @@ export class TimelineController {
             this.scrollIndicator.remove();
             this.scrollIndicator = null;
         }
+        if (this.backgroundOverlay) {
+            this.backgroundOverlay.remove();
+            this.backgroundOverlay = null;
+        }
+    }
+    
+    addBackgroundOverlay() {
+        // Remove existing background overlay if any
+        if (this.backgroundOverlay) {
+            this.backgroundOverlay.remove();
+        }
+        
+        // Create background overlay
+        this.backgroundOverlay = document.createElement('div');
+        this.backgroundOverlay.style.position = 'fixed';
+        this.backgroundOverlay.style.top = '0';
+        this.backgroundOverlay.style.left = '0';
+        this.backgroundOverlay.style.width = '100%';
+        this.backgroundOverlay.style.height = '100%';
+        this.backgroundOverlay.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+        this.backgroundOverlay.style.zIndex = '999';
+        this.backgroundOverlay.style.opacity = '0';
+        this.backgroundOverlay.style.transition = 'opacity 0.3s ease';
+        this.backgroundOverlay.style.pointerEvents = 'none'; // Allow clicks to pass through to the image
+        
+        document.body.appendChild(this.backgroundOverlay);
+        
+        // Fade in
+        setTimeout(() => {
+            this.backgroundOverlay.style.opacity = '1';
+        }, 100);
     }
     
     onScroll(event) {
@@ -451,8 +488,9 @@ export class TimelineController {
             // Keep camera at X=0 and move timeline images instead
             this.camera.position.x = 0;
             
-            // Update camera target to stay at center
-            this.camera.lookAt(new THREE.Vector3(0, 0, 0));
+            // Update camera target to stay at center with configured Target Y
+            const currentConfig = this.sceneConfigs[1]; // Timeline scene config
+            this.camera.lookAt(new THREE.Vector3(0, currentConfig.target.y, 0));
             
             this.lastDragX = event.clientX;
             
@@ -476,6 +514,11 @@ export class TimelineController {
             // Haptic feedback for drag end
             this.triggerHapticFeedback('end');
             
+            // Snap to nearest image after dragging ends
+            setTimeout(() => {
+                this.snapToNearestImage();
+            }, 50);
+            
             // Add a small delay to prevent click event from firing after drag
             setTimeout(() => {
                 this.isDragging = false;
@@ -497,8 +540,9 @@ export class TimelineController {
         this.camera.position.x = 0;
         this.camera.position.y = 0;
         
-        // Update camera target to stay at center
-        this.camera.lookAt(new THREE.Vector3(0, 0, 0));
+        // Update camera target to stay at center with configured Target Y
+        const currentConfig = this.sceneConfigs[1]; // Timeline scene config
+        this.camera.lookAt(new THREE.Vector3(0, currentConfig.target.y, 0));
         
         // Move timeline images based on scroll direction
         if (delta > 0) {
@@ -514,16 +558,27 @@ export class TimelineController {
         
         // Sync debug panel with current camera position
         this.syncDebugPanel();
+        
+        // Clear any existing snap timeout
+        if (this.snapTimeout) {
+            clearTimeout(this.snapTimeout);
+        }
+        
+        // Set a timeout to snap after scrolling stops
+        this.snapTimeout = setTimeout(() => {
+            this.snapToNearestImage();
+        }, 300); // Wait 300ms after last scroll event
     }
     
     syncDebugPanel() {
         // Dispatch event to sync debug panel with current camera position
+        const currentConfig = this.sceneConfigs[1]; // Timeline scene config
         const event = new CustomEvent('syncDebugPanel', {
             detail: {
                 cameraX: 0, // Camera always stays at X=0
                 cameraY: this.camera.position.y,
                 cameraZ: this.camera.position.z,
-                targetY: 0, // Current target Y
+                targetY: currentConfig.target.y, // Use configured Target Y
                 fov: this.camera.fov
             }
         });
@@ -536,10 +591,10 @@ export class TimelineController {
         if (!this.timelineOffset) this.timelineOffset = 0;
         
         const yearRange = 2019 - 2010; // 9 years (2010-2019)
-        const xRange = 18; // 0 to 18 (images are at 0, 2, 4, 6, 8, 10, 12, 14, 16, 18)
+        const xRange = 18; // -4 to 14 (images are at -4, -2, 0, 2, 4, 6, 8, 10, 12, 14)
         
-        // Map timeline offset to year (offset=0 is 2010, offset=18 is 2019)
-        const normalizedX = Math.max(0, Math.min(1, this.timelineOffset / xRange)); // 0 to 1
+        // Map timeline offset to year (offset=-4 is 2010, offset=14 is 2019)
+        const normalizedX = Math.max(0, Math.min(1, (this.timelineOffset + 4) / xRange)); // 0 to 1
         const year = Math.round(2010 + (normalizedX * yearRange));
         
         return Math.max(2010, Math.min(2019, year));
@@ -557,14 +612,14 @@ export class TimelineController {
         const previousOffset = this.timelineOffset;
         this.timelineOffset += deltaX;
         
-        // Clamp timeline offset
-        this.timelineOffset = Math.max(0, Math.min(18, this.timelineOffset));
+        // Clamp timeline offset (new range: -4 to 14)
+        this.timelineOffset = Math.max(-4, Math.min(14, this.timelineOffset));
         
         // Check if we hit a boundary and trigger haptic feedback
-        if (this.timelineOffset === 0 && previousOffset > 0) {
+        if (this.timelineOffset === -4 && previousOffset > -4) {
             // Hit start boundary (2010)
             this.triggerHapticFeedback('boundary');
-        } else if (this.timelineOffset === 18 && previousOffset < 18) {
+        } else if (this.timelineOffset === 14 && previousOffset < 14) {
             // Hit end boundary (2019)
             this.triggerHapticFeedback('boundary');
         }
@@ -573,7 +628,7 @@ export class TimelineController {
         if (this.timelineScene && this.timelineScene.getTimelinePlanes) {
             const planes = this.timelineScene.getTimelinePlanes();
             planes.forEach((plane, index) => {
-                const originalX = index * 2; // Original position
+                const originalX = (index * 2) - 4; // Original position (starting at -4)
                 plane.position.x = originalX - this.timelineOffset;
             });
         }
@@ -582,8 +637,8 @@ export class TimelineController {
     snapToNearestImage() {
         if (!this.timelineOffset) return;
         
-        // Define snap positions (every 2 units, corresponding to image positions)
-        const snapPositions = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18];
+        // Define snap positions (every 2 units, corresponding to image positions, starting at -4)
+        const snapPositions = [-4, -2, 0, 2, 4, 6, 8, 10, 12, 14];
         
         // Find the nearest snap position
         let nearestPosition = 0;
@@ -611,7 +666,7 @@ export class TimelineController {
                     if (this.timelineScene && this.timelineScene.getTimelinePlanes) {
                         const planes = this.timelineScene.getTimelinePlanes();
                         planes.forEach((plane, index) => {
-                            const originalX = index * 2;
+                            const originalX = (index * 2) - 4; // Original position (starting at -4)
                             plane.position.x = originalX - this.timelineOffset;
                         });
                     }
@@ -659,6 +714,8 @@ export class TimelineController {
                 vibrationPattern = 15; // Medium for end
             } else if (type === 'boundary') {
                 vibrationPattern = [10, 50, 10]; // Pattern for boundaries
+            } else if (type === 'snap') {
+                vibrationPattern = [5, 20, 5]; // Quick double tap for snap
             }
             
             // Try multiple haptic feedback methods
@@ -713,6 +770,8 @@ export class TimelineController {
                     style = 'medium';
                 } else if (type === 'boundary') {
                     style = 'heavy';
+                } else if (type === 'snap') {
+                    style = 'light';
                 }
                 
                 window.webkit.messageHandlers.hapticFeedback.postMessage({
@@ -746,6 +805,7 @@ export class TimelineController {
                 if (type === 'start') pattern = 30;
                 else if (type === 'end') pattern = 20;
                 else if (type === 'boundary') pattern = 50;
+                else if (type === 'snap') pattern = [5, 20, 5];
                 
                 navigator.vibrate(pattern);
                 console.log('Alternative vibration triggered');
@@ -778,6 +838,7 @@ export class TimelineController {
             if (type === 'start') frequency = 300;
             else if (type === 'end') frequency = 250;
             else if (type === 'boundary') frequency = 400;
+            else if (type === 'snap') frequency = 150;
             
             oscillator.frequency.setValueAtTime(frequency, this.audioContext.currentTime);
             oscillator.type = 'sine';
@@ -876,6 +937,7 @@ export class TimelineController {
         if (type === 'start') color = '#4CAF50';
         else if (type === 'end') color = '#FF9800';
         else if (type === 'boundary') color = '#F44336';
+        else if (type === 'snap') color = '#2196F3';
         
         // Animate the indicator
         this.hapticIndicator.style.backgroundColor = color;
@@ -985,6 +1047,12 @@ export class TimelineController {
         // Close any enlarged image when changing scenes
         if (this.isImageEnlarged) {
             this.closeEnlargedImage();
+        }
+        
+        // Clear any pending snap timeout
+        if (this.snapTimeout) {
+            clearTimeout(this.snapTimeout);
+            this.snapTimeout = null;
         }
         
         // Emit custom event for other components to listen to
