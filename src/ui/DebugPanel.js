@@ -64,13 +64,13 @@ export class DebugPanel {
                 <h4 style="margin: 0 0 10px 0; color: #00ff88;">Timeline Camera</h4>
                 
                 <div style="margin-bottom: 10px;">
-                    <label style="display: block; margin-bottom: 5px;">Camera X: <span id="cameraX">-9</span></label>
-                    <input type="range" id="cameraXSlider" min="-20" max="20" step="0.5" value="-9" style="width: 100%;">
+                    <label style="display: block; margin-bottom: 5px;">Camera X: <span id="cameraX">0</span></label>
+                    <input type="range" id="cameraXSlider" min="-5" max="25" step="0.5" value="0" style="width: 100%;">
                 </div>
                 
                 <div style="margin-bottom: 10px;">
-                    <label style="display: block; margin-bottom: 5px;">Camera Y: <span id="cameraY">-10</span></label>
-                    <input type="range" id="cameraYSlider" min="-20" max="0" step="0.5" value="-10" style="width: 100%;">
+                    <label style="display: block; margin-bottom: 5px;">Camera Y: <span id="cameraY">0</span></label>
+                    <input type="range" id="cameraYSlider" min="-20" max="20" step="0.5" value="0" style="width: 100%;">
                 </div>
                 
                 <div style="margin-bottom: 10px;">
@@ -79,8 +79,8 @@ export class DebugPanel {
                 </div>
                 
                 <div style="margin-bottom: 10px;">
-                    <label style="display: block; margin-bottom: 5px;">Target Y: <span id="targetY">-5</span></label>
-                    <input type="range" id="targetYSlider" min="-10" max="0" step="0.5" value="-5" style="width: 100%;">
+                    <label style="display: block; margin-bottom: 5px;">Target Y: <span id="targetY">0</span></label>
+                    <input type="range" id="targetYSlider" min="-10" max="10" step="0.5" value="0" style="width: 100%;">
                 </div>
                 
                 <div style="margin-bottom: 10px;">

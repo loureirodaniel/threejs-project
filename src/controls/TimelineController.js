@@ -21,8 +21,8 @@ export class TimelineController {
             },
             {
                 name: 'timeline',
-                position: new THREE.Vector3(-9, -10, 8), // Start at 2010 position
-                target: new THREE.Vector3(-9, -5, 0), // Look at 2010
+                position: new THREE.Vector3(0, 0, 8), // Start at 2010 (centered)
+                target: new THREE.Vector3(0, 0, 0), // Look at 2010
                 fov: 60
             }
         ];
@@ -36,6 +36,16 @@ export class TimelineController {
         
         // Add scroll event listener
         window.addEventListener('wheel', this.onScroll.bind(this), { passive: false });
+        
+        // Add mouse drag events for timeline
+        this.isDragging = false;
+        this.dragStartX = 0;
+        this.dragStartY = 0;
+        this.lastDragX = 0;
+        
+        window.addEventListener('mousedown', this.onMouseDown.bind(this));
+        window.addEventListener('mousemove', this.onMouseMove.bind(this));
+        window.addEventListener('mouseup', this.onMouseUp.bind(this));
         
         // Add touch events for mobile
         let touchStartY = 0;
@@ -52,13 +62,13 @@ export class TimelineController {
             const deltaX = touchStartX - touchEndX;
             
             if (this.currentSceneIndex === 1) {
-                // In timeline scene, handle horizontal scrolling
+                // In timeline scene, handle horizontal scrolling only
                 if (Math.abs(deltaX) > 50) { // Minimum swipe distance
                     if (deltaX > 0) {
-                        // Swipe left - scroll right in timeline
+                        // Swipe left - scroll right in timeline (towards 2019)
                         this.handleTimelineScroll(-1);
                     } else {
-                        // Swipe right - scroll left in timeline
+                        // Swipe right - scroll left in timeline (towards 2010)
                         this.handleTimelineScroll(1);
                     }
                 }
@@ -80,7 +90,7 @@ export class TimelineController {
         
         const delta = event.deltaY;
         
-        // If we're in the timeline scene, handle horizontal scrolling
+        // If we're in the timeline scene, handle horizontal scrolling only
         if (this.currentSceneIndex === 1) {
             this.handleTimelineScroll(delta);
         } else {
@@ -93,39 +103,102 @@ export class TimelineController {
         }
     }
     
+    onMouseDown(event) {
+        if (this.currentSceneIndex === 1) {
+            this.isDragging = true;
+            this.dragStartX = event.clientX;
+            this.dragStartY = event.clientY;
+            this.lastDragX = event.clientX;
+            document.body.style.cursor = 'grabbing';
+        }
+    }
+    
+    onMouseEnter() {
+        if (this.currentSceneIndex === 1) {
+            document.body.style.cursor = 'grab';
+        }
+    }
+    
+    onMouseMove(event) {
+        if (this.isDragging && this.currentSceneIndex === 1) {
+            const deltaX = event.clientX - this.lastDragX;
+            const dragSpeed = 0.01;
+            
+            // Move camera horizontally based on drag
+            const newX = this.camera.position.x - (deltaX * dragSpeed);
+            this.camera.position.x = Math.max(0, Math.min(18, newX));
+            
+            // Update camera target
+            this.camera.lookAt(new THREE.Vector3(this.camera.position.x, 0, 0));
+            
+            this.lastDragX = event.clientX;
+            
+            // Update year display and sync debug panel
+            this.updateCurrentYear();
+            this.syncDebugPanel();
+        }
+    }
+    
+    onMouseUp(event) {
+        if (this.isDragging) {
+            this.isDragging = false;
+            document.body.style.cursor = 'grab';
+        }
+    }
+    
     handleTimelineScroll(delta) {
-        // Horizontal scrolling within timeline (2010-2020)
+        // Horizontal scrolling within timeline (2010-2019)
         const scrollSpeed = 0.5;
         const currentX = this.camera.position.x;
         
         if (delta > 0) {
-            // Scroll right (towards 2020)
-            const newX = Math.min(currentX + scrollSpeed, 9); // Max at 2020
+            // Scroll right (towards 2019)
+            const newX = Math.min(currentX + scrollSpeed, 18); // Max at 2019
             this.camera.position.x = newX;
         } else if (delta < 0) {
             // Scroll left (towards 2010)
-            const newX = Math.max(currentX - scrollSpeed, -9); // Min at 2010
+            const newX = Math.max(currentX - scrollSpeed, 0); // Min at 2010
             this.camera.position.x = newX;
         }
         
-        // Update camera target to look at the current position
-        this.camera.lookAt(new THREE.Vector3(this.camera.position.x, -5, 0));
+        // Keep camera Y position fixed at 0 (no up/down movement)
+        this.camera.position.y = 0;
+        
+        // Update camera target to look at the current position (horizontal only)
+        this.camera.lookAt(new THREE.Vector3(this.camera.position.x, 0, 0));
         
         // Update the current year display
         this.updateCurrentYear();
+        
+        // Sync debug panel with current camera position
+        this.syncDebugPanel();
+    }
+    
+    syncDebugPanel() {
+        // Dispatch event to sync debug panel with current camera position
+        const event = new CustomEvent('syncDebugPanel', {
+            detail: {
+                cameraX: this.camera.position.x,
+                cameraY: this.camera.position.y,
+                cameraZ: this.camera.position.z,
+                targetY: 0, // Current target Y
+                fov: this.camera.fov
+            }
+        });
+        window.dispatchEvent(event);
     }
     
     getCurrentYear() {
-        // Convert camera X position to year (2010-2020)
+        // Convert camera X position to year (2010-2019)
         const currentX = this.camera.position.x;
-        const yearRange = 2020 - 2010; // 10 years
-        const xRange = 18; // -9 to 9
+        const yearRange = 2019 - 2010; // 9 years (2010-2019)
+        const xRange = 18; // 0 to 18 (images are at 0, 2, 4, 6, 8, 10, 12, 14, 16, 18)
         
-        // Map X position to year
-        const normalizedX = (currentX + 9) / xRange; // 0 to 1
+        // Map X position to year (x=0 is 2010, x=18 is 2019)
+        const normalizedX = Math.max(0, Math.min(1, currentX / xRange)); // 0 to 1
         const year = Math.round(2010 + (normalizedX * yearRange));
         
-        return Math.max(2010, Math.min(2020, year));
+        return Math.max(2010, Math.min(2019, year));
     }
     
     updateCurrentYear() {

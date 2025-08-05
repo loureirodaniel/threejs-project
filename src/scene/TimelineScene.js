@@ -47,7 +47,7 @@ export class TimelineScene {
         const height = width / aspectRatio;
         
         years.forEach((year, index) => {
-            const x = (index - 4.5) * 2; // Spread images horizontally from -9 to 9
+            const x = index * 2; // Start at 0 (2010) and go right, spacing 2 units apart
             const y = 0;
             const z = 0;
             

@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { SceneManager } from './scene/SceneManager.js';
 import { Lighting } from './scene/Lighting.js';
 import { ImagePlanes } from './scene/ImagePlanes.js';
@@ -102,6 +103,11 @@ export class App {
         // Timeline year change event
         window.addEventListener('timelineYearChange', (event) => {
             this.onTimelineYearChange(event.detail);
+        });
+        
+        // Sync debug panel event
+        window.addEventListener('syncDebugPanel', (event) => {
+            this.syncDebugPanel(event.detail);
         });
         
         // Timeline camera controls
@@ -219,6 +225,24 @@ export class App {
         }
     }
     
+    syncDebugPanel(cameraData) {
+        const controls = this.debugPanel.getControls();
+        
+        // Update slider values without triggering events
+        controls.cameraXSlider.value = cameraData.cameraX;
+        controls.cameraYSlider.value = cameraData.cameraY;
+        controls.cameraZSlider.value = cameraData.cameraZ;
+        controls.targetYSlider.value = cameraData.targetY;
+        controls.cameraFovSlider.value = cameraData.fov;
+        
+        // Update displays
+        controls.cameraXDisplay.textContent = cameraData.cameraX.toFixed(1);
+        controls.cameraYDisplay.textContent = cameraData.cameraY.toFixed(1);
+        controls.cameraZDisplay.textContent = cameraData.cameraZ.toFixed(1);
+        controls.targetYDisplay.textContent = cameraData.targetY.toFixed(1);
+        controls.cameraFovDisplay.textContent = cameraData.fov.toFixed(0);
+    }
+    
     updateTimelineCamera() {
         const controls = this.debugPanel.getControls();
         
@@ -235,12 +259,28 @@ export class App {
         controls.targetYDisplay.textContent = targetY;
         controls.cameraFovDisplay.textContent = fov;
         
-        // Update timeline camera configuration
+        // Directly update the camera position and properties
+        const camera = this.sceneManager.getCamera();
+        camera.position.x = cameraX;
+        camera.position.y = cameraY;
+        camera.position.z = cameraZ;
+        camera.fov = fov;
+        camera.updateProjectionMatrix();
+        
+        // Update camera target
+        camera.lookAt(new THREE.Vector3(cameraX, targetY, 0));
+        
+        // Update timeline camera configuration for future transitions
         this.timelineController.updateTimelineCameraConfig({
             position: { x: cameraX, y: cameraY, z: cameraZ },
-            target: { x: 0, y: targetY, z: 0 },
+            target: { x: cameraX, y: targetY, z: 0 },
             fov: fov
         });
+        
+        // Update year display if in timeline scene
+        if (this.timelineController.getCurrentSceneIndex() === 1) {
+            this.timelineController.updateCurrentYear();
+        }
     }
     
     initializeTimelineCameraControls() {
