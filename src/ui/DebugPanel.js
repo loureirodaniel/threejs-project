@@ -129,7 +129,15 @@ export class DebugPanel {
                     <button class="section-toggle" data-section="enlargement" style="background: #333; color: white; border: 1px solid #555; padding: 2px 6px; border-radius: 3px; cursor: pointer; font-family: inherit; font-size: 10px;">+</button>
                 </div>
                 <div class="section-content" id="enlargement-content" style="display: none; padding-top: 10px;">
-
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Background Blur: <span id="backgroundBlur">5</span>px</label>
+                        <input type="range" id="backgroundBlurSlider" min="0" max="20" step="0.5" value="5" style="width: 100%;">
+                    </div>
+                    
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Blur Opacity: <span id="blurOpacity">0.8</span></label>
+                        <input type="range" id="blurOpacitySlider" min="0.1" max="1.0" step="0.1" value="0.8" style="width: 100%;">
+                    </div>
                 </div>
             </div>
             
@@ -187,7 +195,11 @@ export class DebugPanel {
         this.controls.goToTimelineBtn = document.getElementById('goToTimelineBtn');
         this.controls.testVibrationBtn = document.getElementById('testVibrationBtn');
         
-
+        // Background blur controls
+        this.controls.backgroundBlurSlider = document.getElementById('backgroundBlurSlider');
+        this.controls.blurOpacitySlider = document.getElementById('blurOpacitySlider');
+        this.controls.backgroundBlurDisplay = document.getElementById('backgroundBlur');
+        this.controls.blurOpacityDisplay = document.getElementById('blurOpacity');
         
         // Debug panel toggle
         this.controls.toggleDebugPanel = document.getElementById('toggleDebugPanel');

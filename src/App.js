@@ -6,6 +6,7 @@ import { TimelineScene } from './scene/TimelineScene.js';
 import { GridEffect } from './effects/GridEffect.js';
 import { VignetteEffect } from './effects/VignetteEffect.js';
 import { SpotlightEffect } from './effects/SpotlightEffect.js';
+import { BackgroundBlurEffect } from './effects/BackgroundBlurEffect.js';
 import { TitleOverlay } from './ui/TitleOverlay.js';
 import { DebugPanel } from './ui/DebugPanel.js';
 import { MouseController } from './controls/MouseController.js';
@@ -20,6 +21,7 @@ export class App {
         this.gridEffect = null;
         this.vignetteEffect = null;
         this.spotlightEffect = null;
+        this.backgroundBlurEffect = null;
         this.titleOverlay = null;
         this.debugPanel = null;
         this.mouseController = null;
@@ -41,10 +43,11 @@ export class App {
         this.gridEffect = new GridEffect(scene);
         this.vignetteEffect = new VignetteEffect(scene);
         this.spotlightEffect = new SpotlightEffect(scene);
+        this.backgroundBlurEffect = new BackgroundBlurEffect(scene, camera, this.sceneManager.getRenderer());
         this.titleOverlay = new TitleOverlay();
         this.debugPanel = new DebugPanel();
         this.mouseController = new MouseController(camera);
-        this.timelineController = new TimelineController(camera, this.sceneManager, this.timelineScene);
+        this.timelineController = new TimelineController(camera, this.sceneManager, this.timelineScene, this.backgroundBlurEffect);
         
         // Setup event listeners
         this.setupEventListeners();
@@ -138,10 +141,22 @@ export class App {
             this.timelineController.transitionToScene(1);
         });
         
-
+        // Background blur controls
+        controls.backgroundBlurSlider.addEventListener('input', (e) => {
+            this.updateBackgroundBlur();
+        });
+        
+        controls.blurOpacitySlider.addEventListener('input', (e) => {
+            this.updateBackgroundBlur();
+        });
         
         // Initialize timeline camera controls with current values
         this.initializeTimelineCameraControls();
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            this.onWindowResize();
+        });
     }
     
     updateSpotlightEffect() {
@@ -162,6 +177,23 @@ export class App {
         this.gridEffect.setOpacity(gridOpacity);
     }
     
+    updateBackgroundBlur() {
+        const controls = this.debugPanel.getControls();
+        
+        const blurAmount = parseFloat(controls.backgroundBlurSlider.value);
+        const blurOpacity = parseFloat(controls.blurOpacitySlider.value);
+        
+        // Update displays
+        controls.backgroundBlurDisplay.textContent = blurAmount;
+        controls.blurOpacityDisplay.textContent = blurOpacity;
+        
+        // Update background blur effect
+        if (this.backgroundBlurEffect) {
+            this.backgroundBlurEffect.updateBlurAmount(blurAmount);
+            this.backgroundBlurEffect.updateBlurOpacity(blurOpacity);
+        }
+    }
+    
     resetToDefaults() {
         const controls = this.debugPanel.getControls();
         
@@ -178,6 +210,11 @@ export class App {
         controls.vignetteSlider.value = 1.0;
         controls.gridSlider.value = 0.4;
         this.updateSpotlightEffect();
+        
+        // Reset background blur
+        controls.backgroundBlurSlider.value = 5;
+        controls.blurOpacitySlider.value = 0.8;
+        this.updateBackgroundBlur();
     }
     
     onSceneChange(sceneDetail) {
@@ -308,6 +345,13 @@ export class App {
             controls.cameraZDisplay.textContent = timelineConfig.position.z;
             controls.targetYDisplay.textContent = timelineConfig.target.y;
             controls.cameraFovDisplay.textContent = timelineConfig.fov;
+        }
+    }
+    
+    onWindowResize() {
+        // Update background blur effect on window resize
+        if (this.backgroundBlurEffect) {
+            this.backgroundBlurEffect.onWindowResize();
         }
     }
     

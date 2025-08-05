@@ -2,10 +2,11 @@ import * as THREE from 'three';
 import { gsap } from 'gsap';
 
 export class TimelineController {
-    constructor(camera, sceneManager, timelineScene) {
+    constructor(camera, sceneManager, timelineScene, backgroundBlurEffect = null) {
         this.camera = camera;
         this.sceneManager = sceneManager;
         this.timelineScene = timelineScene;
+        this.backgroundBlurEffect = backgroundBlurEffect;
         this.scenes = [];
         this.currentSceneIndex = 0;
         this.isTransitioning = false;
@@ -248,14 +249,21 @@ export class TimelineController {
         });
         
         // Bring the clicked image to the front by setting a high z-index
-        console.log('Moving image to front (z: 1)');
+        console.log('Moving image to front (z: 2)');
         gsap.to(plane.position, {
-            z: 1, // Move to front
+            z: 2, // Move to front, above blur overlay
             duration: 0.8,
-            ease: "back.out(1.7)"
+            ease: "back.out(1.7)",
+            onComplete: () => {
+                // Activate background blur effect after image animation is complete
+                if (this.backgroundBlurEffect) {
+                    console.log('TimelineController: Activating background blur after image animation');
+                    this.backgroundBlurEffect.activate();
+                } else {
+                    console.log('TimelineController: No background blur effect available');
+                }
+            }
         });
-        
-
         
         // Add background overlay to obscure other images
         this.addBackgroundOverlay();
@@ -315,7 +323,11 @@ export class TimelineController {
             ease: "power2.out"
         });
         
-
+        // Deactivate background blur effect
+        if (this.backgroundBlurEffect) {
+            console.log('TimelineController: Deactivating background blur');
+            this.backgroundBlurEffect.fadeOutBlur();
+        }
         
         // Remove close button
         this.removeCloseButton();
