@@ -9,8 +9,10 @@ import { SpotlightEffect } from './effects/SpotlightEffect.js';
 import { BackgroundBlurEffect } from './effects/BackgroundBlurEffect.js';
 import { TitleOverlay } from './ui/TitleOverlay.js';
 import { DebugPanel } from './ui/DebugPanel.js';
+import { EventsPanel } from './ui/EventsPanel.js';
 import { MouseController } from './controls/MouseController.js';
 import { TimelineController } from './controls/TimelineController.js';
+import { SmoothScrollController } from './controls/SmoothScrollController.js';
 
 export class App {
     constructor() {
@@ -24,8 +26,10 @@ export class App {
         this.backgroundBlurEffect = null;
         this.titleOverlay = null;
         this.debugPanel = null;
+        this.eventsPanel = null;
         this.mouseController = null;
         this.timelineController = null;
+        this.smoothScrollController = null;
         
         this.init();
     }
@@ -46,8 +50,10 @@ export class App {
         this.backgroundBlurEffect = new BackgroundBlurEffect(scene, camera, this.sceneManager.getRenderer());
         this.titleOverlay = new TitleOverlay();
         this.debugPanel = new DebugPanel();
+        this.eventsPanel = new EventsPanel();
         this.mouseController = new MouseController(camera);
         this.timelineController = new TimelineController(camera, this.sceneManager, this.timelineScene, this.backgroundBlurEffect);
+        this.smoothScrollController = new SmoothScrollController(this.timelineController);
         
         // Setup event listeners
         this.setupEventListeners();
@@ -111,6 +117,16 @@ export class App {
             this.syncDebugPanel(event.detail);
         });
         
+        // Check current scene event (for events panel)
+        window.addEventListener('checkCurrentScene', () => {
+            if (this.timelineController.getCurrentSceneIndex() === 1) {
+                // We're in timeline scene, show the events panel toggle
+                if (this.eventsPanel) {
+                    this.eventsPanel.toggleButton.style.display = 'flex';
+                }
+            }
+        });
+        
         // Timeline camera controls
         controls.cameraXSlider.addEventListener('input', (e) => {
             this.updateTimelineCamera();
@@ -161,6 +177,9 @@ export class App {
         
         // Initialize timeline camera controls with current values
         this.initializeTimelineCameraControls();
+        
+        // Add some custom events to the events panel
+        this.addCustomEvents();
         
         // Handle window resize
         window.addEventListener('resize', () => {
@@ -362,6 +381,32 @@ export class App {
             controls.cameraZDisplay.textContent = timelineConfig.position.z;
             controls.targetYDisplay.textContent = timelineConfig.target.y;
             controls.cameraFovDisplay.textContent = timelineConfig.fov;
+        }
+    }
+    
+    addCustomEvents() {
+        // Add some custom events to make the timeline more interesting
+        if (this.eventsPanel) {
+            // Add a special event for 2015
+            this.eventsPanel.addEvent(2015, {
+                title: 'Three.js Project Launch',
+                description: 'The beginning of this amazing 3D timeline project that showcases interactive storytelling.',
+                category: 'Project'
+            });
+            
+            // Add an event for 2018
+            this.eventsPanel.addEvent(2018, {
+                title: 'Interactive Timeline Development',
+                description: 'Advanced timeline features including smooth animations and immersive experiences.',
+                category: 'Development'
+            });
+            
+            // Add an event for 2019
+            this.eventsPanel.addEvent(2019, {
+                title: 'Events Panel Integration',
+                description: 'Successfully integrated a dynamic events panel that updates based on timeline navigation.',
+                category: 'Feature'
+            });
         }
     }
     
