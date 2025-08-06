@@ -241,11 +241,9 @@ export class DebugPanel {
         
         // Smooth scroll controls
         this.controls.smoothScrollSensitivitySlider = document.getElementById('smoothScrollSensitivitySlider');
-        this.controls.smoothScrollMomentumSlider = document.getElementById('smoothScrollMomentumSlider');
-        this.controls.smoothScrollDecelerationSlider = document.getElementById('smoothScrollDecelerationSlider');
+        this.controls.smoothScrollFrictionSlider = document.getElementById('smoothScrollFrictionSlider');
         this.controls.smoothScrollSensitivityDisplay = document.getElementById('smoothScrollSensitivityDisplay');
-        this.controls.smoothScrollMomentumDisplay = document.getElementById('smoothScrollMomentumDisplay');
-        this.controls.smoothScrollDecelerationDisplay = document.getElementById('smoothScrollDecelerationDisplay');
+        this.controls.smoothScrollFrictionDisplay = document.getElementById('smoothScrollFrictionDisplay');
         this.controls.scrollToYearBtn = document.getElementById('scrollToYearBtn');
         this.controls.scrollToYearBtn2 = document.getElementById('scrollToYearBtn2');
         

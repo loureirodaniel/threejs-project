@@ -191,11 +191,7 @@ export class App {
             this.updateSmoothScroll();
         });
         
-        controls.smoothScrollMomentumSlider.addEventListener('input', (e) => {
-            this.updateSmoothScroll();
-        });
-        
-        controls.smoothScrollDecelerationSlider.addEventListener('input', (e) => {
+        controls.smoothScrollFrictionSlider.addEventListener('input', (e) => {
             this.updateSmoothScroll();
         });
         
@@ -268,19 +264,16 @@ export class App {
         const controls = this.debugPanel.getControls();
         
         const sensitivity = parseFloat(controls.smoothScrollSensitivitySlider.value);
-        const momentum = parseFloat(controls.smoothScrollMomentumSlider.value);
-        const deceleration = parseFloat(controls.smoothScrollDecelerationSlider.value);
+        const friction = parseFloat(controls.smoothScrollFrictionSlider.value);
         
         // Update displays
-        controls.smoothScrollSensitivityDisplay.textContent = sensitivity.toFixed(1);
-        controls.smoothScrollMomentumDisplay.textContent = momentum.toFixed(1);
-        controls.smoothScrollDecelerationDisplay.textContent = deceleration.toFixed(2);
+        controls.smoothScrollSensitivityDisplay.textContent = sensitivity.toFixed(2);
+        controls.smoothScrollFrictionDisplay.textContent = friction.toFixed(2);
         
         // Update smooth scroll settings
         if (this.timelineController) {
             this.timelineController.setSmoothScrollSensitivity(sensitivity);
-            this.timelineController.setSmoothScrollMomentum(momentum);
-            this.timelineController.setSmoothScrollDeceleration(deceleration);
+            this.timelineController.setSmoothScrollFriction(friction);
         }
     }
     
@@ -309,9 +302,8 @@ export class App {
         this.updateBackgroundBlur();
         
         // Reset smooth scroll settings
-        controls.smoothScrollSensitivitySlider.value = 0.3;
-        controls.smoothScrollMomentumSlider.value = 0.6;
-        controls.smoothScrollDecelerationSlider.value = 0.92;
+        controls.smoothScrollSensitivitySlider.value = 0.25;
+        controls.smoothScrollFrictionSlider.value = 0.85;
         this.updateSmoothScroll();
     }
     
