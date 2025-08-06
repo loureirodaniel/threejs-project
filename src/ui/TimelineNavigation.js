@@ -4,6 +4,7 @@ export class TimelineNavigation {
         this.minYear = 2010;
         this.maxYear = 2019;
         this.isVisible = false;
+        this.isNavigating = false; // Prevent rapid navigation
         this.element = null;
         this.yearDisplay = null;
         this.prevButton = null;
@@ -396,16 +397,28 @@ export class TimelineNavigation {
     }
     
     previousYear() {
-        if (this.currentYear > this.minYear) {
+        if (this.currentYear > this.minYear && !this.isNavigating) {
+            this.isNavigating = true;
             this.setYear(this.currentYear - 1);
             this.triggerYearNavigation();
+            
+            // Prevent rapid clicking
+            setTimeout(() => {
+                this.isNavigating = false;
+            }, 1200); // Match animation duration
         }
     }
     
     nextYear() {
-        if (this.currentYear < this.maxYear) {
+        if (this.currentYear < this.maxYear && !this.isNavigating) {
+            this.isNavigating = true;
             this.setYear(this.currentYear + 1);
             this.triggerYearNavigation();
+            
+            // Prevent rapid clicking
+            setTimeout(() => {
+                this.isNavigating = false;
+            }, 1200); // Match animation duration
         }
     }
     
@@ -424,7 +437,7 @@ export class TimelineNavigation {
     
     updateButtonStates() {
         // Update previous button state
-        if (this.currentYear <= this.minYear) {
+        if (this.currentYear <= this.minYear || this.isNavigating) {
             this.prevButton.disabled = true;
             this.prevButton.style.opacity = '0.3';
             this.prevButton.style.cursor = 'not-allowed';
@@ -435,7 +448,7 @@ export class TimelineNavigation {
         }
         
         // Update next button state
-        if (this.currentYear >= this.maxYear) {
+        if (this.currentYear >= this.maxYear || this.isNavigating) {
             this.nextButton.disabled = true;
             this.nextButton.style.opacity = '0.3';
             this.nextButton.style.cursor = 'not-allowed';

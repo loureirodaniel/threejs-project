@@ -40,7 +40,7 @@ export class TimelineController {
             {
                 name: 'timeline',
                 position: new THREE.Vector3(0, 0, 8), // Start at 2010 (centered)
-                target: new THREE.Vector3(0, 10, 0), // Look at center with Target Y: 10.0
+                target: new THREE.Vector3(0, 0, 0), // Look at center where images are positioned
                 fov: 30
             }
         ];
@@ -480,6 +480,8 @@ export class TimelineController {
         
         // If we're in the timeline scene, handle smooth horizontal scrolling
         if (this.currentSceneIndex === 1) {
+            // Prevent vertical scrolling from affecting timeline
+            event.preventDefault();
             this.handleSmoothTimelineScroll(delta);
         } else {
             // In initial scene, handle scene transitions
@@ -527,17 +529,24 @@ export class TimelineController {
             const deltaX = event.clientX - this.lastDragX;
             const dragSpeed = 0.01;
             
-            // Keep camera at X=0 and move timeline images instead
+            // Keep camera at X=0 and maintain proper Y position for timeline view
             this.camera.position.x = 0;
             
-            // Update camera target to stay at center with configured Target Y
+            // Maintain camera Y and Z position from timeline scene configuration
             const currentConfig = this.sceneConfigs[1]; // Timeline scene config
-            this.camera.lookAt(new THREE.Vector3(0, currentConfig.target.y, 0));
+            this.camera.position.y = currentConfig.position.y;
+            this.camera.position.z = currentConfig.position.z;
+            
+            // Update camera target to stay at center where images are positioned
+            this.camera.lookAt(currentConfig.target);
             
             this.lastDragX = event.clientX;
             
             // Move timeline images horizontally based on drag
             this.moveTimelineImages(deltaX * dragSpeed);
+            
+            // Ensure timeline images remain visible
+            this.ensureTimelineImagesVisible();
             
             // Add haptic feedback during drag
             this.triggerHapticFeedback();
@@ -574,16 +583,22 @@ export class TimelineController {
             return;
         }
         
-        // Keep camera at X=0 and move timeline images instead
+        // Keep camera at X=0 and maintain proper Y position for timeline view
         this.camera.position.x = 0;
-        this.camera.position.y = 0;
         
-        // Update camera target to stay at center with configured Target Y
+        // Maintain camera Y position from timeline scene configuration
         const currentConfig = this.sceneConfigs[1];
-        this.camera.lookAt(new THREE.Vector3(0, currentConfig.target.y, 0));
+        this.camera.position.y = currentConfig.position.y;
+        this.camera.position.z = currentConfig.position.z;
+        
+        // Update camera target to stay at center where images are positioned
+        this.camera.lookAt(currentConfig.target);
         
         // Apply smooth scrolling with subtle friction
         this.applySmoothScroll(delta);
+        
+        // Ensure timeline images remain visible
+        this.ensureTimelineImagesVisible();
         
         // Update the current year display
         this.updateCurrentYear();
@@ -656,12 +671,31 @@ export class TimelineController {
             this.triggerHapticFeedback('boundary');
         }
         
-        // Move timeline images horizontally
+        // Move additional timeline images horizontally (positions 6, 8, 10, 12, 14)
         if (this.timelineScene && this.timelineScene.getTimelinePlanes) {
             const planes = this.timelineScene.getTimelinePlanes();
             planes.forEach((plane, index) => {
-                const originalX = (index * 2) - 4; // Original position (starting at -4)
+                const originalX = ((index + 5) * 2) - 4; // Positions 6, 8, 10, 12, 14
                 plane.position.x = originalX - this.timelineOffset;
+                
+                // Ensure images remain visible
+                plane.visible = true;
+                plane.position.y = 0; // Keep at horizontal alignment
+            });
+        }
+        
+        // Move initial scene images that have been transitioned to timeline
+        if (window.app && window.app.imagePlanes) {
+            const initialImages = window.app.imagePlanes.getPlanes();
+            initialImages.forEach((image, index) => {
+                if (image.userData.isTimelineTransitioned) {
+                    const originalX = (index * 2) - 4; // Positions -4, -2, 0, 2, 4
+                    image.position.x = originalX - this.timelineOffset;
+                    
+                    // Ensure images remain visible
+                    image.visible = true;
+                    image.position.y = 0; // Keep at horizontal alignment
+                }
             });
         }
     }
@@ -694,12 +728,23 @@ export class TimelineController {
                 duration: 0.3,
                 ease: "power2.out",
                 onUpdate: () => {
-                    // Update timeline images during animation
+                    // Update additional timeline images during animation
                     if (this.timelineScene && this.timelineScene.getTimelinePlanes) {
                         const planes = this.timelineScene.getTimelinePlanes();
                         planes.forEach((plane, index) => {
-                            const originalX = (index * 2) - 4; // Original position (starting at -4)
+                            const originalX = ((index + 5) * 2) - 4; // Positions 6, 8, 10, 12, 14
                             plane.position.x = originalX - this.timelineOffset;
+                        });
+                    }
+                    
+                    // Update initial scene images that have been transitioned
+                    if (window.app && window.app.imagePlanes) {
+                        const initialImages = window.app.imagePlanes.getPlanes();
+                        initialImages.forEach((image, index) => {
+                            if (image.userData.isTimelineTransitioned) {
+                                const originalX = (index * 2) - 4; // Positions -4, -2, 0, 2, 4
+                                image.position.x = originalX - this.timelineOffset;
+                            }
                         });
                     }
                     
@@ -1019,6 +1064,25 @@ export class TimelineController {
         const startConfig = this.sceneConfigs[this.currentSceneIndex];
         const endConfig = this.sceneConfigs[targetIndex];
         
+        // If transitioning to timeline scene, use the new camera transition system
+        if (targetIndex === 1 && this.timelineScene) {
+            this.timelineScene.startSceneTransition(this.camera, () => {
+                // Camera transition complete, now activate timeline scene
+                this.activateTimelineScene();
+            });
+        } else {
+            // Use original transition for other scenes
+            this.performOriginalTransition(targetIndex, startConfig, endConfig);
+        }
+        
+        // Update current scene index
+        this.currentSceneIndex = targetIndex;
+        
+        // Trigger scene change event
+        this.onSceneChange(targetIndex);
+    }
+    
+    performOriginalTransition(targetIndex, startConfig, endConfig) {
         // Store initial camera state
         this.startPosition = this.camera.position.clone();
         this.startTarget = new THREE.Vector3();
@@ -1030,17 +1094,38 @@ export class TimelineController {
         this.endPosition = endConfig.position.clone();
         this.endTarget = endConfig.target.clone();
         this.endFov = endConfig.fov;
+    }
+    
+    activateTimelineScene() {
+        // Activate the timeline scene which will handle its own animations
+        if (this.timelineScene) {
+            this.timelineScene.activate();
+        }
         
-        // Update current scene index
-        this.currentSceneIndex = targetIndex;
+        // Mark transition as complete
+        this.isTransitioning = false;
+        this.onTransitionComplete();
         
-        // Trigger scene change event
-        this.onSceneChange(targetIndex);
+        // Dispatch scene change event to update UI
+        const event = new CustomEvent('sceneChange', {
+            detail: {
+                sceneIndex: this.currentSceneIndex,
+                sceneName: this.sceneConfigs[this.currentSceneIndex].name
+            }
+        });
+        window.dispatchEvent(event);
     }
     
     update() {
         if (!this.isTransitioning) return;
         
+        // Check if timeline scene is handling the transition
+        if (this.currentSceneIndex === 1 && this.timelineScene && this.timelineScene.isTransitioning()) {
+            // Timeline scene is handling the camera transition, don't interfere
+            return;
+        }
+        
+        // Use original transition logic for other scenes
         const elapsed = (Date.now() - this.transitionStartTime) / 1000;
         this.transitionProgress = Math.min(elapsed / this.transitionDuration, 1);
         
@@ -1157,24 +1242,52 @@ export class TimelineController {
         // Initialize timeline offset if not set
         if (!this.timelineOffset) this.timelineOffset = 0;
         
-        // Animate to the target offset
+        // Ensure we're not already at the target
+        if (Math.abs(this.timelineOffset - targetOffset) < 0.1) {
+            console.log('Already at target position, skipping animation');
+            return;
+        }
+        
+        // Animate to the target offset with smooth easing
         gsap.to(this, {
             timelineOffset: targetOffset,
-            duration: 0.8,
-            ease: "power2.out",
+            duration: 1.2, // Slightly longer for smoother feel
+            ease: "power2.inOut", // Smoother easing
             onUpdate: () => {
-                // Update timeline images during animation
+                // Update additional timeline images during animation (positions 6, 8, 10, 12, 14)
                 if (this.timelineScene && this.timelineScene.getTimelinePlanes) {
                     const planes = this.timelineScene.getTimelinePlanes();
                     planes.forEach((plane, index) => {
-                        const originalX = (index * 2) - 4; // Original position (starting at -4)
+                        const originalX = ((index + 5) * 2) - 4; // Positions 6, 8, 10, 12, 14
                         plane.position.x = originalX - this.timelineOffset;
+                        
+                        // Ensure images remain visible
+                        plane.visible = true;
+                        plane.position.y = 0; // Keep horizontal alignment
+                    });
+                }
+                
+                // Update initial scene images that have been transitioned to timeline
+                if (window.app && window.app.imagePlanes) {
+                    const initialImages = window.app.imagePlanes.getPlanes();
+                    initialImages.forEach((image, index) => {
+                        if (image.userData.isTimelineTransitioned) {
+                            const originalX = (index * 2) - 4; // Positions -4, -2, 0, 2, 4
+                            image.position.x = originalX - this.timelineOffset;
+                            
+                            // Ensure images remain visible
+                            image.visible = true;
+                            image.position.y = 0; // Keep horizontal alignment
+                        }
                     });
                 }
                 
                 // Update year display and sync debug panel
                 this.updateCurrentYear();
                 this.syncDebugPanel();
+                
+                // Ensure images remain visible and properly positioned
+                this.ensureTimelineImagesVisible();
             },
             onComplete: () => {
                 // Trigger haptic feedback when animation completes
@@ -1182,6 +1295,11 @@ export class TimelineController {
                 
                 // Dispatch year change event
                 this.updateCurrentYear();
+                
+                // Final check to ensure all images are properly positioned
+                this.ensureTimelineImagesVisible();
+                
+                console.log(`Animation complete: Now at year ${this.getCurrentYear()}, offset ${this.timelineOffset}`);
             }
         });
     }
@@ -1301,5 +1419,81 @@ export class TimelineController {
             sensitivity: this.smoothScrollSensitivity,
             friction: this.smoothScrollFriction
         };
+    }
+    
+    ensureTimelineImagesVisible() {
+        console.log('🔧 Ensuring timeline images are visible...');
+        
+        // Ensure all timeline images are visible and properly positioned
+        if (this.timelineScene && this.timelineScene.getTimelinePlanes) {
+            const planes = this.timelineScene.getTimelinePlanes();
+            console.log(`Found ${planes.length} timeline planes`);
+            
+            planes.forEach((plane, index) => {
+                plane.visible = true;
+                plane.position.y = 0; // Keep horizontal alignment
+                
+                // Ensure proper scale
+                if (plane.scale.x < 0.5) {
+                    plane.scale.setScalar(0.75);
+                }
+                
+                console.log(`Timeline plane ${index}: visible=${plane.visible}, position=(${plane.position.x.toFixed(2)}, ${plane.position.y.toFixed(2)}, ${plane.position.z.toFixed(2)}), scale=(${plane.scale.x.toFixed(2)}, ${plane.scale.y.toFixed(2)}, ${plane.scale.z.toFixed(2)})`);
+            });
+        }
+        
+        // Ensure initial scene images that are part of timeline are visible
+        if (window.app && window.app.imagePlanes) {
+            const initialImages = window.app.imagePlanes.getPlanes();
+            console.log(`Found ${initialImages.length} initial images`);
+            
+            initialImages.forEach((image, index) => {
+                if (image.userData.isTimelineTransitioned) {
+                    image.visible = true;
+                    image.position.y = 0; // Keep horizontal alignment
+                    
+                    // Ensure proper scale
+                    if (image.scale.x < 0.5) {
+                        image.scale.setScalar(0.75);
+                    }
+                    
+                    console.log(`Initial image ${index} (timeline): visible=${image.visible}, position=(${image.position.x.toFixed(2)}, ${image.position.y.toFixed(2)}, ${image.position.z.toFixed(2)}), scale=(${image.scale.x.toFixed(2)}, ${image.scale.y.toFixed(2)}, ${image.scale.z.toFixed(2)})`);
+                }
+            });
+        }
+        
+        console.log('✅ Timeline images visibility check complete');
+    }
+    
+    checkImageVisibilityInView() {
+        // Check if images are within camera's view frustum
+        const camera = this.camera;
+        const frustum = new THREE.Frustum();
+        const matrix = new THREE.Matrix4();
+        
+        matrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+        frustum.setFromProjectionMatrix(matrix);
+        
+        console.log('🔍 Checking image visibility in camera view...');
+        
+        // Check timeline images
+        if (this.timelineScene && this.timelineScene.getTimelinePlanes) {
+            const planes = this.timelineScene.getTimelinePlanes();
+            planes.forEach((plane, index) => {
+                const isInFrustum = frustum.containsPoint(plane.position);
+                console.log(`Timeline plane ${index}: in frustum=${isInFrustum}, position=(${plane.position.x.toFixed(2)}, ${plane.position.y.toFixed(2)}, ${plane.position.z.toFixed(2)})`);
+            });
+        }
+        
+        // Check initial scene images
+        if (window.app && window.app.imagePlanes) {
+            const initialImages = window.app.imagePlanes.getPlanes();
+            initialImages.forEach((image, index) => {
+                if (image.userData.isTimelineTransitioned) {
+                    const isInFrustum = frustum.containsPoint(image.position);
+                    console.log(`Initial image ${index}: in frustum=${isInFrustum}, position=(${image.position.x.toFixed(2)}, ${image.position.y.toFixed(2)}, ${image.position.z.toFixed(2)})`);
+                }
+            });
+        }
     }
 } 

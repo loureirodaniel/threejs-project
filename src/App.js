@@ -49,6 +49,10 @@ export class App {
         this.lighting = new Lighting(scene);
         this.imagePlanes = new ImagePlanes(scene, camera);
         this.timelineScene = new TimelineScene(scene);
+        
+        // Connect initial scene images to timeline scene for transitions
+        this.timelineScene.setInitialSceneImages(this.imagePlanes.getPlanes());
+        
         this.gridEffect = new GridEffect(scene);
         this.vignetteEffect = new VignetteEffect(scene);
         this.spotlightEffect = new SpotlightEffect(scene);
@@ -83,6 +87,11 @@ export class App {
         
         // Start animation loop
         this.animate();
+        
+        // Show initial scroll hint after a delay
+        setTimeout(() => {
+            this.showScrollHint();
+        }, 2000);
     }
     
     setupEventListeners() {
@@ -328,12 +337,14 @@ export class App {
         console.log(`Scene changing to: ${sceneDetail.sceneName}`);
         
         if (sceneDetail.sceneName === 'timeline') {
-            // Activate timeline scene
-            this.timelineScene.activate();
+            // Don't hide initial scene images immediately - let the transition handle it
+            // The timeline scene will handle the image layout transition
             
-            // Hide initial scene elements
-            this.imagePlanes.hide();
+            // Hide spotlight effect
             this.spotlightEffect.hide();
+            
+            // Hide scroll hint
+            this.hideScrollHint();
             
             // Animate title to top-left corner
             this.titleOverlay.animateToTopLeft();
@@ -352,6 +363,46 @@ export class App {
             if (this.timelineNavigation) {
                 this.timelineNavigation.hide();
             }
+            
+            // Show scroll hint for initial scene
+            this.showScrollHint();
+        }
+    }
+    
+    showScrollHint() {
+        // Create or update scroll hint
+        if (!this.scrollHint) {
+            this.scrollHint = document.createElement('div');
+            this.scrollHint.innerHTML = '↓ Scroll down to explore timeline';
+            this.scrollHint.style.position = 'fixed';
+            this.scrollHint.style.bottom = '30px';
+            this.scrollHint.style.left = '50%';
+            this.scrollHint.style.transform = 'translateX(-50%)';
+            this.scrollHint.style.color = 'white';
+            this.scrollHint.style.fontSize = '16px';
+            this.scrollHint.style.fontWeight = 'bold';
+            this.scrollHint.style.textAlign = 'center';
+            this.scrollHint.style.zIndex = '1000';
+            this.scrollHint.style.opacity = '0';
+            this.scrollHint.style.transition = 'opacity 0.5s ease';
+            this.scrollHint.style.textShadow = '0 2px 4px rgba(0,0,0,0.8)';
+            document.body.appendChild(this.scrollHint);
+        }
+        
+        // Show the hint
+        setTimeout(() => {
+            this.scrollHint.style.opacity = '1';
+        }, 1000);
+        
+        // Hide hint after 5 seconds
+        setTimeout(() => {
+            this.scrollHint.style.opacity = '0';
+        }, 5000);
+    }
+    
+    hideScrollHint() {
+        if (this.scrollHint) {
+            this.scrollHint.style.opacity = '0';
         }
     }
     
@@ -384,7 +435,9 @@ export class App {
             const yearIndex = year - 2010; // 2010 is index 0
             const targetOffset = (yearIndex * 2) - 4; // Convert to timeline offset
             
-            // Animate the timeline to the target position
+            console.log(`Navigation: Moving to year ${year}, target offset ${targetOffset}`);
+            
+            // Animate the timeline to the target position with smooth easing
             this.timelineController.animateToYear(year, targetOffset);
         }
     }
