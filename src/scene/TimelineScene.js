@@ -115,6 +115,12 @@ export class TimelineScene {
                 this.animatePlaneIn(plane);
             }, index * 200); // Increased delay between planes
         });
+        
+        // Emit event when all images are loaded and animated
+        const totalAnimationTime = (this.timelinePlanes.length * 200) + 1500 + 500; // Total time for all animations
+        setTimeout(() => {
+            this.emitTimelineImagesLoaded();
+        }, totalAnimationTime);
     }
     
     animatePlaneIn(plane) {
@@ -202,5 +208,16 @@ export class TimelineScene {
     
     getTimelinePlanes() {
         return this.timelinePlanes;
+    }
+    
+    emitTimelineImagesLoaded() {
+        // Dispatch custom event when timeline images are fully loaded and animated
+        const event = new CustomEvent('timelineImagesLoaded', {
+            detail: {
+                scene: 'timeline',
+                imageCount: this.timelinePlanes.length
+            }
+        });
+        window.dispatchEvent(event);
     }
 } 

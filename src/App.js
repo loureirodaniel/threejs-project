@@ -57,6 +57,23 @@ export class App {
         this.debugPanel = new DebugPanel();
         this.eventsPanel = new EventsPanel();
         this.timelineNavigation = new TimelineNavigation();
+        
+        // Ensure timeline navigation is hidden on app start (initial scene)
+        setTimeout(() => {
+            console.log('App: Forcing timeline navigation to hide on app start (200ms)');
+            this.timelineNavigation.hide();
+        }, 200);
+        
+        setTimeout(() => {
+            console.log('App: Forcing timeline navigation to hide on app start (500ms)');
+            this.timelineNavigation.hide();
+        }, 500);
+        
+        setTimeout(() => {
+            console.log('App: Forcing timeline navigation to hide on app start (1000ms)');
+            this.timelineNavigation.hide();
+        }, 1000);
+        
         this.mouseController = new MouseController(camera);
         this.timelineController = new TimelineController(camera, this.sceneManager, this.timelineScene, this.backgroundBlurEffect);
 
@@ -330,6 +347,11 @@ export class App {
             
             // Animate title back to center
             this.titleOverlay.animateToCenter();
+            
+            // Ensure timeline navigation is hidden in initial scene
+            if (this.timelineNavigation) {
+                this.timelineNavigation.hide();
+            }
         }
     }
     
