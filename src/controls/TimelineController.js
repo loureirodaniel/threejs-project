@@ -1102,6 +1102,12 @@ export class TimelineController {
             this.timelineScene.activate();
         }
         
+        // Initialize timeline offset to ensure proper positioning
+        if (!this.timelineOffset) {
+            this.timelineOffset = 0;
+            console.log('TimelineController: Initialized timeline offset to 0');
+        }
+        
         // Mark transition as complete
         this.isTransitioning = false;
         this.onTransitionComplete();

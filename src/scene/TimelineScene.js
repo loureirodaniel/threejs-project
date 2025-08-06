@@ -17,6 +17,9 @@ export class TimelineScene {
         this.originalCameraTarget = null;
         this.originalCameraFov = null;
         
+        // Image transition properties
+        this.isImageLayoutTransitioning = false; // Flag to disable floating during image transitions
+        
         this.init();
     }
     
@@ -102,6 +105,9 @@ export class TimelineScene {
     deactivate() {
         this.isActive = false;
         this.timelineGroup.visible = false;
+        
+        // Reset flags
+        this.isImageLayoutTransitioning = false;
         
         // Reset all planes
         this.timelinePlanes.forEach((plane, index) => {
@@ -218,6 +224,11 @@ export class TimelineScene {
     update(time, camera) {
         if (!this.isActive) return;
         
+        // Skip floating animation during transitions
+        if (this.cameraTransitionState !== 'idle' || this.isImageLayoutTransitioning) {
+            return;
+        }
+        
         // Animate additional timeline planes with subtle floating motion
         this.timelinePlanes.forEach((plane, index) => {
             // Skip floating animation if this plane is currently enlarged
@@ -302,12 +313,16 @@ export class TimelineScene {
 
     // New camera transition methods
     startSceneTransition(camera, onComplete) {
-        if (this.cameraTransitionState !== 'idle') return;
+        if (this.cameraTransitionState !== 'idle') {
+            console.log('TimelineScene: Transition already in progress, skipping');
+            return;
+        }
         
         console.log('TimelineScene: Starting scene transition');
         
         this.cameraTransitionState = 'transitioning';
         this.transitionCamera = camera;
+        this.isImageLayoutTransitioning = true; // Disable floating animations immediately
         
         // Store original camera state
         this.originalCameraPosition = camera.position.clone();
@@ -315,6 +330,11 @@ export class TimelineScene {
         camera.getWorldDirection(this.originalCameraTarget);
         this.originalCameraTarget.multiplyScalar(5).add(camera.position);
         this.originalCameraFov = camera.fov;
+        
+        // Store original camera look-at target
+        this.originalCameraLookAt = new THREE.Vector3();
+        camera.getWorldDirection(this.originalCameraLookAt);
+        this.originalCameraLookAt.multiplyScalar(10).add(camera.position);
         
         console.log('TimelineScene: Original camera position:', this.originalCameraPosition);
         console.log('TimelineScene: Original camera FOV:', this.originalCameraFov);
@@ -327,61 +347,72 @@ export class TimelineScene {
         console.log('TimelineScene: Transition camera position:', transitionPosition);
         console.log('TimelineScene: Transition camera FOV:', transitionFov);
         
-        // Create smooth camera transition
-        const tl = gsap.timeline({
+        // Get initial scene images
+        const initialImages = this.getInitialSceneImages();
+        if (!initialImages || initialImages.length === 0) {
+            console.log('TimelineScene: No initial images found for transition');
+            this.cameraTransitionState = 'idle';
+            this.isImageLayoutTransitioning = false;
+            if (onComplete) onComplete();
+            return;
+        }
+        
+        // Pre-position images to prevent glitches
+        this.prePositionImagesForTransition(initialImages);
+        
+        // Create ONE master timeline for the entire transition
+        const masterTl = gsap.timeline({
             onComplete: () => {
-                console.log('TimelineScene: Camera transition complete');
+                console.log('TimelineScene: Master transition complete');
+                this.enforceFinalPositions(initialImages);
+                this.ensureAdditionalImagesVisible();
                 this.cameraTransitionState = 'idle';
+                this.isImageLayoutTransitioning = false;
                 if (onComplete) onComplete();
             }
         });
         
-        // Animate camera position
-        tl.to(camera.position, {
+        // Phase 1: Camera zoom out (0-1.5s)
+        masterTl.to(camera.position, {
             x: transitionPosition.x,
             y: transitionPosition.y,
             z: transitionPosition.z,
-            duration: 1.2,
+            duration: 1.5,
             ease: "power2.inOut"
         }, 0);
         
-        // Animate camera FOV
-        tl.to(camera, {
+        masterTl.to(camera, {
             fov: transitionFov,
-            duration: 1.2,
+            duration: 1.5,
             ease: "power2.inOut",
             onUpdate: () => {
                 camera.updateProjectionMatrix();
             }
         }, 0);
         
-        // Animate camera look-at target
-        tl.to({}, {
-            duration: 1.2,
+        masterTl.to({}, {
+            duration: 1.5,
             ease: "power2.inOut",
             onUpdate: () => {
-                const progress = tl.progress();
+                const progress = masterTl.progress();
                 const currentTarget = new THREE.Vector3();
-                currentTarget.lerpVectors(this.originalCameraTarget, transitionTarget, progress);
+                currentTarget.lerpVectors(this.originalCameraLookAt, transitionTarget, progress);
                 camera.lookAt(currentTarget);
             }
         }, 0);
         
-        // Start image layout transition after camera starts moving
-        setTimeout(() => {
-            this.startImageLayoutTransition();
-        }, 300);
+        // Phase 2: Image layout transition (starts at 0.8s, duration 1.2s)
+        this.animateImagesToTimeline(masterTl, initialImages, 0.8);
+        
+        // Phase 3: Additional timeline images (starts at 2.0s, duration 1.0s)
+        this.animateAdditionalTimelineImages(masterTl, 2.0);
+        
+        // Phase 4: Camera zoom in (starts at 3.2s, duration 1.2s)
+        this.animateCameraZoomIn(masterTl, camera, 3.2);
     }
     
-    startImageLayoutTransition() {
-        // Get initial scene images and animate them to timeline positions
-        const initialImages = this.getInitialSceneImages();
-        if (!initialImages || initialImages.length === 0) {
-            console.log('TimelineScene: No initial images found for layout transition');
-            return;
-        }
-        
-        console.log('TimelineScene: Starting image layout transition with', initialImages.length, 'images');
+    animateImagesToTimeline(masterTl, initialImages, startTime) {
+        console.log('TimelineScene: Animating images to timeline positions');
         
         // Calculate timeline positions for the first 5 images (years 2010-2014)
         const timelinePositions = [];
@@ -390,14 +421,10 @@ export class TimelineScene {
             timelinePositions.push({ x: x, y: 0, z: 0 }); // All images at Y=0 for perfect horizontal alignment
         }
         
-        console.log('TimelineScene: Timeline positions for initial images:', timelinePositions);
-        
         // Animate each initial image to its timeline position
         initialImages.forEach((image, index) => {
             if (index < timelinePositions.length) {
                 const targetPos = timelinePositions[index];
-                
-                console.log(`TimelineScene: Animating initial image ${index} from`, image.position, 'to', targetPos);
                 
                 // Store original position for potential reversal
                 if (!image.userData.originalPosition) {
@@ -405,87 +432,85 @@ export class TimelineScene {
                     image.userData.originalScale = image.scale.clone();
                 }
                 
+                // Calculate individual start time with stagger
+                const imageStartTime = startTime + (index * 0.1);
+                
                 // Animate position
-                gsap.to(image.position, {
+                masterTl.to(image.position, {
                     x: targetPos.x,
                     y: targetPos.y,
                     z: targetPos.z,
-                    duration: 1.5,
-                    ease: "power2.inOut",
-                    delay: index * 0.1 // Stagger the animations
-                });
+                    duration: 1.2,
+                    ease: "power2.out"
+                }, imageStartTime);
                 
-                // Animate scale to timeline size
-                gsap.to(image.scale, {
-                    x: 0.75, // Timeline images are smaller
+                // Animate scale
+                masterTl.to(image.scale, {
+                    x: 0.75,
                     y: 0.75,
                     z: 0.75,
-                    duration: 1.5,
-                    ease: "power2.inOut",
-                    delay: index * 0.1
-                });
+                    duration: 1.2,
+                    ease: "power2.out"
+                }, imageStartTime);
                 
-                // Reset rotation to ensure proper horizontal alignment
-                gsap.to(image.rotation, {
+                // Animate rotation
+                masterTl.to(image.rotation, {
                     x: 0,
                     y: 0,
                     z: 0,
-                    duration: 1.5,
-                    ease: "power2.inOut",
-                    delay: index * 0.1
-                });
+                    duration: 1.2,
+                    ease: "power2.out"
+                }, imageStartTime);
                 
                 // Mark this image as part of the timeline transition
                 image.userData.isTimelineTransitioned = true;
-                image.userData.timelineIndex = index; // Mark which timeline position this image occupies
+                image.userData.timelineIndex = index;
             }
         });
-        
-        // After initial images are positioned, show the additional timeline images
-        setTimeout(() => {
-            this.showAdditionalTimelineImages();
-        }, 1800); // Slightly before the initial transition completes
     }
     
-    showAdditionalTimelineImages() {
-        console.log('TimelineScene: Showing additional timeline images (years 2015-2019)');
+    animateAdditionalTimelineImages(masterTl, startTime) {
+        console.log('TimelineScene: Animating additional timeline images');
         
         // Make additional timeline images visible and animate them in
         this.timelinePlanes.forEach((plane, index) => {
+            // Ensure proper initial state
             plane.visible = true;
             plane.material.opacity = 0;
             plane.scale.setScalar(0); // Start from scale 0
             
-            // Ensure proper horizontal alignment
-            plane.position.y = 0; // All images at Y=0 for perfect horizontal alignment
-            plane.rotation.x = 0;
-            plane.rotation.z = 0;
+            // Ensure proper horizontal alignment and position
+            const x = ((index + 5) * 2) - 4; // Positions 6, 8, 10, 12, 14 (years 2015-2019)
+            plane.position.set(x, 0, 0); // All images at Y=0 for perfect horizontal alignment
+            plane.rotation.set(0, 0, 0);
             
-            // Animate scale and opacity
-            gsap.to(plane.scale, {
+            console.log(`TimelineScene: Setting up additional image ${index} (year ${2015 + index}) at position (${x}, 0, 0)`);
+            
+            // Calculate individual start time with stagger
+            const planeStartTime = startTime + (index * 0.15);
+            
+            // Animate scale
+            masterTl.to(plane.scale, {
                 x: 0.75,
                 y: 0.75,
                 z: 0.75,
                 duration: 1.0,
-                ease: "back.out(1.7)",
-                delay: index * 0.15 // Stagger the animations
-            });
+                ease: "back.out(1.7)"
+            }, planeStartTime);
             
-            gsap.to(plane.material, {
+            // Animate opacity
+            masterTl.to(plane.material, {
                 opacity: 0.9,
                 duration: 1.0,
-                ease: "power2.out",
-                delay: index * 0.15
-            });
+                ease: "power2.out"
+            }, planeStartTime);
         });
         
         // Emit event when all additional images are loaded
         const totalAnimationTime = (this.timelinePlanes.length * 150) + 1000;
-        setTimeout(() => {
+        masterTl.call(() => {
             this.emitTimelineImagesLoaded();
-            // Start camera zoom-in animation after all images are positioned
-            this.startCameraZoomIn();
-        }, totalAnimationTime);
+        }, [], startTime + totalAnimationTime);
     }
     
     getInitialSceneImages() {
@@ -501,53 +526,44 @@ export class TimelineScene {
         this.initialSceneImages = images;
     }
     
-    startCameraZoomIn() {
-        if (!this.transitionCamera || this.cameraTransitionState !== 'idle') return;
-        
-        this.cameraTransitionState = 'zooming-in';
+    animateCameraZoomIn(masterTl, camera, startTime) {
+        console.log('TimelineScene: Animating camera zoom-in');
         
         // Target camera position for timeline view
         const targetPosition = new THREE.Vector3(0, 0, 8);
         const targetTarget = new THREE.Vector3(0, 0, 0);
         const targetFov = 30;
         
-        // Create smooth zoom-in animation
-        const tl = gsap.timeline({
-            onComplete: () => {
-                this.cameraTransitionState = 'idle';
-            }
-        });
-        
         // Animate camera position
-        tl.to(this.transitionCamera.position, {
+        masterTl.to(camera.position, {
             x: targetPosition.x,
             y: targetPosition.y,
             z: targetPosition.z,
-            duration: 1.0,
-            ease: "power2.out"
-        }, 0);
+            duration: 1.2,
+            ease: "power2.inOut"
+        }, startTime);
         
         // Animate camera FOV
-        tl.to(this.transitionCamera, {
+        masterTl.to(camera, {
             fov: targetFov,
-            duration: 1.0,
-            ease: "power2.out",
+            duration: 1.2,
+            ease: "power2.inOut",
             onUpdate: () => {
-                this.transitionCamera.updateProjectionMatrix();
+                camera.updateProjectionMatrix();
             }
-        }, 0);
+        }, startTime);
         
         // Animate camera look-at target
-        tl.to({}, {
-            duration: 1.0,
-            ease: "power2.out",
+        masterTl.to({}, {
+            duration: 1.2,
+            ease: "power2.inOut",
             onUpdate: () => {
-                const progress = tl.progress();
+                const progress = masterTl.progress();
                 const currentTarget = new THREE.Vector3();
                 currentTarget.lerpVectors(new THREE.Vector3(0, 0, 0), targetTarget, progress);
-                this.transitionCamera.lookAt(currentTarget);
+                camera.lookAt(currentTarget);
             }
-        }, 0);
+        }, startTime);
     }
     
     getCameraTransitionState() {
@@ -556,5 +572,75 @@ export class TimelineScene {
     
     isTransitioning() {
         return this.cameraTransitionState !== 'idle';
+    }
+    
+    prePositionImagesForTransition(initialImages) {
+        // Pre-position images to prevent glitches during transition
+        initialImages.forEach((image, index) => {
+            if (index < 5) {
+                // Ensure images are visible and at a stable position before transition
+                image.visible = true;
+                
+                // If image doesn't have original position stored, store it now
+                if (!image.userData.originalPosition) {
+                    image.userData.originalPosition = image.position.clone();
+                    image.userData.originalScale = image.scale.clone();
+                }
+                
+                // Ensure image is at a stable position (no floating animation)
+                image.position.y = image.userData.originalPosition.y;
+                image.rotation.x = 0;
+                image.rotation.z = 0;
+            }
+        });
+    }
+    
+    enforceFinalPositions(initialImages) {
+        // Ensure all images are at their exact final positions
+        console.log('TimelineScene: Enforcing final positions');
+        
+        // Enforce initial images positions
+        initialImages.forEach((image, index) => {
+            if (index < 5 && image.userData.isTimelineTransitioned) {
+                const x = (index * 2) - 4; // Timeline positions: -4, -2, 0, 2, 4
+                image.position.set(x, 0, 0);
+                image.scale.setScalar(0.75);
+                image.rotation.set(0, 0, 0);
+                image.visible = true;
+            }
+        });
+        
+        // Enforce additional timeline images positions
+        this.timelinePlanes.forEach((plane, index) => {
+            const x = ((index + 5) * 2) - 4; // Positions 6, 8, 10, 12, 14
+            plane.position.set(x, 0, 0);
+            plane.scale.setScalar(0.75);
+            plane.rotation.set(0, 0, 0);
+            plane.visible = true;
+            plane.material.opacity = 0.9;
+            
+            console.log(`TimelineScene: Enforced position for additional image ${index} (year ${2015 + index}) at (${x}, 0, 0)`);
+        });
+    }
+    
+    ensureAdditionalImagesVisible() {
+        // Double-check that all additional timeline images are visible and properly positioned
+        console.log('TimelineScene: Ensuring additional images are visible');
+        
+        this.timelinePlanes.forEach((plane, index) => {
+            const x = ((index + 5) * 2) - 4; // Positions 6, 8, 10, 12, 14
+            
+            // Force visibility and position
+            plane.visible = true;
+            plane.position.set(x, 0, 0);
+            plane.scale.setScalar(0.75);
+            plane.rotation.set(0, 0, 0);
+            plane.material.opacity = 0.9;
+            
+            console.log(`TimelineScene: Ensured visibility for additional image ${index} (year ${2015 + index}) at (${x}, 0, 0)`);
+        });
+        
+        // Also ensure the timeline group is visible
+        this.timelineGroup.visible = true;
     }
 } 
