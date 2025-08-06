@@ -214,23 +214,21 @@ export class TimelineController {
         // Mark this plane as enlarged to disable floating animation
         plane.userData.isEnlarged = true;
         
+        // Activate background blur effect immediately
+        if (this.backgroundBlurEffect) {
+            console.log('TimelineController: Activating background blur immediately');
+            this.backgroundBlurEffect.activate();
+        } else {
+            console.log('TimelineController: No background blur effect available');
+        }
+        
         // Kill any existing animations on this plane to prevent conflicts
         gsap.killTweensOf(plane.position);
         gsap.killTweensOf(plane.scale);
         gsap.killTweensOf(plane.material);
         
         // Create a single timeline for all animations to prevent conflicts
-        const tl = gsap.timeline({
-            onComplete: () => {
-                // Activate background blur effect after all animations are complete
-                if (this.backgroundBlurEffect) {
-                    console.log('TimelineController: Activating background blur after image animation');
-                    this.backgroundBlurEffect.activate();
-                } else {
-                    console.log('TimelineController: No background blur effect available');
-                }
-            }
-        });
+        const tl = gsap.timeline();
         
         // Animate position, scale, and z-index together in one smooth animation
         tl.to(plane.position, {
@@ -282,6 +280,12 @@ export class TimelineController {
         const plane = this.enlargedImage;
         const originalState = this.originalImageState;
         
+        // Deactivate background blur effect immediately
+        if (this.backgroundBlurEffect) {
+            console.log('TimelineController: Deactivating background blur immediately');
+            this.backgroundBlurEffect.fadeOutBlur();
+        }
+        
         // Kill any existing animations on this plane to prevent conflicts
         gsap.killTweensOf(plane.position);
         gsap.killTweensOf(plane.scale);
@@ -328,12 +332,6 @@ export class TimelineController {
         
         // Clear the enlarged flag to re-enable floating animation
         plane.userData.isEnlarged = false;
-        
-        // Deactivate background blur effect
-        if (this.backgroundBlurEffect) {
-            console.log('TimelineController: Deactivating background blur');
-            this.backgroundBlurEffect.fadeOutBlur();
-        }
         
         // Remove close button
         this.removeCloseButton();

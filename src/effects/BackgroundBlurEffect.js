@@ -129,8 +129,8 @@ export class BackgroundBlurEffect {
     }
     
     fadeOutBlur() {
-        // Animate the opacity of blur overlays to 0
-        const fadeDuration = 300; // 300ms
+        // Animate the opacity of blur overlays to 0 with easing
+        const fadeDuration = 80; // 80ms - much faster than image animation (600ms)
         const startTime = Date.now();
         const startOpacity = parseFloat(this.leftBlur.style.opacity) || 1;
         
@@ -138,7 +138,10 @@ export class BackgroundBlurEffect {
             const elapsed = Date.now() - startTime;
             const progress = Math.min(elapsed / fadeDuration, 1);
             
-            const currentOpacity = startOpacity * (1 - progress);
+            // Apply easing function for smoother animation
+            const easedProgress = this.easeOutCubic(progress);
+            
+            const currentOpacity = startOpacity * (1 - easedProgress);
             this.leftBlur.style.opacity = currentOpacity.toString();
             this.rightBlur.style.opacity = currentOpacity.toString();
             
@@ -150,6 +153,11 @@ export class BackgroundBlurEffect {
         };
         
         animate();
+    }
+    
+    // Easing function for smooth animation
+    easeOutCubic(t) {
+        return 1 - Math.pow(1 - t, 3);
     }
     
     updateBlurAmount(blurAmount) {
