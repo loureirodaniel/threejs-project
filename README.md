@@ -74,6 +74,13 @@ threejs-project/
 - The timeline automatically snaps to the nearest year
 - Events panel updates dynamically to show events for the current year
 - Each year has multiple events with categories and descriptions
+- **Timeline Navigation Bar**: A new navigation component at the bottom of the viewport provides:
+  - Previous/Next buttons for year navigation
+  - Current year display with year range indicator
+  - Visual progress bar showing position in timeline
+  - Keyboard support (Arrow Left/Right keys)
+  - Haptic feedback on mobile devices
+  - Smooth animations and hover effects
 
 ## Technologies Used
 

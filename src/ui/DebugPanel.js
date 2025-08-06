@@ -151,6 +151,28 @@ export class DebugPanel {
                 </div>
             </div>
             
+            <!-- Smooth Scroll Section -->
+            <div class="debug-section" style="margin-bottom: 15px;">
+                <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; padding: 8px 0; border-bottom: 1px solid #333;">
+                    <h4 style="margin: 0; color: #00ff88;">Smooth Scroll</h4>
+                    <button class="section-toggle" data-section="smoothScroll" style="background: #333; color: white; border: 1px solid #555; padding: 2px 6px; border-radius: 3px; cursor: pointer; font-family: inherit; font-size: 10px;">+</button>
+                </div>
+                <div class="section-content" id="smoothScroll-content" style="display: none; padding-top: 10px;">
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Sensitivity: <span id="smoothScrollSensitivityDisplay">0.25</span></label>
+                        <input type="range" id="smoothScrollSensitivitySlider" min="0.1" max="1.0" step="0.05" value="0.25" style="width: 100%;">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Friction: <span id="smoothScrollFrictionDisplay">0.85</span></label>
+                        <input type="range" id="smoothScrollFrictionSlider" min="0.7" max="0.95" step="0.01" value="0.85" style="width: 100%;">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <button id="scrollToYearBtn" style="background: #9c27b0; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-family: inherit; margin-right: 8px;">Scroll to 2015</button>
+                        <button id="scrollToYearBtn2" style="background: #ff9800; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-family: inherit;">Scroll to 2019</button>
+                    </div>
+                </div>
+            </div>
+            
             <button id="resetBtn" style="background: #00ff88; color: black; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-family: inherit;">Reset to Default</button>
             </div>
         `;
@@ -216,6 +238,16 @@ export class DebugPanel {
         this.controls.rightBlurWidthSlider = document.getElementById('rightBlurWidthSlider');
         this.controls.leftBlurWidthDisplay = document.getElementById('leftBlurWidth');
         this.controls.rightBlurWidthDisplay = document.getElementById('rightBlurWidth');
+        
+        // Smooth scroll controls
+        this.controls.smoothScrollSensitivitySlider = document.getElementById('smoothScrollSensitivitySlider');
+        this.controls.smoothScrollMomentumSlider = document.getElementById('smoothScrollMomentumSlider');
+        this.controls.smoothScrollDecelerationSlider = document.getElementById('smoothScrollDecelerationSlider');
+        this.controls.smoothScrollSensitivityDisplay = document.getElementById('smoothScrollSensitivityDisplay');
+        this.controls.smoothScrollMomentumDisplay = document.getElementById('smoothScrollMomentumDisplay');
+        this.controls.smoothScrollDecelerationDisplay = document.getElementById('smoothScrollDecelerationDisplay');
+        this.controls.scrollToYearBtn = document.getElementById('scrollToYearBtn');
+        this.controls.scrollToYearBtn2 = document.getElementById('scrollToYearBtn2');
         
         // Debug panel toggle
         this.controls.toggleDebugPanel = document.getElementById('toggleDebugPanel');

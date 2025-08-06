@@ -10,9 +10,10 @@ import { BackgroundBlurEffect } from './effects/BackgroundBlurEffect.js';
 import { TitleOverlay } from './ui/TitleOverlay.js';
 import { DebugPanel } from './ui/DebugPanel.js';
 import { EventsPanel } from './ui/EventsPanel.js';
+import { TimelineNavigation } from './ui/TimelineNavigation.js';
 import { MouseController } from './controls/MouseController.js';
 import { TimelineController } from './controls/TimelineController.js';
-import { SmoothScrollController } from './controls/SmoothScrollController.js';
+
 
 export class App {
     constructor() {
@@ -27,14 +28,18 @@ export class App {
         this.titleOverlay = null;
         this.debugPanel = null;
         this.eventsPanel = null;
+        this.timelineNavigation = null;
         this.mouseController = null;
         this.timelineController = null;
-        this.smoothScrollController = null;
+
         
         this.init();
     }
     
     init() {
+        // Make app instance globally accessible for demo scripts
+        window.app = this;
+        
         // Initialize scene manager first
         this.sceneManager = new SceneManager();
         const scene = this.sceneManager.getScene();
@@ -51,9 +56,10 @@ export class App {
         this.titleOverlay = new TitleOverlay();
         this.debugPanel = new DebugPanel();
         this.eventsPanel = new EventsPanel();
+        this.timelineNavigation = new TimelineNavigation();
         this.mouseController = new MouseController(camera);
         this.timelineController = new TimelineController(camera, this.sceneManager, this.timelineScene, this.backgroundBlurEffect);
-        this.smoothScrollController = new SmoothScrollController(this.timelineController);
+
         
         // Setup event listeners
         this.setupEventListeners();
@@ -110,6 +116,11 @@ export class App {
         // Timeline year change event
         window.addEventListener('timelineYearChange', (event) => {
             this.onTimelineYearChange(event.detail);
+        });
+        
+        // Timeline navigation event
+        window.addEventListener('timelineNavigation', (event) => {
+            this.onTimelineNavigation(event.detail);
         });
         
         // Sync debug panel event
@@ -175,6 +186,28 @@ export class App {
             this.updateBackgroundBlur();
         });
         
+        // Smooth scroll controls
+        controls.smoothScrollSensitivitySlider.addEventListener('input', (e) => {
+            this.updateSmoothScroll();
+        });
+        
+        controls.smoothScrollMomentumSlider.addEventListener('input', (e) => {
+            this.updateSmoothScroll();
+        });
+        
+        controls.smoothScrollDecelerationSlider.addEventListener('input', (e) => {
+            this.updateSmoothScroll();
+        });
+        
+        // Smooth scroll navigation buttons
+        controls.scrollToYearBtn.addEventListener('click', () => {
+            this.timelineController.animateToYear(2015, 2); // 2015 corresponds to offset 2
+        });
+        
+        controls.scrollToYearBtn2.addEventListener('click', () => {
+            this.timelineController.animateToYear(2019, 14); // 2019 corresponds to offset 14
+        });
+        
         // Initialize timeline camera controls with current values
         this.initializeTimelineCameraControls();
         
@@ -185,6 +218,9 @@ export class App {
         window.addEventListener('resize', () => {
             this.onWindowResize();
         });
+        
+        // Add smooth scroll controls to debug panel
+        this.addSmoothScrollControls();
     }
     
     updateSpotlightEffect() {
@@ -228,6 +264,26 @@ export class App {
         }
     }
     
+    updateSmoothScroll() {
+        const controls = this.debugPanel.getControls();
+        
+        const sensitivity = parseFloat(controls.smoothScrollSensitivitySlider.value);
+        const momentum = parseFloat(controls.smoothScrollMomentumSlider.value);
+        const deceleration = parseFloat(controls.smoothScrollDecelerationSlider.value);
+        
+        // Update displays
+        controls.smoothScrollSensitivityDisplay.textContent = sensitivity.toFixed(1);
+        controls.smoothScrollMomentumDisplay.textContent = momentum.toFixed(1);
+        controls.smoothScrollDecelerationDisplay.textContent = deceleration.toFixed(2);
+        
+        // Update smooth scroll settings
+        if (this.timelineController) {
+            this.timelineController.setSmoothScrollSensitivity(sensitivity);
+            this.timelineController.setSmoothScrollMomentum(momentum);
+            this.timelineController.setSmoothScrollDeceleration(deceleration);
+        }
+    }
+    
     resetToDefaults() {
         const controls = this.debugPanel.getControls();
         
@@ -251,6 +307,12 @@ export class App {
         controls.leftBlurWidthSlider.value = 4;
         controls.rightBlurWidthSlider.value = 4;
         this.updateBackgroundBlur();
+        
+        // Reset smooth scroll settings
+        controls.smoothScrollSensitivitySlider.value = 0.3;
+        controls.smoothScrollMomentumSlider.value = 0.6;
+        controls.smoothScrollDecelerationSlider.value = 0.92;
+        this.updateSmoothScroll();
     }
     
     onSceneChange(sceneDetail) {
@@ -298,6 +360,18 @@ export class App {
         if (this.timelineController.getCurrentSceneIndex() === 1) {
             this.titleOverlay.setTitle(`Timeline - ${yearDetail.year}`);
             this.titleOverlay.setSubtitle('Scroll horizontally to navigate through time');
+        }
+    }
+    
+    onTimelineNavigation(navigationDetail) {
+        if (this.timelineController.getCurrentSceneIndex() === 1) {
+            // Calculate the target position based on the year
+            const year = navigationDetail.year;
+            const yearIndex = year - 2010; // 2010 is index 0
+            const targetOffset = (yearIndex * 2) - 4; // Convert to timeline offset
+            
+            // Animate the timeline to the target position
+            this.timelineController.animateToYear(year, targetOffset);
         }
     }
     
@@ -414,6 +488,30 @@ export class App {
         // Update background blur effect on window resize
         if (this.backgroundBlurEffect) {
             this.backgroundBlurEffect.onWindowResize();
+        }
+    }
+    
+    addSmoothScrollControls() {
+        // Add smooth scroll year navigation buttons to events panel
+        if (this.eventsPanel) {
+            // Add smooth scroll navigation events
+            this.eventsPanel.addEvent(2010, {
+                title: 'Smooth Scroll Demo',
+                description: 'Try the smooth scrolling controls in the debug panel to navigate through the timeline.',
+                category: 'Demo'
+            });
+            
+            this.eventsPanel.addEvent(2015, {
+                title: 'GSAP Smooth Scrolling',
+                description: 'Experience fluid, momentum-based scrolling with customizable sensitivity and deceleration.',
+                category: 'Feature'
+            });
+            
+            this.eventsPanel.addEvent(2019, {
+                title: 'Advanced Timeline Navigation',
+                description: 'Use the smooth scroll buttons to quickly jump to specific years in the timeline.',
+                category: 'Navigation'
+            });
         }
     }
     

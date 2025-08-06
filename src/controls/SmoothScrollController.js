@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { ScrollToPlugin } from 'gsap/ScrollToPlugin';
@@ -9,9 +10,9 @@ export class SmoothScrollController {
     constructor(timelineController) {
         this.timelineController = timelineController;
         this.isEnabled = true;
-        this.scrollSensitivity = 1.0;
-        this.momentum = 0.8;
-        this.deceleration = 0.95;
+        this.scrollSensitivity = 0.3; // Much more subtle sensitivity
+        this.momentum = 0.6; // Reduced momentum for smoother feel
+        this.deceleration = 0.92; // Slower deceleration
         this.currentVelocity = 0;
         this.targetPosition = 0;
         this.currentPosition = 0;
@@ -22,32 +23,27 @@ export class SmoothScrollController {
         this.smoothScrollTween = null;
         this.lastScrollTime = 0;
         this.scrollDirection = 0;
+        this.indicatorTimeout = null;
+        this.smoothScrollBound = null;
         
         this.init();
     }
     
     init() {
-        // Override the original scroll handler
+        // Store the original scroll handler but don't override it yet
         this.originalScrollHandler = this.timelineController.onScroll.bind(this.timelineController);
-        
-        // Replace the scroll handler with our smooth version
-        window.removeEventListener('wheel', this.originalScrollHandler);
-        window.addEventListener('wheel', this.onSmoothScroll.bind(this), { passive: false });
         
         // Initialize smooth scrolling for timeline
         this.initializeTimelineSmoothScroll();
         
         // Add smooth scrolling controls to debug panel
         this.addSmoothScrollControls();
+        
+        // Only override scroll handling when smooth scrolling is enabled
+        this.updateScrollHandling();
     }
     
     onSmoothScroll(event) {
-        if (!this.isEnabled) {
-            // Fall back to original behavior
-            this.originalScrollHandler(event);
-            return;
-        }
-        
         // Prevent default scroll behavior
         event.preventDefault();
         
@@ -57,6 +53,12 @@ export class SmoothScrollController {
         
         const delta = event.deltaY;
         const currentTime = Date.now();
+        
+        // Show smooth scroll indicator
+        this.showSmoothScrollIndicator();
+        
+        // Show scroll feedback
+        this.showScrollFeedback(delta);
         
         // Calculate scroll direction and velocity
         this.scrollDirection = Math.sign(delta);
@@ -82,14 +84,14 @@ export class SmoothScrollController {
             clearTimeout(this.scrollTimeout);
         }
         
-        // Set timeout for scroll end detection
+        // Set timeout for scroll end detection - longer delay for smoother feel
         this.scrollTimeout = setTimeout(() => {
             this.onScrollEnd();
-        }, 150);
+        }, 300); // Increased from 150ms to 300ms
     }
     
     handleTimelineSmoothScroll(delta) {
-        const scrollSpeed = 0.5 * this.scrollSensitivity;
+        const scrollSpeed = 0.1 * this.scrollSensitivity; // Even smaller base speed for smoother feel
         const targetDelta = delta > 0 ? -scrollSpeed : scrollSpeed;
         
         // Kill existing smooth scroll animation
@@ -97,21 +99,25 @@ export class SmoothScrollController {
             this.smoothScrollTween.kill();
         }
         
-        // Create smooth scroll animation
-        this.smoothScrollTween = gsap.to(this.timelineController, {
-            timelineOffset: this.timelineController.timelineOffset + targetDelta,
-            duration: 0.3,
-            ease: "power2.out",
-            onUpdate: () => {
-                // Update timeline images during animation
-                this.updateTimelineImages();
-                this.timelineController.updateCurrentYear();
-                this.timelineController.syncDebugPanel();
-            },
-            onComplete: () => {
-                this.smoothScrollTween = null;
-            }
-        });
+        // Instead of animating timelineOffset directly, use the existing moveTimelineImages method
+        // but with a smoother approach
+        this.timelineController.moveTimelineImages(targetDelta);
+        
+        // Update the current year display
+        this.timelineController.updateCurrentYear();
+        
+        // Sync debug panel with current camera position
+        this.timelineController.syncDebugPanel();
+        
+        // Clear any existing snap timeout from the timeline controller
+        if (this.timelineController.snapTimeout) {
+            clearTimeout(this.timelineController.snapTimeout);
+        }
+        
+        // Set a timeout to snap after scrolling stops
+        this.timelineController.snapTimeout = setTimeout(() => {
+            this.smoothSnapToNearest();
+        }, 500); // Longer delay for smoother feel
     }
     
     handleSceneSmoothScroll(delta) {
@@ -192,33 +198,95 @@ export class SmoothScrollController {
         }, 0);
     }
     
-    updateTimelineImages() {
-        if (this.timelineController.timelineScene && this.timelineController.timelineScene.getTimelinePlanes) {
-            const planes = this.timelineController.timelineScene.getTimelinePlanes();
-            planes.forEach((plane, index) => {
-                const originalX = (index * 2) - 4;
-                plane.position.x = originalX - this.timelineController.timelineOffset;
-            });
-        }
-    }
+
     
     onScrollEnd() {
-        // Apply deceleration
-        if (Math.abs(this.currentVelocity) > 0.01) {
+        // Apply deceleration with smoother threshold
+        if (Math.abs(this.currentVelocity) > 0.005) { // Lower threshold for smoother deceleration
             this.currentVelocity *= this.deceleration;
             
-            // Continue momentum scrolling
-            requestAnimationFrame(() => {
+            // Apply the remaining velocity to timeline movement
+            if (this.timelineController.getCurrentSceneIndex() === 1) {
+                this.timelineController.moveTimelineImages(this.currentVelocity * 0.1);
+                this.timelineController.updateCurrentYear();
+                this.timelineController.syncDebugPanel();
+            }
+            
+            // Continue momentum scrolling with slower updates
+            setTimeout(() => {
                 this.onScrollEnd();
-            });
+            }, 16); // ~60fps instead of requestAnimationFrame for more controlled timing
         } else {
             this.currentVelocity = 0;
             this.isScrolling = false;
             
-            // Snap to nearest position if in timeline
+            // Snap to nearest position if in timeline with smooth animation
             if (this.timelineController.getCurrentSceneIndex() === 1) {
-                this.timelineController.snapToNearestImage();
+                // Use a smoother snap animation
+                this.smoothSnapToNearest();
             }
+        }
+    }
+    
+    smoothSnapToNearest() {
+        // Use the existing snapToNearestImage method from TimelineController
+        // but with a smoother animation
+        if (this.timelineController.snapToNearestImage) {
+            // Temporarily override the snap animation to be smoother
+            const originalSnap = this.timelineController.snapToNearestImage;
+            
+            this.timelineController.snapToNearestImage = () => {
+                // Define snap positions (every 2 units, corresponding to image positions, starting at -4)
+                const snapPositions = [-4, -2, 0, 2, 4, 6, 8, 10, 12, 14];
+                
+                // Find the nearest snap position
+                let nearestPosition = 0;
+                let minDistance = Infinity;
+                
+                snapPositions.forEach(position => {
+                    const distance = Math.abs(this.timelineController.timelineOffset - position);
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        nearestPosition = position;
+                    }
+                });
+                
+                // Only snap if we're not already at a snap position
+                if (Math.abs(this.timelineController.timelineOffset - nearestPosition) > 0.1) {
+                    console.log(`Smoothly snapping from ${this.timelineController.timelineOffset.toFixed(2)} to ${nearestPosition}`);
+                    
+                    // Animate to the nearest snap position with smooth easing
+                    gsap.to(this.timelineController, {
+                        timelineOffset: nearestPosition,
+                        duration: 1.5, // Longer duration for smoother snap
+                        ease: "power2.inOut", // Smooth in-out easing
+                        onUpdate: () => {
+                            // Update timeline images during animation
+                            if (this.timelineController.timelineScene && this.timelineController.timelineScene.getTimelinePlanes) {
+                                const planes = this.timelineController.timelineScene.getTimelinePlanes();
+                                planes.forEach((plane, index) => {
+                                    const originalX = (index * 2) - 4;
+                                    plane.position.x = originalX - this.timelineController.timelineOffset;
+                                });
+                            }
+                            
+                            // Update year display and sync debug panel
+                            this.timelineController.updateCurrentYear();
+                            this.timelineController.syncDebugPanel();
+                        },
+                        onComplete: () => {
+                            // Trigger haptic feedback when snapping completes
+                            this.timelineController.triggerHapticFeedback('snap');
+                        }
+                    });
+                }
+            };
+            
+            // Call the overridden method
+            this.timelineController.snapToNearestImage();
+            
+            // Restore the original method
+            this.timelineController.snapToNearestImage = originalSnap;
         }
     }
     
@@ -290,16 +358,16 @@ export class SmoothScrollController {
                         <input type="checkbox" id="smoothScrollToggle" checked style="margin-right: 8px;">
                     </div>
                     <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px;">Sensitivity: <span id="scrollSensitivityDisplay">1.0</span></label>
-                        <input type="range" id="scrollSensitivitySlider" min="0.1" max="2.0" step="0.1" value="1.0" style="width: 100%;">
+                        <label style="display: block; margin-bottom: 5px;">Sensitivity: <span id="scrollSensitivityDisplay">0.3</span></label>
+                        <input type="range" id="scrollSensitivitySlider" min="0.1" max="2.0" step="0.1" value="0.3" style="width: 100%;">
                     </div>
                     <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px;">Momentum: <span id="scrollMomentumDisplay">0.8</span></label>
-                        <input type="range" id="scrollMomentumSlider" min="0.1" max="0.9" step="0.1" value="0.8" style="width: 100%;">
+                        <label style="display: block; margin-bottom: 5px;">Momentum: <span id="scrollMomentumDisplay">0.6</span></label>
+                        <input type="range" id="scrollMomentumSlider" min="0.1" max="0.9" step="0.1" value="0.6" style="width: 100%;">
                     </div>
                     <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px;">Deceleration: <span id="scrollDecelerationDisplay">0.95</span></label>
-                        <input type="range" id="scrollDecelerationSlider" min="0.8" max="0.99" step="0.01" value="0.95" style="width: 100%;">
+                        <label style="display: block; margin-bottom: 5px;">Deceleration: <span id="scrollDecelerationDisplay">0.92</span></label>
+                        <input type="range" id="scrollDecelerationSlider" min="0.8" max="0.99" step="0.01" value="0.92" style="width: 100%;">
                     </div>
                     <div style="margin-bottom: 10px;">
                         <button id="scrollToYearBtn" style="background: #9c27b0; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-family: inherit; margin-right: 8px;">Scroll to 2015</button>
@@ -405,15 +473,66 @@ export class SmoothScrollController {
         }
     }
     
+    showSmoothScrollIndicator() {
+        const indicator = document.getElementById('smoothScrollIndicator');
+        if (indicator) {
+            indicator.classList.add('show');
+            
+            // Hide after a delay
+            clearTimeout(this.indicatorTimeout);
+            this.indicatorTimeout = setTimeout(() => {
+                indicator.classList.remove('show');
+            }, 2000);
+        }
+    }
+    
+    showScrollFeedback(delta) {
+        const feedback = document.getElementById('scrollFeedback');
+        if (feedback) {
+            // Determine feedback color based on scroll direction
+            const isForward = delta > 0;
+            const color = isForward ? '#4CAF50' : '#FF9800';
+            
+            feedback.style.background = color.replace(')', ', 0.3)').replace('rgb', 'rgba');
+            feedback.style.borderColor = color;
+            
+            // Show feedback
+            feedback.classList.add('active');
+            
+            // Hide after animation
+            setTimeout(() => {
+                feedback.classList.remove('active');
+            }, 200);
+        }
+    }
+    
     // Public methods for external control
     enable() {
         this.isEnabled = true;
         this.updateSmoothScrollStatus();
+        this.updateScrollHandling();
     }
     
     disable() {
         this.isEnabled = false;
         this.updateSmoothScrollStatus();
+        this.updateScrollHandling();
+    }
+    
+    updateScrollHandling() {
+        // Remove any existing scroll listeners
+        if (this.smoothScrollBound) {
+            window.removeEventListener('wheel', this.smoothScrollBound, { passive: false });
+        }
+        
+        if (this.isEnabled) {
+            // Add smooth scroll handler
+            this.smoothScrollBound = this.onSmoothScroll.bind(this);
+            window.addEventListener('wheel', this.smoothScrollBound, { passive: false });
+        } else {
+            // Let the original TimelineController handle scrolling
+            this.smoothScrollBound = null;
+        }
     }
     
     setSensitivity(value) {
@@ -470,7 +589,9 @@ export class SmoothScrollController {
     // Cleanup method
     destroy() {
         // Remove event listeners
-        window.removeEventListener('wheel', this.onSmoothScroll.bind(this));
+        if (this.smoothScrollBound) {
+            window.removeEventListener('wheel', this.smoothScrollBound, { passive: false });
+        }
         
         // Kill all GSAP animations
         if (this.smoothScrollTween) {
@@ -485,6 +606,9 @@ export class SmoothScrollController {
         // Clear timeouts
         if (this.scrollTimeout) {
             clearTimeout(this.scrollTimeout);
+        }
+        if (this.indicatorTimeout) {
+            clearTimeout(this.indicatorTimeout);
         }
         
         // Kill all ScrollTrigger instances

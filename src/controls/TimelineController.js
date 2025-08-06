@@ -22,6 +22,13 @@ export class TimelineController {
         // Snap functionality
         this.snapTimeout = null;
         
+        // Smooth scrolling properties
+        this.smoothScrollSensitivity = 0.25;
+        this.smoothScrollFriction = 0.85;
+        this.smoothScrollVelocity = 0;
+        this.lastScrollTime = 0;
+        this.momentumTimeout = null;
+        
         // Camera positions for different scenes
         this.sceneConfigs = [
             {
@@ -63,6 +70,9 @@ export class TimelineController {
         
         // Add escape key to close enlarged image
         window.addEventListener('keydown', this.onKeyDown.bind(this));
+        
+        // Initialize smooth scrolling
+        this.initSmoothScrolling();
         
         // Add touch events for mobile
         let touchStartY = 0;
@@ -468,9 +478,9 @@ export class TimelineController {
         
         const delta = event.deltaY;
         
-        // If we're in the timeline scene, handle horizontal scrolling only
+        // If we're in the timeline scene, handle smooth horizontal scrolling
         if (this.currentSceneIndex === 1) {
-            this.handleTimelineScroll(delta);
+            this.handleSmoothTimelineScroll(delta);
         } else {
             // In initial scene, handle scene transitions
             if (delta > 0) {
@@ -558,32 +568,22 @@ export class TimelineController {
         }
     }
     
-    handleTimelineScroll(delta) {
+    handleSmoothTimelineScroll(delta) {
         // Disable scrolling when an image is enlarged
         if (this.isImageEnlarged) {
-            console.log('Timeline scroll disabled - image is enlarged');
             return;
         }
-        
-        // Horizontal scrolling within timeline (2010-2019)
-        const scrollSpeed = 0.5;
         
         // Keep camera at X=0 and move timeline images instead
         this.camera.position.x = 0;
         this.camera.position.y = 0;
         
         // Update camera target to stay at center with configured Target Y
-        const currentConfig = this.sceneConfigs[1]; // Timeline scene config
+        const currentConfig = this.sceneConfigs[1];
         this.camera.lookAt(new THREE.Vector3(0, currentConfig.target.y, 0));
         
-        // Move timeline images based on scroll direction
-        if (delta > 0) {
-            // Scroll right (towards 2019)
-            this.moveTimelineImages(-scrollSpeed);
-        } else if (delta < 0) {
-            // Scroll left (towards 2010)
-            this.moveTimelineImages(scrollSpeed);
-        }
+        // Apply smooth scrolling with subtle friction
+        this.applySmoothScroll(delta);
         
         // Update the current year display
         this.updateCurrentYear();
@@ -598,8 +598,8 @@ export class TimelineController {
         
         // Set a timeout to snap after scrolling stops
         this.snapTimeout = setTimeout(() => {
-            this.snapToNearestImage();
-        }, 300); // Wait 300ms after last scroll event
+            this.smoothSnapToNearestImage();
+        }, 600); // Slightly longer delay for smoother feel
     }
     
     syncDebugPanel() {
@@ -1137,5 +1137,169 @@ export class TimelineController {
     
     getEnlargedImage() {
         return this.enlargedImage;
+    }
+    
+    animateToYear(year, targetOffset) {
+        // Disable timeline movement when an image is enlarged
+        if (this.isImageEnlarged) {
+            console.log('Timeline animation disabled - image is enlarged');
+            return;
+        }
+        
+        console.log(`Animating to year ${year} with offset ${targetOffset}`);
+        
+        // Clear any existing snap timeout
+        if (this.snapTimeout) {
+            clearTimeout(this.snapTimeout);
+            this.snapTimeout = null;
+        }
+        
+        // Initialize timeline offset if not set
+        if (!this.timelineOffset) this.timelineOffset = 0;
+        
+        // Animate to the target offset
+        gsap.to(this, {
+            timelineOffset: targetOffset,
+            duration: 0.8,
+            ease: "power2.out",
+            onUpdate: () => {
+                // Update timeline images during animation
+                if (this.timelineScene && this.timelineScene.getTimelinePlanes) {
+                    const planes = this.timelineScene.getTimelinePlanes();
+                    planes.forEach((plane, index) => {
+                        const originalX = (index * 2) - 4; // Original position (starting at -4)
+                        plane.position.x = originalX - this.timelineOffset;
+                    });
+                }
+                
+                // Update year display and sync debug panel
+                this.updateCurrentYear();
+                this.syncDebugPanel();
+            },
+            onComplete: () => {
+                // Trigger haptic feedback when animation completes
+                this.triggerHapticFeedback('snap');
+                
+                // Dispatch year change event
+                this.updateCurrentYear();
+            }
+        });
+    }
+    
+    // Clean smooth scrolling implementation
+    initSmoothScrolling() {
+        // Initialize smooth scrolling with optimal values
+        this.smoothScrollSensitivity = 0.25;
+        this.smoothScrollFriction = 0.85;
+        this.smoothScrollVelocity = 0;
+        this.lastScrollTime = 0;
+    }
+    
+    applySmoothScroll(delta) {
+        const currentTime = Date.now();
+        const timeDelta = Math.max(currentTime - this.lastScrollTime, 1);
+        
+        // Calculate scroll velocity with subtle friction
+        const scrollVelocity = (delta / timeDelta) * this.smoothScrollSensitivity;
+        
+        // Apply velocity with friction
+        this.smoothScrollVelocity = this.smoothScrollVelocity * this.smoothScrollFriction + scrollVelocity;
+        
+        // Clamp velocity to prevent excessive speed
+        this.smoothScrollVelocity = Math.max(-0.5, Math.min(0.5, this.smoothScrollVelocity));
+        
+        // Move timeline images based on velocity
+        this.moveTimelineImages(-this.smoothScrollVelocity);
+        
+        this.lastScrollTime = currentTime;
+        
+        // Clear existing momentum timeout
+        if (this.momentumTimeout) {
+            clearTimeout(this.momentumTimeout);
+        }
+        
+        // Apply momentum deceleration
+        this.momentumTimeout = setTimeout(() => {
+            this.applyMomentumDeceleration();
+        }, 16);
+    }
+    
+    applyMomentumDeceleration() {
+        if (Math.abs(this.smoothScrollVelocity) > 0.001) {
+            // Apply friction to slow down
+            this.smoothScrollVelocity *= this.smoothScrollFriction;
+            
+            // Apply remaining velocity
+            this.moveTimelineImages(-this.smoothScrollVelocity);
+            
+            // Continue deceleration
+            this.momentumTimeout = setTimeout(() => {
+                this.applyMomentumDeceleration();
+            }, 16);
+        } else {
+            // Stop scrolling
+            this.smoothScrollVelocity = 0;
+        }
+    }
+    
+    smoothSnapToNearestImage() {
+        // Define snap positions (every 2 units, corresponding to image positions, starting at -4)
+        const snapPositions = [-4, -2, 0, 2, 4, 6, 8, 10, 12, 14];
+        
+        // Find the nearest snap position
+        let nearestPosition = 0;
+        let minDistance = Infinity;
+        
+        snapPositions.forEach(position => {
+            const distance = Math.abs(this.timelineOffset - position);
+            if (distance < minDistance) {
+                minDistance = distance;
+                nearestPosition = position;
+            }
+        });
+        
+        // Only snap if we're not already at a snap position
+        if (Math.abs(this.timelineOffset - nearestPosition) > 0.1) {
+            // Animate to the nearest snap position with smooth easing
+            gsap.to(this, {
+                timelineOffset: nearestPosition,
+                duration: 0.8,
+                ease: "power2.out",
+                onUpdate: () => {
+                    // Update timeline images during animation
+                    if (this.timelineScene && this.timelineScene.getTimelinePlanes) {
+                        const planes = this.timelineScene.getTimelinePlanes();
+                        planes.forEach((plane, index) => {
+                            const originalX = (index * 2) - 4;
+                            plane.position.x = originalX - this.timelineOffset;
+                        });
+                    }
+                    
+                    // Update year display and sync debug panel
+                    this.updateCurrentYear();
+                    this.syncDebugPanel();
+                },
+                onComplete: () => {
+                    // Trigger haptic feedback when snapping completes
+                    this.triggerHapticFeedback('snap');
+                }
+            });
+        }
+    }
+    
+    // Smooth scrolling control methods
+    setSmoothScrollSensitivity(value) {
+        this.smoothScrollSensitivity = Math.max(0.1, Math.min(1.0, value));
+    }
+    
+    setSmoothScrollFriction(value) {
+        this.smoothScrollFriction = Math.max(0.7, Math.min(0.95, value));
+    }
+    
+    getSmoothScrollSettings() {
+        return {
+            sensitivity: this.smoothScrollSensitivity,
+            friction: this.smoothScrollFriction
+        };
     }
 } 
