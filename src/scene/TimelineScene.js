@@ -51,13 +51,18 @@ export class TimelineScene {
         const width = 1.5;
         const height = width / aspectRatio;
         
+        console.log('TimelineScene: Creating additional timeline images for years:', years);
+        
         years.forEach((year, index) => {
             const x = ((index + 5) * 2) - 4; // Positions 6, 8, 10, 12, 14 (years 2015-2019)
             const y = 0;
             const z = 0;
             
             this.createTimelinePlane(index, x, y, z, width, height, year);
+            console.log(`TimelineScene: Created additional image ${index} for year ${year} at position (${x}, ${y}, ${z})`);
         });
+        
+        console.log(`TimelineScene: Total additional timeline images created: ${this.timelinePlanes.length}`);
     }
     
     createTimelinePlane(index, x, y, z, width, height, year) {
@@ -100,6 +105,7 @@ export class TimelineScene {
         });
         
         console.log('TimelineScene: Activated - waiting for image layout transition');
+        console.log(`TimelineScene: Created ${this.timelinePlanes.length} additional timeline images`);
     }
     
     deactivate() {
@@ -409,6 +415,11 @@ export class TimelineScene {
         
         // Phase 4: Camera zoom in (starts at 3.2s, duration 1.2s)
         this.animateCameraZoomIn(masterTl, camera, 3.2);
+        
+        // Phase 5: Force all images visible (starts at 4.5s)
+        masterTl.call(() => {
+            this.forceAllImagesVisible();
+        }, [], 4.5);
     }
     
     animateImagesToTimeline(masterTl, initialImages, startTime) {
@@ -642,5 +653,35 @@ export class TimelineScene {
         
         // Also ensure the timeline group is visible
         this.timelineGroup.visible = true;
+    }
+    
+    forceAllImagesVisible() {
+        console.log('TimelineScene: Force all images visible');
+        
+        // Force all additional timeline images to be visible and properly positioned
+        this.timelinePlanes.forEach((plane, index) => {
+            const x = ((index + 5) * 2) - 4; // Positions 6, 8, 10, 12, 14 (years 2015-2019)
+            
+            // Force visibility and position
+            plane.visible = true;
+            plane.position.set(x, 0, 0);
+            plane.scale.setScalar(0.75);
+            plane.rotation.set(0, 0, 0);
+            plane.material.opacity = 0.9;
+            
+            console.log(`TimelineScene: Forced visibility for additional image ${index} (year ${2015 + index}) at (${x}, 0, 0)`);
+        });
+        
+        // Ensure timeline group is visible
+        this.timelineGroup.visible = true;
+        
+        // Also ensure initial scene images are visible
+        const initialImages = this.getInitialSceneImages();
+        initialImages.forEach((image, index) => {
+            if (image.userData.isTimelineTransitioned) {
+                image.visible = true;
+                console.log(`TimelineScene: Ensured initial image ${index} (year ${2010 + index}) is visible`);
+            }
+        });
     }
 } 
