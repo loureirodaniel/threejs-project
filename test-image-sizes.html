@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Size Test</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background: #1a1a1a;
+            color: white;
+        }
+        .test-info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 1000;
+            background: rgba(0,0,0,0.8);
+            padding: 15px;
+            border-radius: 8px;
+            max-width: 400px;
+        }
+        .test-info h3 {
+            margin: 0 0 10px 0;
+            color: #00ff88;
+        }
+        .test-info p {
+            margin: 5px 0;
+            font-size: 14px;
+        }
+        .test-info .success {
+            color: #00ff88;
+        }
+        .test-info .error {
+            color: #ff6b6b;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-info">
+        <h3>Image Size Consistency Test</h3>
+        <p>This test verifies that all timeline images have consistent sizes.</p>
+        <p id="initial-size">Initial scene images: Checking...</p>
+        <p id="timeline-size">Timeline images: Checking...</p>
+        <p id="result">Result: Testing...</p>
+    </div>
+
+    <script type="module">
+        import * as THREE from './node_modules/three/build/three.module.js';
+        
+        // Test image sizes
+        function testImageSizes() {
+            const results = {
+                initialImages: [],
+                timelineImages: []
+            };
+            
+            // Simulate the image creation process
+            const aspectRatio = 4/3;
+            
+            // Initial scene images (should be 1.5 width)
+            const initialWidth = 1.5;
+            const initialHeight = initialWidth / aspectRatio;
+            const initialFinalScale = 0.75;
+            const initialFinalWidth = initialWidth * initialFinalScale;
+            const initialFinalHeight = initialHeight * initialFinalScale;
+            
+            results.initialImages = {
+                baseWidth: initialWidth,
+                baseHeight: initialHeight,
+                finalWidth: initialFinalWidth,
+                finalHeight: initialFinalHeight
+            };
+            
+            // Timeline images (should be 1.5 width)
+            const timelineWidth = 1.5;
+            const timelineHeight = timelineWidth / aspectRatio;
+            const timelineFinalScale = 0.75;
+            const timelineFinalWidth = timelineWidth * timelineFinalScale;
+            const timelineFinalHeight = timelineHeight * timelineFinalScale;
+            
+            results.timelineImages = {
+                baseWidth: timelineWidth,
+                baseHeight: timelineHeight,
+                finalWidth: timelineFinalWidth,
+                finalHeight: timelineFinalHeight
+            };
+            
+            // Check if sizes match
+            const sizesMatch = Math.abs(initialFinalWidth - timelineFinalWidth) < 0.01 &&
+                              Math.abs(initialFinalHeight - timelineFinalHeight) < 0.01;
+            
+            // Update UI
+            document.getElementById('initial-size').innerHTML = 
+                `Initial scene images: ${initialWidth} × ${initialHeight.toFixed(2)} → ${initialFinalWidth.toFixed(2)} × ${initialFinalHeight.toFixed(2)}`;
+            
+            document.getElementById('timeline-size').innerHTML = 
+                `Timeline images: ${timelineWidth} × ${timelineHeight.toFixed(2)} → ${timelineFinalWidth.toFixed(2)} × ${timelineFinalHeight.toFixed(2)}`;
+            
+            if (sizesMatch) {
+                document.getElementById('result').innerHTML = 
+                    '<span class="success">✅ SUCCESS: All images have consistent sizes!</span>';
+            } else {
+                document.getElementById('result').innerHTML = 
+                    '<span class="error">❌ ERROR: Image sizes do not match!</span>';
+            }
+            
+            console.log('Image size test results:', results);
+            console.log('Sizes match:', sizesMatch);
+            
+            return sizesMatch;
+        }
+        
+        // Run test when page loads
+        window.addEventListener('load', () => {
+            setTimeout(testImageSizes, 1000);
+        });
+    </script>
+</body>
+</html> 

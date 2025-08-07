@@ -156,17 +156,31 @@ export class TimelineController {
         const raycaster = new THREE.Raycaster();
         raycaster.setFromCamera(mouse, this.camera);
         
-        // Get timeline planes
+        // Get all clickable images: timeline planes + initial scene images that are part of timeline
+        const clickableImages = [];
+        
+        // Add timeline planes (additional timeline images)
         const timelinePlanes = this.timelineScene.getTimelinePlanes();
-        if (!timelinePlanes) {
-            console.log('No timeline planes found');
-            return;
+        if (timelinePlanes) {
+            clickableImages.push(...timelinePlanes);
         }
         
-        console.log('Timeline planes count:', timelinePlanes.length);
+        // Add initial scene images that have been transitioned to timeline
+        if (window.app && window.app.imagePlanes) {
+            const initialImages = window.app.imagePlanes.getPlanes();
+            initialImages.forEach(image => {
+                if (image.userData.isTimelineTransitioned) {
+                    clickableImages.push(image);
+                }
+            });
+        }
         
-        // Check for intersections
-        const intersects = raycaster.intersectObjects(timelinePlanes);
+        console.log('Total clickable images:', clickableImages.length);
+        console.log('Timeline planes count:', timelinePlanes ? timelinePlanes.length : 0);
+        console.log('Initial images in timeline:', clickableImages.length - (timelinePlanes ? timelinePlanes.length : 0));
+        
+        // Check for intersections with all clickable images
+        const intersects = raycaster.intersectObjects(clickableImages);
         
         console.log('Intersections found:', intersects.length);
         
@@ -264,7 +278,7 @@ export class TimelineController {
             ease: "power2.out"
         }, 0);
         
-        // Fade out other planes
+        // Fade out other timeline planes
         const timelinePlanes = this.timelineScene.getTimelinePlanes();
         timelinePlanes.forEach(otherPlane => {
             if (otherPlane !== plane) {
@@ -276,6 +290,21 @@ export class TimelineController {
                 }, 0);
             }
         });
+        
+        // Fade out initial scene images that are part of timeline
+        if (window.app && window.app.imagePlanes) {
+            const initialImages = window.app.imagePlanes.getPlanes();
+            initialImages.forEach(otherImage => {
+                if (otherImage.userData.isTimelineTransitioned && otherImage !== plane) {
+                    // Reduce opacity to 25%
+                    tl.to(otherImage.material, {
+                        opacity: 0.25,
+                        duration: 0.5,
+                        ease: "power2.out"
+                    }, 0);
+                }
+            });
+        }
         
         // Add background overlay to obscure other images
         this.addBackgroundOverlay();
@@ -321,7 +350,7 @@ export class TimelineController {
             ease: "power2.out"
         }, 0);
         
-        // Fade in other planes back to original opacity
+        // Fade in other timeline planes back to original opacity
         const timelinePlanes = this.timelineScene.getTimelinePlanes();
         timelinePlanes.forEach(otherPlane => {
             if (otherPlane !== plane) {
@@ -332,6 +361,20 @@ export class TimelineController {
                 }, 0);
             }
         });
+        
+        // Fade in initial scene images that are part of timeline back to original opacity
+        if (window.app && window.app.imagePlanes) {
+            const initialImages = window.app.imagePlanes.getPlanes();
+            initialImages.forEach(otherImage => {
+                if (otherImage.userData.isTimelineTransitioned && otherImage !== plane) {
+                    closeTl.to(otherImage.material, {
+                        opacity: 0.9,
+                        duration: 0.5,
+                        ease: "power2.out"
+                    }, 0);
+                }
+            });
+        }
         
         // Restore the enlarged image opacity to original value
         closeTl.to(plane.material, {

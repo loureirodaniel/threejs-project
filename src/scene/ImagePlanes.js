@@ -39,7 +39,7 @@ export class ImagePlanes {
 
     createImagePlanes() {
         const aspectRatio = 4/3;
-        const width = 2;
+        const width = 1.5; // Match the timeline image size
         const height = width / aspectRatio;
         const placedRects = [];
         const maxAttempts = 100;
