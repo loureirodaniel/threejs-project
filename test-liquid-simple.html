@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Liquid Distortion Test</title>
+    <style>
+        body { margin: 0; background: #000; overflow: hidden; }
+        canvas { display: block; }
+        .info { position: absolute; top: 20px; left: 20px; color: white; font-family: Arial; }
+    </style>
+</head>
+<body>
+    <div class="info">
+        <h3>Liquid Distortion Test</h3>
+        <p>Move your mouse to see the effect</p>
+        <button id="toggleBtn">Enable Effect</button>
+        <div id="status">Effect: Disabled</div>
+    </div>
+
+    <script type="module">
+        import * as THREE from './node_modules/three/build/three.module.js';
+        import { EffectComposer } from './node_modules/three/examples/jsm/postprocessing/EffectComposer.js';
+        import { RenderPass } from './node_modules/three/examples/jsm/postprocessing/RenderPass.js';
+        import { ShaderPass } from './node_modules/three/examples/jsm/postprocessing/ShaderPass.js';
+
+        // Scene setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Create a simple scene
+        const geometry = new THREE.PlaneGeometry(4, 4);
+        const material = new THREE.MeshBasicMaterial({ 
+            color: 0x00ff88,
+            side: THREE.DoubleSide 
+        });
+        const plane = new THREE.Mesh(geometry, material);
+        scene.add(plane);
+
+        camera.position.z = 5;
+
+        // Liquid distortion effect
+        let composer = null;
+        let liquidPass = null;
+        let isEffectActive = false;
+        let mousePosition = new THREE.Vector2(0.5, 0.5);
+        let mouseVelocity = new THREE.Vector2(0, 0);
+        let lastMousePosition = new THREE.Vector2(0.5, 0.5);
+        let time = 0;
+
+        function createLiquidEffect() {
+            console.log('Creating liquid effect...');
+            
+            composer = new EffectComposer(renderer);
+            console.log('Composer created');
+            
+            const renderPass = new RenderPass(scene, camera);
+            composer.addPass(renderPass);
+            console.log('Render pass added');
+
+            // Simple fragment shader for testing
+            const fragmentShader = `
+                uniform sampler2D tDiffuse;
+                uniform vec2 uMouse;
+                uniform float uTime;
+                varying vec2 vUv;
+                
+                void main() {
+                    vec2 uv = vUv;
+                    vec2 mouse = uMouse;
+                    
+                    float distance = length(uv - mouse);
+                    float ripple = sin(distance * 50.0 - uTime * 2.0) * 0.02 * exp(-distance / 0.3);
+                    
+                    vec2 distortedUv = uv + vec2(ripple, ripple);
+                    vec4 color = texture2D(tDiffuse, distortedUv);
+                    
+                    gl_FragColor = color;
+                }
+            `;
+
+            const liquidMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    tDiffuse: { value: null },
+                    uMouse: { value: new THREE.Vector2(0.5, 0.5) },
+                    uTime: { value: 0 }
+                },
+                vertexShader: `
+                    varying vec2 vUv;
+                    void main() {
+                        vUv = uv;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: fragmentShader
+            });
+
+            liquidPass = new ShaderPass(liquidMaterial);
+            composer.addPass(liquidPass);
+            console.log('Liquid pass added');
+        }
+
+        // Mouse tracking
+        document.addEventListener('mousemove', (event) => {
+            mousePosition.x = event.clientX / window.innerWidth;
+            mousePosition.y = 1.0 - (event.clientY / window.innerHeight);
+            
+            mouseVelocity.x = mousePosition.x - lastMousePosition.x;
+            mouseVelocity.y = mousePosition.y - lastMousePosition.y;
+            
+            lastMousePosition.copy(mousePosition);
+        });
+
+        // Toggle button
+        document.getElementById('toggleBtn').addEventListener('click', () => {
+            if (!composer) {
+                createLiquidEffect();
+            }
+            
+            isEffectActive = !isEffectActive;
+            const status = document.getElementById('status');
+            const btn = document.getElementById('toggleBtn');
+            
+            if (isEffectActive) {
+                status.textContent = 'Effect: Enabled';
+                btn.textContent = 'Disable Effect';
+                btn.style.background = '#ff6b6b';
+            } else {
+                status.textContent = 'Effect: Disabled';
+                btn.textContent = 'Enable Effect';
+                btn.style.background = '#00ff88';
+            }
+        });
+
+        // Window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            if (composer) {
+                composer.setSize(window.innerWidth, window.innerHeight);
+            }
+        });
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            time += 0.016;
+            
+            // Rotate plane
+            plane.rotation.z += 0.01;
+
+            // Update liquid effect
+            if (isEffectActive && liquidPass) {
+                liquidPass.uniforms.uMouse.value.copy(mousePosition);
+                liquidPass.uniforms.uTime.value = time;
+                composer.render();
+            } else {
+                renderer.render(scene, camera);
+            }
+        }
+
+        animate();
+    </script>
+</body>
+</html> 

@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Liquid Distortion Effect Demo</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #000;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+        }
+        .controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-family: Arial, sans-serif;
+            z-index: 1000;
+        }
+        .controls button {
+            background: #00ff88;
+            color: black;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .controls button:hover {
+            background: #00cc6a;
+        }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <button id="toggleEffect">Enable Liquid Effect</button>
+        <button id="resetEffect">Reset Parameters</button>
+    </div>
+
+    <script type="module">
+        import * as THREE from './node_modules/three/build/three.module.js';
+        import { EffectComposer } from './node_modules/three/examples/jsm/postprocessing/EffectComposer.js';
+        import { RenderPass } from './node_modules/three/examples/jsm/postprocessing/RenderPass.js';
+        import { ShaderPass } from './node_modules/three/examples/jsm/postprocessing/ShaderPass.js';
+
+        // Scene setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Create a simple scene with colored cubes
+        const geometry = new THREE.BoxGeometry(1, 1, 1);
+        const materials = [
+            new THREE.MeshBasicMaterial({ color: 0xff0000 }),
+            new THREE.MeshBasicMaterial({ color: 0x00ff00 }),
+            new THREE.MeshBasicMaterial({ color: 0x0000ff }),
+            new THREE.MeshBasicMaterial({ color: 0xffff00 }),
+            new THREE.MeshBasicMaterial({ color: 0xff00ff })
+        ];
+
+        for (let i = 0; i < 5; i++) {
+            const cube = new THREE.Mesh(geometry, materials[i]);
+            cube.position.set((i - 2) * 2, 0, 0);
+            scene.add(cube);
+        }
+
+        camera.position.z = 5;
+
+        // Liquid distortion effect
+        let composer = null;
+        let liquidPass = null;
+        let isEffectActive = false;
+        let mousePosition = new THREE.Vector2(0.5, 0.5);
+        let mouseVelocity = new THREE.Vector2(0, 0);
+        let lastMousePosition = new THREE.Vector2(0.5, 0.5);
+        let time = 0;
+
+        // Effect parameters
+        let distortionStrength = 0.02;
+        let rippleSpeed = 2.0;
+        let rippleScale = 50.0;
+        let falloffDistance = 0.3;
+        let noiseScale = 10.0;
+        let noiseStrength = 0.01;
+
+        function createLiquidEffect() {
+            composer = new EffectComposer(renderer);
+            
+            const renderPass = new RenderPass(scene, camera);
+            composer.addPass(renderPass);
+
+            // Vertex shader
+            const vertexShader = `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `;
+
+            // Fragment shader
+            const fragmentShader = `
+                uniform sampler2D tDiffuse;
+                uniform vec2 uMouse;
+                uniform vec2 uMouseVelocity;
+                uniform float uTime;
+                uniform float uDistortionStrength;
+                uniform float uRippleSpeed;
+                uniform float uRippleScale;
+                uniform float uFalloffDistance;
+                uniform float uNoiseScale;
+                uniform float uNoiseStrength;
+                
+                varying vec2 vUv;
+                
+                float noise(vec2 p) {
+                    return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+                }
+                
+                float smoothNoise(vec2 p) {
+                    vec2 i = floor(p);
+                    vec2 f = fract(p);
+                    f = f * f * (3.0 - 2.0 * f);
+                    
+                    float a = noise(i);
+                    float b = noise(i + vec2(1.0, 0.0));
+                    float c = noise(i + vec2(0.0, 1.0));
+                    float d = noise(i + vec2(1.0, 1.0));
+                    
+                    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+                }
+                
+                float fractalNoise(vec2 p) {
+                    float value = 0.0;
+                    float amplitude = 0.5;
+                    float frequency = 1.0;
+                    
+                    for(int i = 0; i < 4; i++) {
+                        value += amplitude * smoothNoise(p * frequency);
+                        amplitude *= 0.5;
+                        frequency *= 2.0;
+                    }
+                    
+                    return value;
+                }
+                
+                void main() {
+                    vec2 uv = vUv;
+                    vec2 mouse = uMouse;
+                    vec2 mouseVelocity = uMouseVelocity;
+                    
+                    float distance = length(uv - mouse);
+                    
+                    float ripple = sin(distance * uRippleScale - uTime * uRippleSpeed) * exp(-distance / uFalloffDistance);
+                    
+                    vec2 swirl = vec2(
+                        -mouseVelocity.y * 0.1,
+                        mouseVelocity.x * 0.1
+                    ) * exp(-distance / uFalloffDistance);
+                    
+                    vec2 noiseOffset = vec2(
+                        fractalNoise(uv * uNoiseScale + uTime * 0.5) - 0.5,
+                        fractalNoise(uv * uNoiseScale + uTime * 0.3 + 100.0) - 0.5
+                    ) * uNoiseStrength;
+                    
+                    vec2 distortion = (ripple * uDistortionStrength + swirl + noiseOffset) * exp(-distance / uFalloffDistance);
+                    
+                    vec2 distortedUv = uv + distortion;
+                    
+                    vec4 color = texture2D(tDiffuse, distortedUv);
+                    
+                    float distortionMagnitude = length(distortion);
+                    color.rgb += distortionMagnitude * 0.1 * vec3(0.1, 0.2, 0.3);
+                    
+                    gl_FragColor = color;
+                }
+            `;
+
+            const liquidMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    tDiffuse: { value: null },
+                    uMouse: { value: new THREE.Vector2(0.5, 0.5) },
+                    uMouseVelocity: { value: new THREE.Vector2(0, 0) },
+                    uTime: { value: 0 },
+                    uDistortionStrength: { value: distortionStrength },
+                    uRippleSpeed: { value: rippleSpeed },
+                    uRippleScale: { value: rippleScale },
+                    uFalloffDistance: { value: falloffDistance },
+                    uNoiseScale: { value: noiseScale },
+                    uNoiseStrength: { value: noiseStrength }
+                },
+                vertexShader: vertexShader,
+                fragmentShader: fragmentShader
+            });
+
+            liquidPass = new ShaderPass(liquidMaterial);
+            composer.addPass(liquidPass);
+        }
+
+        // Mouse tracking
+        document.addEventListener('mousemove', (event) => {
+            mousePosition.x = event.clientX / window.innerWidth;
+            mousePosition.y = 1.0 - (event.clientY / window.innerHeight);
+            
+            mouseVelocity.x = mousePosition.x - lastMousePosition.x;
+            mouseVelocity.y = mousePosition.y - lastMousePosition.y;
+            
+            lastMousePosition.copy(mousePosition);
+        });
+
+        // Controls
+        document.getElementById('toggleEffect').addEventListener('click', () => {
+            if (!composer) {
+                createLiquidEffect();
+            }
+            
+            isEffectActive = !isEffectActive;
+            const button = document.getElementById('toggleEffect');
+            
+            if (isEffectActive) {
+                button.textContent = 'Disable Liquid Effect';
+                button.style.background = '#ff6b6b';
+            } else {
+                button.textContent = 'Enable Liquid Effect';
+                button.style.background = '#00ff88';
+            }
+        });
+
+        document.getElementById('resetEffect').addEventListener('click', () => {
+            if (liquidPass) {
+                liquidPass.uniforms.uDistortionStrength.value = 0.02;
+                liquidPass.uniforms.uRippleSpeed.value = 2.0;
+                liquidPass.uniforms.uRippleScale.value = 50.0;
+                liquidPass.uniforms.uFalloffDistance.value = 0.3;
+                liquidPass.uniforms.uNoiseScale.value = 10.0;
+                liquidPass.uniforms.uNoiseStrength.value = 0.01;
+            }
+        });
+
+        // Window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            if (composer) {
+                composer.setSize(window.innerWidth, window.innerHeight);
+            }
+        });
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            time += 0.016;
+            
+            // Rotate cubes
+            scene.children.forEach((child, index) => {
+                if (child.isMesh) {
+                    child.rotation.x += 0.01;
+                    child.rotation.y += 0.01;
+                }
+            });
+
+            // Update liquid effect
+            if (isEffectActive && liquidPass) {
+                liquidPass.uniforms.uMouse.value.copy(mousePosition);
+                liquidPass.uniforms.uMouseVelocity.value.copy(mouseVelocity);
+                liquidPass.uniforms.uTime.value = time;
+                
+                mouseVelocity.multiplyScalar(0.95);
+                
+                composer.render();
+            } else {
+                renderer.render(scene, camera);
+            }
+        }
+
+        animate();
+    </script>
+</body>
+</html> 

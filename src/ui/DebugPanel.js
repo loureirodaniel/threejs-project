@@ -9,7 +9,9 @@ export class DebugPanel {
             typography: false,
             spotlight: false,
             camera: false,
-            enlargement: false
+            enlargement: false,
+            smoothScroll: false,
+            liquidDistortion: false
         };
         
         this.init();
@@ -173,6 +175,43 @@ export class DebugPanel {
                 </div>
             </div>
             
+            <!-- Liquid Distortion Section -->
+            <div class="debug-section" style="margin-bottom: 15px;">
+                <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; padding: 8px 0; border-bottom: 1px solid #333;">
+                    <h4 style="margin: 0; color: #00ff88;">Liquid Distortion</h4>
+                    <button class="section-toggle" data-section="liquidDistortion" style="background: #333; color: white; border: 1px solid #555; padding: 2px 6px; border-radius: 3px; cursor: pointer; font-family: inherit; font-size: 10px;">+</button>
+                </div>
+                <div class="section-content" id="liquidDistortion-content" style="display: none; padding-top: 10px;">
+                    <div style="margin-bottom: 10px;">
+                        <button id="toggleLiquidDistortionBtn" style="background: #00ff88; color: black; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-family: inherit; width: 100%; margin-bottom: 10px;">Enable Liquid Effect</button>
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Distortion Strength: <span id="distortionStrengthDisplay">0.02</span></label>
+                        <input type="range" id="distortionStrengthSlider" min="0.001" max="0.1" step="0.001" value="0.02" style="width: 100%;">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Ripple Speed: <span id="rippleSpeedDisplay">2.0</span></label>
+                        <input type="range" id="rippleSpeedSlider" min="0.5" max="5.0" step="0.1" value="2.0" style="width: 100%;">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Ripple Scale: <span id="rippleScaleDisplay">50.0</span></label>
+                        <input type="range" id="rippleScaleSlider" min="10" max="100" step="1" value="50" style="width: 100%;">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Falloff Distance: <span id="falloffDistanceDisplay">0.3</span></label>
+                        <input type="range" id="falloffDistanceSlider" min="0.1" max="1.0" step="0.05" value="0.3" style="width: 100%;">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Noise Scale: <span id="noiseScaleDisplay">10.0</span></label>
+                        <input type="range" id="noiseScaleSlider" min="1" max="20" step="0.5" value="10" style="width: 100%;">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Noise Strength: <span id="noiseStrengthDisplay">0.01</span></label>
+                        <input type="range" id="noiseStrengthSlider" min="0.001" max="0.05" step="0.001" value="0.01" style="width: 100%;">
+                    </div>
+                </div>
+            </div>
+            
             <button id="resetBtn" style="background: #00ff88; color: black; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-family: inherit;">Reset to Default</button>
             </div>
         `;
@@ -246,6 +285,25 @@ export class DebugPanel {
         this.controls.smoothScrollFrictionDisplay = document.getElementById('smoothScrollFrictionDisplay');
         this.controls.scrollToYearBtn = document.getElementById('scrollToYearBtn');
         this.controls.scrollToYearBtn2 = document.getElementById('scrollToYearBtn2');
+        
+        // Liquid distortion controls
+        this.controls.toggleLiquidDistortionBtn = document.getElementById('toggleLiquidDistortionBtn');
+        this.controls.distortionStrengthSlider = document.getElementById('distortionStrengthSlider');
+        this.controls.rippleSpeedSlider = document.getElementById('rippleSpeedSlider');
+        this.controls.rippleScaleSlider = document.getElementById('rippleScaleSlider');
+        this.controls.falloffDistanceSlider = document.getElementById('falloffDistanceSlider');
+        this.controls.noiseScaleSlider = document.getElementById('noiseScaleSlider');
+        this.controls.noiseStrengthSlider = document.getElementById('noiseStrengthSlider');
+        this.controls.distortionStrengthDisplay = document.getElementById('distortionStrengthDisplay');
+        this.controls.rippleSpeedDisplay = document.getElementById('rippleSpeedDisplay');
+        this.controls.rippleScaleDisplay = document.getElementById('rippleScaleDisplay');
+        this.controls.falloffDistanceDisplay = document.getElementById('falloffDistanceDisplay');
+        this.controls.noiseScaleDisplay = document.getElementById('noiseScaleDisplay');
+        this.controls.noiseStrengthDisplay = document.getElementById('noiseStrengthDisplay');
+        
+        // Debug liquid distortion controls
+        console.log('DebugPanel: Toggle button found:', !!this.controls.toggleLiquidDistortionBtn);
+        console.log('DebugPanel: Distortion strength slider found:', !!this.controls.distortionStrengthSlider);
         
         // Debug panel toggle
         this.controls.toggleDebugPanel = document.getElementById('toggleDebugPanel');

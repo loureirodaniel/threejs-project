@@ -7,6 +7,7 @@ import { GridEffect } from './effects/GridEffect.js';
 import { VignetteEffect } from './effects/VignetteEffect.js';
 import { SpotlightEffect } from './effects/SpotlightEffect.js';
 import { BackgroundBlurEffect } from './effects/BackgroundBlurEffect.js';
+import { LiquidDistortionEffect } from './effects/LiquidDistortionEffect.js';
 import { TitleOverlay } from './ui/TitleOverlay.js';
 import { DebugPanel } from './ui/DebugPanel.js';
 import { EventsPanel } from './ui/EventsPanel.js';
@@ -25,6 +26,7 @@ export class App {
         this.vignetteEffect = null;
         this.spotlightEffect = null;
         this.backgroundBlurEffect = null;
+        this.liquidDistortionEffect = null;
         this.titleOverlay = null;
         this.debugPanel = null;
         this.eventsPanel = null;
@@ -57,6 +59,7 @@ export class App {
         this.vignetteEffect = new VignetteEffect(scene);
         this.spotlightEffect = new SpotlightEffect(scene);
         this.backgroundBlurEffect = new BackgroundBlurEffect(scene, camera, this.sceneManager.getRenderer());
+        this.liquidDistortionEffect = new LiquidDistortionEffect(scene, camera, this.sceneManager.getRenderer());
         this.titleOverlay = new TitleOverlay();
         this.debugPanel = new DebugPanel();
         this.eventsPanel = new EventsPanel();
@@ -230,6 +233,35 @@ export class App {
             this.timelineController.animateToYear(2019, 14); // 2019 corresponds to offset 14
         });
         
+        // Liquid distortion controls
+        controls.toggleLiquidDistortionBtn.addEventListener('click', () => {
+            this.toggleLiquidDistortion();
+        });
+        
+        controls.distortionStrengthSlider.addEventListener('input', (e) => {
+            this.updateLiquidDistortion();
+        });
+        
+        controls.rippleSpeedSlider.addEventListener('input', (e) => {
+            this.updateLiquidDistortion();
+        });
+        
+        controls.rippleScaleSlider.addEventListener('input', (e) => {
+            this.updateLiquidDistortion();
+        });
+        
+        controls.falloffDistanceSlider.addEventListener('input', (e) => {
+            this.updateLiquidDistortion();
+        });
+        
+        controls.noiseScaleSlider.addEventListener('input', (e) => {
+            this.updateLiquidDistortion();
+        });
+        
+        controls.noiseStrengthSlider.addEventListener('input', (e) => {
+            this.updateLiquidDistortion();
+        });
+        
         // Initialize timeline camera controls with current values
         this.initializeTimelineCameraControls();
         
@@ -243,6 +275,9 @@ export class App {
         
         // Add smooth scroll controls to debug panel
         this.addSmoothScrollControls();
+        
+        // Add test button for liquid distortion
+        this.addLiquidDistortionTest();
     }
     
     updateSpotlightEffect() {
@@ -303,6 +338,63 @@ export class App {
         }
     }
     
+    toggleLiquidDistortion() {
+        const controls = this.debugPanel.getControls();
+        
+        console.log('App: Toggle liquid distortion called');
+        console.log('App: Effect exists:', !!this.liquidDistortionEffect);
+        console.log('App: Effect is active:', this.liquidDistortionEffect?.isActive);
+        
+        if (this.liquidDistortionEffect.isActive) {
+            this.liquidDistortionEffect.deactivate();
+            // Deactivate text distortion
+            if (this.titleOverlay) {
+                this.titleOverlay.deactivateDistortion();
+            }
+            controls.toggleLiquidDistortionBtn.textContent = 'Enable Liquid Effect';
+            controls.toggleLiquidDistortionBtn.style.background = '#00ff88';
+            controls.toggleLiquidDistortionBtn.style.color = 'black';
+        } else {
+            this.liquidDistortionEffect.activate();
+            // Activate text distortion
+            if (this.titleOverlay) {
+                this.titleOverlay.activateDistortion();
+            }
+            controls.toggleLiquidDistortionBtn.textContent = 'Disable Liquid Effect';
+            controls.toggleLiquidDistortionBtn.style.background = '#ff6b6b';
+            controls.toggleLiquidDistortionBtn.style.color = 'white';
+        }
+    }
+    
+    updateLiquidDistortion() {
+        const controls = this.debugPanel.getControls();
+        
+        const distortionStrength = parseFloat(controls.distortionStrengthSlider.value);
+        const rippleSpeed = parseFloat(controls.rippleSpeedSlider.value);
+        const rippleScale = parseFloat(controls.rippleScaleSlider.value);
+        const falloffDistance = parseFloat(controls.falloffDistanceSlider.value);
+        const noiseScale = parseFloat(controls.noiseScaleSlider.value);
+        const noiseStrength = parseFloat(controls.noiseStrengthSlider.value);
+        
+        // Update displays
+        controls.distortionStrengthDisplay.textContent = distortionStrength.toFixed(3);
+        controls.rippleSpeedDisplay.textContent = rippleSpeed.toFixed(1);
+        controls.rippleScaleDisplay.textContent = rippleScale.toFixed(1);
+        controls.falloffDistanceDisplay.textContent = falloffDistance.toFixed(2);
+        controls.noiseScaleDisplay.textContent = noiseScale.toFixed(1);
+        controls.noiseStrengthDisplay.textContent = noiseStrength.toFixed(3);
+        
+        // Update liquid distortion effect
+        if (this.liquidDistortionEffect) {
+            this.liquidDistortionEffect.setDistortionStrength(distortionStrength);
+            this.liquidDistortionEffect.setRippleSpeed(rippleSpeed);
+            this.liquidDistortionEffect.setRippleScale(rippleScale);
+            this.liquidDistortionEffect.setFalloffDistance(falloffDistance);
+            this.liquidDistortionEffect.setNoiseScale(noiseScale);
+            this.liquidDistortionEffect.setNoiseStrength(noiseStrength);
+        }
+    }
+    
     resetToDefaults() {
         const controls = this.debugPanel.getControls();
         
@@ -331,6 +423,15 @@ export class App {
         controls.smoothScrollSensitivitySlider.value = 0.25;
         controls.smoothScrollFrictionSlider.value = 0.85;
         this.updateSmoothScroll();
+        
+        // Reset liquid distortion settings
+        controls.distortionStrengthSlider.value = 0.02;
+        controls.rippleSpeedSlider.value = 2.0;
+        controls.rippleScaleSlider.value = 50;
+        controls.falloffDistanceSlider.value = 0.3;
+        controls.noiseScaleSlider.value = 10;
+        controls.noiseStrengthSlider.value = 0.01;
+        this.updateLiquidDistortion();
     }
     
     onSceneChange(sceneDetail) {
@@ -556,6 +657,11 @@ export class App {
         if (this.backgroundBlurEffect) {
             this.backgroundBlurEffect.onWindowResize();
         }
+        
+        // Update liquid distortion effect on window resize
+        if (this.liquidDistortionEffect) {
+            this.liquidDistortionEffect.onWindowResize();
+        }
     }
     
     addSmoothScrollControls() {
@@ -582,8 +688,39 @@ export class App {
         }
     }
     
+    addLiquidDistortionTest() {
+        // Create a test button for liquid distortion
+        const testButton = document.createElement('button');
+        testButton.textContent = 'Test Liquid Effect';
+        testButton.style.position = 'fixed';
+        testButton.style.top = '100px';
+        testButton.style.left = '20px';
+        testButton.style.zIndex = '1000';
+        testButton.style.background = '#00ff88';
+        testButton.style.color = 'black';
+        testButton.style.border = 'none';
+        testButton.style.padding = '10px 20px';
+        testButton.style.borderRadius = '5px';
+        testButton.style.cursor = 'pointer';
+        testButton.style.fontFamily = 'Arial, sans-serif';
+        
+        testButton.addEventListener('click', () => {
+            console.log('Test button clicked');
+            if (this.liquidDistortionEffect) {
+                console.log('Effect exists, toggling...');
+                this.toggleLiquidDistortion();
+            } else {
+                console.log('Effect does not exist');
+            }
+        });
+        
+        document.body.appendChild(testButton);
+    }
+    
     animate() {
         requestAnimationFrame(this.animate.bind(this));
+        
+        const deltaTime = 0.016; // Approximate 60fps
         
         // Update timeline controller
         this.timelineController.update();
@@ -602,7 +739,19 @@ export class App {
         // Update timeline scene
         this.timelineScene.update(Date.now(), this.sceneManager.getCamera());
         
-        // Render the scene
-        this.sceneManager.render();
+        // Update liquid distortion effect
+        if (this.liquidDistortionEffect) {
+            this.liquidDistortionEffect.update(deltaTime);
+        }
+        
+        // Update controls regardless of renderer
+        this.sceneManager.updateControls();
+        
+        // Render the scene with liquid distortion if active
+        if (this.liquidDistortionEffect && this.liquidDistortionEffect.isActive) {
+            this.liquidDistortionEffect.render();
+        } else {
+            this.sceneManager.render();
+        }
     }
 } 

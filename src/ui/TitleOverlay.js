@@ -4,6 +4,12 @@ export class TitleOverlay {
     constructor() {
         this.titleDiv = null;
         this.subtitle = null;
+        this.isDistortionActive = false;
+        this.mousePosition = { x: 0.5, y: 0.5 };
+        this.mouseVelocity = { x: 0, y: 0 };
+        this.lastMousePosition = { x: 0.5, y: 0.5 };
+        this.time = 0;
+        this.animationId = null;
         
         this.init();
     }
@@ -28,6 +34,9 @@ export class TitleOverlay {
         document.body.appendChild(this.titleDiv);
         
         this.subtitle = document.getElementById('subtitle');
+        
+        // Setup mouse tracking for distortion effect
+        this.setupMouseTracking();
         
         // Animate text appearance with GSAP
         gsap.to(this.titleDiv, {
@@ -119,6 +128,260 @@ export class TitleOverlay {
                 duration: 1.0,
                 ease: "power2.inOut"
             });
+        }
+    }
+    
+    setupMouseTracking() {
+        document.addEventListener('mousemove', (event) => {
+            this.mousePosition.x = event.clientX / window.innerWidth;
+            this.mousePosition.y = event.clientY / window.innerHeight;
+            
+            this.mouseVelocity.x = this.mousePosition.x - this.lastMousePosition.x;
+            this.mouseVelocity.y = this.mousePosition.y - this.lastMousePosition.y;
+            
+            this.lastMousePosition.x = this.mousePosition.x;
+            this.lastMousePosition.y = this.mousePosition.y;
+        });
+    }
+    
+    activateDistortion() {
+        if (this.isDistortionActive) return;
+        
+        this.isDistortionActive = true;
+        this.time = 0;
+        
+        // Check if SVG filters are supported
+        const svgSupported = this.checkSVGSupport();
+        
+        if (svgSupported) {
+            // Add CSS filter for distortion
+            this.titleDiv.style.filter = 'url(#liquid-distortion)';
+            if (this.subtitle) {
+                this.subtitle.style.filter = 'url(#liquid-distortion)';
+            }
+            
+            // Create SVG filter for liquid distortion
+            this.createSVGFilter();
+        } else {
+            // Fallback to CSS transforms
+            this.titleDiv.style.transition = 'transform 0.1s ease-out';
+            if (this.subtitle) {
+                this.subtitle.style.transition = 'transform 0.1s ease-out';
+            }
+        }
+        
+        // Start animation loop
+        this.animateDistortion();
+        
+        console.log('TitleOverlay: Distortion activated (SVG supported:', svgSupported, ')');
+    }
+    
+    deactivateDistortion() {
+        if (!this.isDistortionActive) return;
+        
+        this.isDistortionActive = false;
+        
+        // Remove CSS filter
+        this.titleDiv.style.filter = 'none';
+        if (this.subtitle) {
+            this.subtitle.style.filter = 'none';
+        }
+        
+        // Reset CSS transforms
+        this.titleDiv.style.transform = 'translate(-50%, -50%)';
+        if (this.subtitle) {
+            this.subtitle.style.transform = 'none';
+        }
+        
+        // Stop animation loop
+        if (this.animationId) {
+            cancelAnimationFrame(this.animationId);
+            this.animationId = null;
+        }
+        
+        // Remove SVG filter
+        this.removeSVGFilter();
+        
+        console.log('TitleOverlay: Distortion deactivated');
+    }
+    
+    createSVGFilter() {
+        // Remove existing filter if any
+        this.removeSVGFilter();
+        
+        // Create SVG filter element
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.style.position = 'absolute';
+        svg.style.width = '0';
+        svg.style.height = '0';
+        svg.style.overflow = 'hidden';
+        
+        const filter = document.createElementNS('http://www.w3.org/2000/svg', 'filter');
+        filter.setAttribute('id', 'liquid-distortion');
+        filter.setAttribute('x', '-50%');
+        filter.setAttribute('y', '-50%');
+        filter.setAttribute('width', '200%');
+        filter.setAttribute('height', '200%');
+        
+        // Create more sophisticated liquid distortion
+        const feTurbulence = document.createElementNS('http://www.w3.org/2000/svg', 'feTurbulence');
+        feTurbulence.setAttribute('type', 'fractalNoise');
+        feTurbulence.setAttribute('baseFrequency', '0.02 0.02');
+        feTurbulence.setAttribute('numOctaves', '4');
+        feTurbulence.setAttribute('seed', '1');
+        feTurbulence.setAttribute('result', 'turbulence');
+        
+        // Create a second turbulence for more complex effect
+        const feTurbulence2 = document.createElementNS('http://www.w3.org/2000/svg', 'feTurbulence');
+        feTurbulence2.setAttribute('type', 'fractalNoise');
+        feTurbulence2.setAttribute('baseFrequency', '0.05 0.05');
+        feTurbulence2.setAttribute('numOctaves', '2');
+        feTurbulence2.setAttribute('seed', '2');
+        feTurbulence2.setAttribute('result', 'turbulence2');
+        
+        // Blend the two turbulence patterns
+        const feBlend = document.createElementNS('http://www.w3.org/2000/svg', 'feBlend');
+        feBlend.setAttribute('mode', 'multiply');
+        feBlend.setAttribute('in', 'turbulence');
+        feBlend.setAttribute('in2', 'turbulence2');
+        feBlend.setAttribute('result', 'blended');
+        
+        // Apply displacement map
+        const feDisplacementMap = document.createElementNS('http://www.w3.org/2000/svg', 'feDisplacementMap');
+        feDisplacementMap.setAttribute('in', 'SourceGraphic');
+        feDisplacementMap.setAttribute('in2', 'blended');
+        feDisplacementMap.setAttribute('scale', '8');
+        feDisplacementMap.setAttribute('xChannelSelector', 'R');
+        feDisplacementMap.setAttribute('yChannelSelector', 'G');
+        feDisplacementMap.setAttribute('result', 'displaced');
+        
+        // Add subtle color shift
+        const feColorMatrix = document.createElementNS('http://www.w3.org/2000/svg', 'feColorMatrix');
+        feColorMatrix.setAttribute('type', 'matrix');
+        feColorMatrix.setAttribute('values', '1 0 0 0 0.1 0 1 0 0 0.2 0 0 1 0 0.3 0 0 0 1 0');
+        feColorMatrix.setAttribute('in', 'displaced');
+        
+        filter.appendChild(feTurbulence);
+        filter.appendChild(feTurbulence2);
+        filter.appendChild(feBlend);
+        filter.appendChild(feDisplacementMap);
+        filter.appendChild(feColorMatrix);
+        svg.appendChild(filter);
+        
+        document.body.appendChild(svg);
+        this.svgFilter = svg;
+    }
+    
+    removeSVGFilter() {
+        if (this.svgFilter) {
+            document.body.removeChild(this.svgFilter);
+            this.svgFilter = null;
+        }
+    }
+    
+    animateDistortion() {
+        if (!this.isDistortionActive) return;
+        
+        this.time += 0.016;
+        
+        // Update SVG filter parameters for animation
+        if (this.svgFilter) {
+            const feTurbulences = this.svgFilter.querySelectorAll('feTurbulence');
+            
+            // Update first turbulence
+            if (feTurbulences[0]) {
+                const frequency1 = 0.02 + Math.sin(this.time * 0.3) * 0.01;
+                feTurbulences[0].setAttribute('baseFrequency', `${frequency1} ${frequency1}`);
+                feTurbulences[0].setAttribute('seed', Math.floor(this.time * 5));
+            }
+            
+            // Update second turbulence
+            if (feTurbulences[1]) {
+                const frequency2 = 0.05 + Math.sin(this.time * 0.7) * 0.02;
+                feTurbulences[1].setAttribute('baseFrequency', `${frequency2} ${frequency2}`);
+                feTurbulences[1].setAttribute('seed', Math.floor(this.time * 3) + 100);
+            }
+            
+            const feDisplacementMap = this.svgFilter.querySelector('feDisplacementMap');
+            if (feDisplacementMap) {
+                // Calculate distance from text center to mouse
+                const textRect = this.titleDiv.getBoundingClientRect();
+                const textCenterX = textRect.left + textRect.width / 2;
+                const textCenterY = textRect.top + textRect.height / 2;
+                const mouseX = this.mousePosition.x * window.innerWidth;
+                const mouseY = this.mousePosition.y * window.innerHeight;
+                
+                const distance = Math.sqrt((mouseX - textCenterX) ** 2 + (mouseY - textCenterY) ** 2);
+                const maxDistance = Math.sqrt(window.innerWidth ** 2 + window.innerHeight ** 2);
+                const distanceFactor = Math.max(0, 1 - distance / maxDistance);
+                
+                // Animate displacement scale based on mouse velocity and distance
+                const velocityMagnitude = Math.sqrt(this.mouseVelocity.x ** 2 + this.mouseVelocity.y ** 2);
+                const baseScale = 8;
+                const velocityScale = velocityMagnitude * 100;
+                const distanceScale = distanceFactor * 20;
+                const timeScale = Math.sin(this.time * 2) * 3;
+                
+                const totalScale = baseScale + velocityScale + distanceScale + timeScale;
+                feDisplacementMap.setAttribute('scale', Math.max(1, totalScale).toString());
+            }
+            
+            // Update color matrix for subtle color shifts
+            const feColorMatrix = this.svgFilter.querySelector('feColorMatrix');
+            if (feColorMatrix) {
+                const velocityMagnitude = Math.sqrt(this.mouseVelocity.x ** 2 + this.mouseVelocity.y ** 2);
+                const colorShift = velocityMagnitude * 0.3;
+                feColorMatrix.setAttribute('values', 
+                    `1 0 0 0 ${0.1 + colorShift} 0 1 0 0 ${0.2 + colorShift} 0 0 1 0 ${0.3 + colorShift} 0 0 0 1 0`
+                );
+            }
+        } else {
+            // Use CSS transform fallback
+            this.applyCSSDistortion();
+        }
+        
+        // Decay mouse velocity
+        this.mouseVelocity.x *= 0.95;
+        this.mouseVelocity.y *= 0.95;
+        
+        this.animationId = requestAnimationFrame(() => this.animateDistortion());
+    }
+    
+    isDistortionActive() {
+        return this.isDistortionActive;
+    }
+    
+    checkSVGSupport() {
+        // Check if SVG filters are supported
+        try {
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            const filter = document.createElementNS('http://www.w3.org/2000/svg', 'filter');
+            return !!filter;
+        } catch (e) {
+            return false;
+        }
+    }
+    
+    applyCSSDistortion() {
+        if (!this.isDistortionActive) return;
+        
+        // Calculate distortion based on mouse position and velocity
+        const velocityMagnitude = Math.sqrt(this.mouseVelocity.x ** 2 + this.mouseVelocity.y ** 2);
+        const maxVelocity = 0.1;
+        const normalizedVelocity = Math.min(velocityMagnitude / maxVelocity, 1);
+        
+        // Create subtle transform distortion
+        const translateX = this.mouseVelocity.x * 20 * normalizedVelocity;
+        const translateY = this.mouseVelocity.y * 20 * normalizedVelocity;
+        const rotateZ = this.mouseVelocity.x * 2 * normalizedVelocity;
+        const scale = 1 + normalizedVelocity * 0.02;
+        
+        // Apply transforms
+        const transform = `translate(${translateX}px, ${translateY}px) rotate(${rotateZ}deg) scale(${scale})`;
+        
+        this.titleDiv.style.transform = `translate(-50%, -50%) ${transform}`;
+        if (this.subtitle) {
+            this.subtitle.style.transform = transform;
         }
     }
 } 

@@ -60,6 +60,13 @@ export class SceneManager {
         this.renderer.render(this.scene, this.camera);
     }
     
+    // Method to update controls without rendering (for external renderers)
+    updateControls() {
+        if (!this.isTransitioning) {
+            this.controls.update();
+        }
+    }
+    
     getScene() {
         return this.scene;
     }
