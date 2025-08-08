@@ -117,6 +117,18 @@ export class TimelineController {
             }
         }, { passive: true });
     }
+
+    // Compute world-space X of a timeline image given its original X and current offset,
+    // then update the camera's look-at to smoothly follow that focal point
+    updateCameraLookAtForOriginalX(originalImageX) {
+        const timelineConfig = this.sceneConfigs[1];
+        const targetY = timelineConfig ? timelineConfig.target.y : 0;
+        if (this.timelineOffset === undefined || this.timelineOffset === null) {
+            this.timelineOffset = 0;
+        }
+        const worldX = originalImageX - this.timelineOffset;
+        this.camera.lookAt(new THREE.Vector3(worldX, targetY, 0));
+    }
     
     onClick(event) {
         // Only handle clicks in timeline scene
@@ -741,6 +753,29 @@ export class TimelineController {
                 }
             });
         }
+
+        // Smoothly pan camera look-at toward the nearest image based on current offset
+        // Find nearest original image X from the combined list [-4,-2,0,2,4,6,8,10,12,14]
+        const snapPositions = [-4, -2, 0, 2, 4, 6, 8, 10, 12, 14];
+        let nearestX = snapPositions[0];
+        let minDist = Infinity;
+        snapPositions.forEach((x) => {
+            const dist = Math.abs((x) - this.timelineOffset);
+            if (dist < minDist) {
+                minDist = dist;
+                nearestX = x;
+            }
+        });
+        // Tween the camera look-at toward that image smoothly
+        const timelineConfig = this.sceneConfigs[1];
+        const targetY = timelineConfig ? timelineConfig.target.y : 0;
+        const worldX = nearestX - this.timelineOffset;
+        gsap.to({}, {
+            duration: 0.2,
+            onUpdate: () => {
+                this.camera.lookAt(new THREE.Vector3(worldX, targetY, 0));
+            }
+        });
     }
     
     snapToNearestImage() {
@@ -1337,6 +1372,12 @@ export class TimelineController {
                 
                 // Ensure images remain visible and properly positioned
                 this.ensureTimelineImagesVisible();
+
+                // During the year animation, pan camera look-at to the target image
+                // Compute the original X for the requested year
+                const yearIndex = year - 2010; // 0..9
+                const originalX = (yearIndex * 2) - 4; // -4..14
+                this.updateCameraLookAtForOriginalX(originalX);
             },
             onComplete: () => {
                 // Trigger haptic feedback when animation completes
@@ -1445,6 +1486,9 @@ export class TimelineController {
                     // Update year display and sync debug panel
                     this.updateCurrentYear();
                     this.syncDebugPanel();
+
+                    // Pan camera look-at toward the snapping image
+                    this.updateCameraLookAtForOriginalX(nearestPosition);
                 },
                 onComplete: () => {
                     // Trigger haptic feedback when snapping completes

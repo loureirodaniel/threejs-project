@@ -541,8 +541,9 @@ export class TimelineScene {
         console.log('TimelineScene: Animating camera zoom-in');
         
         // Target camera position for timeline view
-        const targetPosition = new THREE.Vector3(0, 0, 8);
-        const targetTarget = new THREE.Vector3(0, 0, 0);
+        const targetPosition = new THREE.Vector3(0, 0, 5);
+        // Focus on the first timeline image (index 0 is positioned at x = -4)
+        const targetTarget = new THREE.Vector3(-4, 0, 0);
         const targetFov = 30;
         
         // Animate camera position
