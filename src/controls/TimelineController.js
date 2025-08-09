@@ -1180,11 +1180,9 @@ export class TimelineController {
             this.timelineScene.activate();
         }
         
-        // Initialize timeline offset to ensure proper positioning
-        if (!this.timelineOffset) {
-            this.timelineOffset = 0;
-            console.log('TimelineController: Initialized timeline offset to 0');
-        }
+        // Initialize timeline offset so the FIRST image (original X = -4) lands centered at X=0
+        this.timelineOffset = -4;
+        console.log('TimelineController: Set timeline offset to -4 (first image centered)');
         
         // Mark transition as complete
         this.isTransitioning = false;
@@ -1198,6 +1196,13 @@ export class TimelineController {
             }
         });
         window.dispatchEvent(event);
+
+        // Apply the current offset immediately to position images and align look-at
+        // This ensures we land with the first image centered when entering the timeline
+        this.moveTimelineImages(0);
+        this.updateCameraLookAtForOriginalX(-4);
+        this.updateCurrentYear();
+        this.syncDebugPanel();
     }
     
     update() {

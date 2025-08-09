@@ -396,11 +396,13 @@ export class TimelineScene {
             }
         }, 0);
         
-        masterTl.to({}, {
+        const lookAtPhase1 = { p: 0 };
+        masterTl.to(lookAtPhase1, {
+            p: 1,
             duration: 1.5,
             ease: "power2.inOut",
             onUpdate: () => {
-                const progress = masterTl.progress();
+                const progress = lookAtPhase1.p;
                 const currentTarget = new THREE.Vector3();
                 currentTarget.lerpVectors(this.originalCameraLookAt, transitionTarget, progress);
                 camera.lookAt(currentTarget);
@@ -566,11 +568,13 @@ export class TimelineScene {
         }, startTime);
         
         // Animate camera look-at target
-        masterTl.to({}, {
+        const lookAtPhase4 = { p: 0 };
+        masterTl.to(lookAtPhase4, {
+            p: 1,
             duration: 1.2,
             ease: "power2.inOut",
             onUpdate: () => {
-                const progress = masterTl.progress();
+                const progress = lookAtPhase4.p;
                 const currentTarget = new THREE.Vector3();
                 currentTarget.lerpVectors(new THREE.Vector3(0, 0, 0), targetTarget, progress);
                 camera.lookAt(currentTarget);
