@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { gsap } from 'gsap';
 import { SceneManager } from './scene/SceneManager.js';
 import { Lighting } from './scene/Lighting.js';
 import { ImagePlanes } from './scene/ImagePlanes.js';
@@ -84,6 +85,9 @@ export class App {
         this.mouseController = new MouseController(camera);
         this.timelineController = new TimelineController(camera, this.sceneManager, this.timelineScene, this.backgroundBlurEffect);
 
+        // Play a short intro dolly/arc before enabling interactions
+        this.playIntro();
+
         
         // Setup event listeners
         this.setupEventListeners();
@@ -95,6 +99,112 @@ export class App {
         setTimeout(() => {
             this.showScrollHint();
         }, 2000);
+    }
+    
+    playIntro() {
+        const camera = this.sceneManager.getCamera();
+        const controls = this.sceneManager.controls;
+        
+        // Create an input blocker overlay to swallow user input during the intro
+        const blocker = document.createElement('div');
+        blocker.style.position = 'fixed';
+        blocker.style.top = '0';
+        blocker.style.left = '0';
+        blocker.style.right = '0';
+        blocker.style.bottom = '0';
+        blocker.style.zIndex = '99999';
+        blocker.style.cursor = 'default';
+        blocker.style.backgroundColor = 'rgba(0, 0, 0, 0)';
+        // Wheel/touch/mouse listeners to prevent interactions
+        const swallow = (e) => { try { e.preventDefault(); } catch (_) {} e.stopPropagation(); };
+        blocker.addEventListener('wheel', swallow, { passive: false });
+        blocker.addEventListener('touchmove', swallow, { passive: false });
+        blocker.addEventListener('mousedown', swallow, true);
+        blocker.addEventListener('mousemove', swallow, true);
+        blocker.addEventListener('mouseup', swallow, true);
+        document.body.appendChild(blocker);
+        this._inputBlocker = blocker;
+        
+        // Disable orbit controls during the intro
+        if (controls) controls.enabled = false;
+        
+        // Subtle dolly-in with a small arc, then settle, to lead into the composition
+        const startY = camera.position.y;
+        const arcDriver = { t: 0 };
+        
+        const tl = gsap.timeline({
+            onComplete: () => {
+                // Final safety cleanup (in case fade already removed blocker)
+                if (this._inputBlocker) {
+                    this._inputBlocker.remove();
+                    this._inputBlocker = null;
+                }
+            }
+        });
+        
+        // Phase A: ease into a slightly closer, offset vantage (x/z only)
+        tl.to(camera.position, {
+            x: -0.25,
+            z: 4.6,
+            duration: 1.4,
+            ease: 'power2.inOut'
+        }, 0);
+        tl.to(camera, {
+            fov: 68,
+            duration: 1.4,
+            ease: 'power2.inOut',
+            onUpdate: () => camera.updateProjectionMatrix()
+        }, 0);
+        tl.to(arcDriver, {
+            t: 1,
+            duration: 1.4,
+            ease: 'sine.inOut',
+            onUpdate: () => {
+                const peak = 0.08; // arc height (reduced for smoothness)
+                const yOffset = peak * 4 * arcDriver.t * (1 - arcDriver.t);
+                const prev = camera.userData._introArcOffsetY || 0;
+                camera.position.y += (yOffset - prev);
+                camera.userData._introArcOffsetY = yOffset;
+            },
+            onComplete: () => {
+                // clear arc offset bookkeeping
+                const prev = camera.userData._introArcOffsetY || 0;
+                camera.position.y -= prev;
+                camera.userData._introArcOffsetY = 0;
+            }
+        }, 0);
+        
+        // Phase B: settle back to canonical starting pose
+        tl.to(camera.position, {
+            x: 0,
+            z: 5.0,
+            duration: 0.9,
+            ease: 'power2.out'
+        }, '>-0.05');
+        tl.to(camera, {
+            fov: 75,
+            duration: 0.9,
+            ease: 'power2.out',
+            onUpdate: () => camera.updateProjectionMatrix()
+        }, '<');
+
+        // Tiny 0.2s crossfade while re-enabling controls
+        tl.add(() => {
+            if (controls) controls.enabled = true;
+        }, '>-0.2');
+        tl.fromTo(blocker, {
+            backgroundColor: 'rgba(0,0,0,0.08)'
+        }, {
+            backgroundColor: 'rgba(0,0,0,0) ',
+            duration: 0.2,
+            ease: 'power1.out',
+            onComplete: () => {
+                if (this._inputBlocker) {
+                    this._inputBlocker.remove();
+                    this._inputBlocker = null;
+                }
+            }
+        }, '>-0.2');
     }
     
     setupEventListeners() {
@@ -347,19 +457,11 @@ export class App {
         
         if (this.liquidDistortionEffect.isActive) {
             this.liquidDistortionEffect.deactivate();
-            // Deactivate text distortion
-            if (this.titleOverlay) {
-                this.titleOverlay.deactivateDistortion();
-            }
             controls.toggleLiquidDistortionBtn.textContent = 'Enable Liquid Effect';
             controls.toggleLiquidDistortionBtn.style.background = '#00ff88';
             controls.toggleLiquidDistortionBtn.style.color = 'black';
         } else {
             this.liquidDistortionEffect.activate();
-            // Activate text distortion
-            if (this.titleOverlay) {
-                this.titleOverlay.activateDistortion();
-            }
             controls.toggleLiquidDistortionBtn.textContent = 'Disable Liquid Effect';
             controls.toggleLiquidDistortionBtn.style.background = '#ff6b6b';
             controls.toggleLiquidDistortionBtn.style.color = 'white';
