@@ -346,8 +346,9 @@ export class TimelineScene {
         console.log('TimelineScene: Original camera FOV:', this.originalCameraFov);
         
         // Calculate transition camera position (zoomed out to see all images)
-        const transitionPosition = new THREE.Vector3(0, 0, 12); // Further back to see all images
-        const transitionTarget = new THREE.Vector3(0, 0, 0); // Look at center
+        // Dolly/tracking: introduce leftward drift on X and slight lift on Y while dollying back
+        const transitionPosition = new THREE.Vector3(-1.5, 0.15, 12);
+        const transitionTarget = new THREE.Vector3(-1.5, 0, 0);
         const transitionFov = 45; // Wider FOV to see more of the scene
         
         console.log('TimelineScene: Transition camera position:', transitionPosition);
@@ -378,13 +379,14 @@ export class TimelineScene {
             }
         });
         
-        // Phase 1: Camera zoom out (0-1.5s)
+        // Phase 1: Camera zoom out with dolly/tracking drift on X (0-1.5s)
         masterTl.to(camera.position, {
             x: transitionPosition.x,
             y: transitionPosition.y,
             z: transitionPosition.z,
             duration: 1.5,
-            ease: "power2.inOut"
+            // Power1.inOut approximates constant-acceleration then deceleration (gravity-like)
+            ease: "power1.inOut"
         }, 0);
         
         masterTl.to(camera, {
@@ -400,7 +402,7 @@ export class TimelineScene {
         masterTl.to(lookAtPhase1, {
             p: 1,
             duration: 1.5,
-            ease: "power2.inOut",
+            ease: "power1.inOut",
             onUpdate: () => {
                 const progress = lookAtPhase1.p;
                 const currentTarget = new THREE.Vector3();
@@ -544,42 +546,87 @@ export class TimelineScene {
         
         // Target camera position for timeline view: align with the first image's x (-4)
         const targetPosition = new THREE.Vector3(-4, 0, 5);
+        // Slight arc on Y during approach to emulate handheld/dolly realism
+        const approachPeakY = 0.25;
         // Look straight ahead at the first image (x = -4)
         const targetTarget = new THREE.Vector3(-4, 0, 0);
         const targetFov = 30;
         
-        // Animate camera position
+        // Create an overshoot position for a gravity-like ease (falls past then settles)
+        const overshootPosition = new THREE.Vector3(-4.4, -0.08, 5.0);
+        
+        // Phase 4A: Accelerate toward an overshoot
         masterTl.to(camera.position, {
-            x: targetPosition.x,
-            y: targetPosition.y,
-            z: targetPosition.z,
-            duration: 1.2,
-            ease: "power2.inOut"
+            x: overshootPosition.x,
+            y: overshootPosition.y,
+            z: overshootPosition.z,
+            duration: 0.72,
+            ease: "power1.in"
         }, startTime);
         
-        // Animate camera FOV
+        // Phase 4A FOV change starts together
         masterTl.to(camera, {
             fov: targetFov,
-            duration: 1.2,
-            ease: "power2.inOut",
+            duration: 0.72,
+            ease: "power1.in",
             onUpdate: () => {
                 camera.updateProjectionMatrix();
             }
         }, startTime);
         
-        // Animate camera look-at target
-        const lookAtPhase4 = { p: 0 };
-        masterTl.to(lookAtPhase4, {
+        // Phase 4A look-at: track the first image slightly ahead of camera x
+        const lookAtPhase4A = { p: 0 };
+        masterTl.to(lookAtPhase4A, {
             p: 1,
-            duration: 1.2,
-            ease: "power2.inOut",
+            duration: 0.72,
+            ease: "power1.in",
             onUpdate: () => {
-                const progress = lookAtPhase4.p;
-                const currentTarget = new THREE.Vector3();
-                currentTarget.lerpVectors(new THREE.Vector3(0, 0, 0), targetTarget, progress);
+                const progress = lookAtPhase4A.p;
+                const startTarget = new THREE.Vector3(-1.5, 0, 0);
+                const currentTarget = new THREE.Vector3().lerpVectors(startTarget, targetTarget, progress);
                 camera.lookAt(currentTarget);
             }
         }, startTime);
+        
+        // Phase 4B: Settle back to the target with a spring-like ease
+        masterTl.to(camera.position, {
+            x: targetPosition.x,
+            y: targetPosition.y,
+            z: targetPosition.z,
+            duration: 0.48,
+            ease: "back.out(1.4)"
+        }, startTime + 0.72);
+        
+        // Subtle Y-arc overlay during the whole approach
+        const arcDriver = { t: 0 };
+        masterTl.to(arcDriver, {
+            t: 1,
+            duration: 1.2,
+            ease: "sine.inOut",
+            onUpdate: () => {
+                // Parabolic arc: yOffset = 4a t(1-t) with peak at t=0.5
+                const t = arcDriver.t;
+                const yOffset = approachPeakY * 4 * t * (1 - t);
+                camera.position.y += (yOffset - (camera.userData._lastArcOffsetY || 0));
+                camera.userData._lastArcOffsetY = yOffset;
+            },
+            onComplete: () => {
+                camera.userData._lastArcOffsetY = 0;
+            }
+        }, startTime);
+        
+        // Phase 4B look-at settles as well
+        const lookAtPhase4B = { p: 0 };
+        masterTl.to(lookAtPhase4B, {
+            p: 1,
+            duration: 0.48,
+            ease: "back.out(1.4)",
+            onUpdate: () => {
+                const progress = lookAtPhase4B.p;
+                const currentTarget = new THREE.Vector3().lerpVectors(new THREE.Vector3(-4.2, 0, 0), targetTarget, progress);
+                camera.lookAt(currentTarget);
+            }
+        }, startTime + 0.72);
     }
     
     getCameraTransitionState() {
