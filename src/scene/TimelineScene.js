@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { gsap } from 'gsap';
+import { createParticleFallMaterial } from '../effects/ParticleFallMaterial.js';
 
 export class TimelineScene {
     constructor(scene) {
@@ -375,9 +376,30 @@ export class TimelineScene {
                 this.ensureAdditionalImagesVisible();
                 this.cameraTransitionState = 'idle';
                 this.isImageLayoutTransitioning = false;
+                // Cleanup particle ticker and materials
+                if (this._onParticleTick) {
+                    gsap.ticker.remove(this._onParticleTick);
+                    this._onParticleTick = null;
+                }
+                if (this.activeParticleMaterials) {
+                    this.activeParticleMaterials.length = 0;
+                }
                 if (onComplete) onComplete();
             }
         });
+
+        // Setup particle time ticker for shader animation
+        this._particleStartTime = performance.now();
+        this.activeParticleMaterials = [];
+        this._onParticleTick = () => {
+            const t = (performance.now() - this._particleStartTime) / 1000;
+            this.activeParticleMaterials.forEach((mat) => {
+                if (mat && mat.uniforms && mat.uniforms.uTime) {
+                    mat.uniforms.uTime.value = t;
+                }
+            });
+        };
+        gsap.ticker.add(this._onParticleTick);
         
         // Phase 1: Camera zoom out with dolly/tracking drift on X (0-1.5s)
         masterTl.to(camera.position, {
@@ -446,6 +468,20 @@ export class TimelineScene {
                     image.userData.originalPosition = image.position.clone();
                     image.userData.originalScale = image.scale.clone();
                 }
+
+                // Swap in particle shader material during the fall
+                if (!image.userData._originalMaterial) {
+                    image.userData._originalMaterial = image.material;
+                    const particleMat = createParticleFallMaterial(image.material.map, {
+                        velocityMagnitude: 0.35,
+                        gravity: 0.7,
+                        opacity: 0.95,
+                        seed: index * 37.17,
+                    });
+                    image.material = particleMat;
+                    if (!this.activeParticleMaterials) this.activeParticleMaterials = [];
+                    this.activeParticleMaterials.push(particleMat);
+                }
                 
                 // Calculate individual start time with stagger
                 const imageStartTime = startTime + (index * 0.1);
@@ -476,6 +512,25 @@ export class TimelineScene {
                     duration: 1.2,
                     ease: "power2.out"
                 }, imageStartTime);
+
+                // Drive particle reveal/progress to settle as the image reaches target
+                if (image.material && image.material.uniforms && image.material.uniforms.uProgress) {
+                    masterTl.fromTo(image.material.uniforms.uProgress, {
+                        value: 0
+                    }, {
+                        value: 1,
+                        duration: 1.2,
+                        ease: "power2.out"
+                    }, imageStartTime);
+                }
+                
+                // Restore original material just after landing
+                masterTl.call(() => {
+                    if (image.userData && image.userData._originalMaterial) {
+                        image.material = image.userData._originalMaterial;
+                        delete image.userData._originalMaterial;
+                    }
+                }, [], imageStartTime + 1.25);
                 
                 // Mark this image as part of the timeline transition
                 image.userData.isTimelineTransitioned = true;
