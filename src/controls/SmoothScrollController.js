@@ -47,6 +47,11 @@ export class SmoothScrollController {
         // Prevent default scroll behavior
         event.preventDefault();
         
+        // Ignore wheel while user is dragging the timeline to avoid conflicts
+        if (this.timelineController && this.timelineController.isDragging) {
+            return;
+        }
+
         if (this.timelineController.isImageCurrentlyEnlarged()) {
             return;
         }
@@ -267,6 +272,17 @@ export class SmoothScrollController {
                                 planes.forEach((plane, index) => {
                                     const originalX = (index * 2) - 4;
                                     plane.position.x = originalX - this.timelineController.timelineOffset;
+                                });
+                            }
+
+                            // Update initial scene images during animation
+                            if (window.app && window.app.imagePlanes) {
+                                const initialImages = window.app.imagePlanes.getPlanes();
+                                initialImages.forEach((image, index) => {
+                                    if (image.userData.isTimelineTransitioned) {
+                                        const originalX = (index * 2) - 4;
+                                        image.position.x = originalX - this.timelineController.timelineOffset;
+                                    }
                                 });
                             }
                             

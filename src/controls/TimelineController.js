@@ -28,6 +28,29 @@ export class TimelineController {
         this.smoothScrollVelocity = 0;
         this.lastScrollTime = 0;
         this.momentumTimeout = null;
+
+        // Drag physics
+        this.dragSpeed = 0.006; // precise pixel->offset scale (reduced for finer control)
+        this.dragVelocity = 0; // offset delta per frame
+        this.dragLastTime = 0;
+        this.dragFriction = 0.9; // slight damping with a bit quicker settle
+        this.isMomentumActive = false;
+        this.momentumRaf = null;
+
+        // Track current snap index (0..9 where 0 corresponds to -4)
+        this.currentSnapIndex = 0;
+
+        // Wheel cooldown to prevent trackpad scroll interference during/after drag
+        this.dragWheelCooldownUntil = 0;
+
+        // Track accumulated offset moved during a drag (in offset units)
+        this.dragAccumulatedOffset = 0;
+        this.firstDragDirection = null;
+
+        // First-drag guard and bookkeeping
+        this.hasDraggedOnTimeline = false;
+        this.dragStartNearestIndex = null;
+        this.dragStartOffset = null;
         
         // Camera positions for different scenes
         this.sceneConfigs = [
@@ -524,6 +547,11 @@ export class TimelineController {
     
     onScroll(event) {
         if (this.isTransitioning) return;
+        // Ignore wheel while dragging timeline or shortly after drag end to avoid interference
+        if (this.currentSceneIndex === 1) {
+            if (this.isDragging) return;
+            if (Date.now() < this.dragWheelCooldownUntil) return;
+        }
         
         // Disable scrolling when an image is enlarged
         if (this.isImageEnlarged) {
@@ -560,10 +588,29 @@ export class TimelineController {
             this.dragStartX = event.clientX;
             this.dragStartY = event.clientY;
             this.lastDragX = event.clientX;
+            this.dragVelocity = 0;
+            this.dragLastTime = performance.now();
+            this.dragAccumulatedOffset = 0;
+            this.firstDragDirection = null;
             document.body.style.cursor = 'grabbing';
+            this.dragWheelCooldownUntil = Date.now() + 250;
+            // Clear any pending external snap timeouts to prevent race conditions
+            if (this.snapTimeout) {
+                clearTimeout(this.snapTimeout);
+                this.snapTimeout = null;
+            }
             
             // Haptic feedback for drag start
             this.triggerHapticFeedback('start');
+
+            // Stop any ongoing momentum
+            this.stopDragMomentum();
+
+            // Record nearest index at drag start for first-drag guard
+            if (this.currentSceneIndex === 1) {
+                this.dragStartOffset = this.timelineOffset ?? -4;
+                this.dragStartNearestIndex = this.getNearestSnapIndex(this.dragStartOffset);
+            }
         }
     }
     
@@ -581,8 +628,9 @@ export class TimelineController {
                 return;
             }
             
+            const now = performance.now();
             const deltaX = event.clientX - this.lastDragX;
-            const dragSpeed = 0.01;
+            const instOffsetDelta = deltaX * this.dragSpeed;
             
             // Keep camera at X=0 and maintain proper Y position for timeline view
             this.camera.position.x = 0;
@@ -598,7 +646,20 @@ export class TimelineController {
             this.lastDragX = event.clientX;
             
             // Move timeline images horizontally based on drag
-            this.moveTimelineImages(deltaX * dragSpeed);
+            this.moveTimelineImages(instOffsetDelta);
+            this.dragAccumulatedOffset += instOffsetDelta;
+
+            // Detect first-drag direction when starting from first image
+            if (!this.hasDraggedOnTimeline && this.dragStartNearestIndex === 0 && this.firstDragDirection === null) {
+                if (deltaX > 0) this.firstDragDirection = 'right';
+                else if (deltaX < 0) this.firstDragDirection = 'left';
+            }
+
+            // Update smoothed velocity for momentum
+            const dt = Math.max(now - this.dragLastTime, 1);
+            // Use exponential moving average for stability; velocity measured in offset units
+            this.dragVelocity = this.dragVelocity * 0.7 + instOffsetDelta * 0.3;
+            this.dragLastTime = now;
             
             // Ensure timeline images remain visible
             this.ensureTimelineImagesVisible();
@@ -616,14 +677,52 @@ export class TimelineController {
         if (this.isDragging) {
             this.isDragging = false;
             document.body.style.cursor = 'grab';
+            this.dragWheelCooldownUntil = Date.now() + 300;
             
             // Haptic feedback for drag end
             this.triggerHapticFeedback('end');
-            
-            // Snap to nearest image after dragging ends
-            setTimeout(() => {
-                this.snapToNearestImage();
-            }, 50);
+
+            // Intercept first rightward drag from first image: deterministically go to second image
+            if (!this.hasDraggedOnTimeline && this.dragStartNearestIndex === 0 && this.firstDragDirection === 'right') {
+                const targetOffset = -2; // center second image
+                this.stopDragMomentum();
+                gsap.to(this, {
+                    timelineOffset: targetOffset,
+                    duration: 0.6,
+                    ease: "power2.out",
+                    onUpdate: () => {
+                        // Update additional timeline images
+                        if (this.timelineScene && this.timelineScene.getTimelinePlanes) {
+                            const planes = this.timelineScene.getTimelinePlanes();
+                            planes.forEach((plane, index) => {
+                                const originalX = ((index + 5) * 2) - 4;
+                                plane.position.x = originalX - this.timelineOffset;
+                            });
+                        }
+                        // Update initial scene images
+                        if (window.app && window.app.imagePlanes) {
+                            const initialImages = window.app.imagePlanes.getPlanes();
+                            initialImages.forEach((image, index) => {
+                                if (image.userData.isTimelineTransitioned) {
+                                    const originalX = (index * 2) - 4;
+                                    image.position.x = originalX - this.timelineOffset;
+                                }
+                            });
+                        }
+                        this.updateCurrentYear();
+                        this.syncDebugPanel();
+                        this.updateCameraLookAtForOriginalX(targetOffset);
+                    },
+                    onComplete: () => {
+                        this.triggerHapticFeedback('snap');
+                        this.hasDraggedOnTimeline = true;
+                        this.currentSnapIndex = 1;
+                    }
+                });
+            } else {
+                // Start momentum deceleration with slight damping, then snap when it settles
+                this.startDragMomentum();
+            }
             
             // Add a small delay to prevent click event from firing after drag
             setTimeout(() => {
@@ -690,7 +789,7 @@ export class TimelineController {
     getCurrentYear() {
         // Calculate year based on timeline image positions
         // Since camera stays at X=0, we need to track timeline offset
-        if (!this.timelineOffset) this.timelineOffset = 0;
+        if (this.timelineOffset === undefined || this.timelineOffset === null) this.timelineOffset = -4;
         
         const yearRange = 2019 - 2010; // 9 years (2010-2019)
         const xRange = 18; // -4 to 14 (images are at -4, -2, 0, 2, 4, 6, 8, 10, 12, 14)
@@ -710,12 +809,28 @@ export class TimelineController {
         }
         
         // Track timeline offset for year calculation
-        if (!this.timelineOffset) this.timelineOffset = 0;
+        if (this.timelineOffset === undefined || this.timelineOffset === null) this.timelineOffset = 0;
         const previousOffset = this.timelineOffset;
         this.timelineOffset += deltaX;
         
         // Clamp timeline offset (new range: -4 to 14)
         this.timelineOffset = Math.max(-4, Math.min(14, this.timelineOffset));
+
+        // First-drag guard with unlock: when starting at the first image and dragging rightward,
+        // allow movement up to the center of the second image, and once the center is reached (>= -2),
+        // unlock continuous dragging so the user can continue to the third without releasing.
+        if (this.isDragging && !this.hasDraggedOnTimeline && this.dragStartNearestIndex === 0) {
+            if (this.timelineOffset >= -2) {
+                // Reached second image center; allow further movement in the same drag
+                this.hasDraggedOnTimeline = true;
+                this.currentSnapIndex = 1;
+            } else {
+                // Before reaching second, ensure we don't overshoot past it in the initial phase
+                if (this.timelineOffset > -2) {
+                    this.timelineOffset = -2;
+                }
+            }
+        }
         
         // Check if we hit a boundary and trigger haptic feedback
         if (this.timelineOffset === -4 && previousOffset > -4) {
@@ -779,7 +894,7 @@ export class TimelineController {
     }
     
     snapToNearestImage() {
-        if (!this.timelineOffset) return;
+        if (this.timelineOffset === undefined || this.timelineOffset === null) return;
         
         // Define snap positions (every 2 units, corresponding to image positions, starting at -4)
         const snapPositions = [-4, -2, 0, 2, 4, 6, 8, 10, 12, 14];
@@ -795,6 +910,11 @@ export class TimelineController {
                 nearestPosition = position;
             }
         });
+
+        // First-drag guard: if starting at first and moving rightward, restrict snap to second image
+        if (!this.hasDraggedOnTimeline && this.dragStartNearestIndex === 0 && this.timelineOffset > -4) {
+            nearestPosition = -2;
+        }
         
         // Only snap if we're not already at a snap position
         if (Math.abs(this.timelineOffset - nearestPosition) > 0.1) {
@@ -833,9 +953,124 @@ export class TimelineController {
                 onComplete: () => {
                     // Trigger haptic feedback when snapping completes
                     this.triggerHapticFeedback('snap');
+                    // Update current snap index bookkeeping
+                    const idx = this.getNearestSnapIndex(nearestPosition);
+                    this.currentSnapIndex = idx;
+                    this.hasDraggedOnTimeline = true;
                 }
             });
         }
+    }
+
+    // Momentum handling for drag release
+    startDragMomentum() {
+        if (this.isMomentumActive) this.stopDragMomentum();
+        this.isMomentumActive = true;
+        // Cap maximum projected additional travel to avoid skipping an image on release
+        const projectedDistance = Math.abs(this.dragVelocity) / Math.max(1e-4, (1 - this.dragFriction));
+        const maxAdditionalTravel = 1.2; // less than the 2.0 unit spacing
+        if (projectedDistance > maxAdditionalTravel) {
+            const scale = maxAdditionalTravel * (1 - this.dragFriction) / Math.max(Math.abs(this.dragVelocity), 1e-6);
+            this.dragVelocity *= scale;
+        }
+        const step = () => {
+            if (!this.isMomentumActive) return;
+            // Apply velocity
+            if (Math.abs(this.dragVelocity) > 0.0005) {
+                this.moveTimelineImages(this.dragVelocity);
+                this.dragVelocity *= this.dragFriction;
+                this.momentumRaf = requestAnimationFrame(step);
+            } else {
+                this.isMomentumActive = false;
+                this.dragVelocity = 0;
+                // After settling, perform a smooth snap
+                this.snapAfterDrag();
+            }
+        };
+        this.momentumRaf = requestAnimationFrame(step);
+    }
+
+    stopDragMomentum() {
+        this.isMomentumActive = false;
+        if (this.momentumRaf) {
+            cancelAnimationFrame(this.momentumRaf);
+            this.momentumRaf = null;
+        }
+    }
+
+    // Utility to compute nearest snap
+    getSnapPositions() {
+        return [-4, -2, 0, 2, 4, 6, 8, 10, 12, 14];
+    }
+
+    getNearestSnapIndex(offset) {
+        const snaps = this.getSnapPositions();
+        let bestIndex = 0;
+        let minDist = Infinity;
+        snaps.forEach((p, i) => {
+            const d = Math.abs(offset - p);
+            if (d < minDist) {
+                minDist = d;
+                bestIndex = i;
+            }
+        });
+        return bestIndex;
+    }
+
+    // Snap after a drag ends, with first-drag guard limiting to at most one step from start
+    snapAfterDrag() {
+        const snaps = this.getSnapPositions();
+        const targetIndexRaw = this.getNearestSnapIndex(this.timelineOffset);
+        let targetIndex = targetIndexRaw;
+
+        if (!this.hasDraggedOnTimeline && this.dragStartNearestIndex !== null) {
+            const deltaIdx = targetIndexRaw - this.dragStartNearestIndex;
+            if (Math.abs(deltaIdx) > 1) {
+                targetIndex = this.dragStartNearestIndex + Math.sign(deltaIdx);
+            }
+            // Hard guard for the very first interaction from the first image: tiny right-drag should land on second
+            if (this.dragStartNearestIndex === 0 && this.dragAccumulatedOffset > 0.02 && this.dragAccumulatedOffset < 1.2) {
+                targetIndex = 1;
+            }
+            this.hasDraggedOnTimeline = true;
+        }
+
+        const nearestPosition = snaps[targetIndex];
+        if (Math.abs(this.timelineOffset - nearestPosition) <= 0.1) {
+            return;
+        }
+
+        gsap.to(this, {
+            timelineOffset: nearestPosition,
+            duration: 0.8,
+            ease: "power2.out",
+            onUpdate: () => {
+                // Update additional timeline images
+                if (this.timelineScene && this.timelineScene.getTimelinePlanes) {
+                    const planes = this.timelineScene.getTimelinePlanes();
+                    planes.forEach((plane, index) => {
+                        const originalX = ((index + 5) * 2) - 4;
+                        plane.position.x = originalX - this.timelineOffset;
+                    });
+                }
+                // Update initial scene images
+                if (window.app && window.app.imagePlanes) {
+                    const initialImages = window.app.imagePlanes.getPlanes();
+                    initialImages.forEach((image, index) => {
+                        if (image.userData.isTimelineTransitioned) {
+                            const originalX = (index * 2) - 4;
+                            image.position.x = originalX - this.timelineOffset;
+                        }
+                    });
+                }
+                this.updateCurrentYear();
+                this.syncDebugPanel();
+                this.updateCameraLookAtForOriginalX(nearestPosition);
+            },
+            onComplete: () => {
+                this.triggerHapticFeedback('snap');
+            }
+        });
     }
     
     triggerHapticFeedback(type = 'drag') {
@@ -1183,6 +1418,13 @@ export class TimelineController {
         // Initialize timeline offset so the FIRST image (original X = -4) lands centered at X=0
         this.timelineOffset = -4;
         console.log('TimelineController: Set timeline offset to -4 (first image centered)');
+
+        // Reset first-drag guard state when entering the timeline
+        this.hasDraggedOnTimeline = false;
+        this.dragStartNearestIndex = null;
+        this.dragStartOffset = null;
+        this.stopDragMomentum();
+        this.currentSnapIndex = 0;
         
         // Mark transition as complete
         this.isTransitioning = false;
@@ -1329,7 +1571,7 @@ export class TimelineController {
         }
         
         // Initialize timeline offset if not set
-        if (!this.timelineOffset) this.timelineOffset = 0;
+        if (this.timelineOffset === undefined || this.timelineOffset === null) this.timelineOffset = 0;
         
         // Ensure we're not already at the target
         if (Math.abs(this.timelineOffset - targetOffset) < 0.1) {
@@ -1470,6 +1712,13 @@ export class TimelineController {
                 nearestPosition = position;
             }
         });
+
+        // First-drag guard: limit to at most one step from currentSnapIndex
+        if (!this.hasDraggedOnTimeline && this.currentSnapIndex !== null && this.currentSnapIndex !== undefined) {
+            const targetIndexRaw = this.getNearestSnapIndex(nearestPosition);
+            const clampedIndex = Math.max(this.currentSnapIndex - 1, Math.min(this.currentSnapIndex + 1, targetIndexRaw));
+            nearestPosition = snapPositions[clampedIndex];
+        }
         
         // Only snap if we're not already at a snap position
         if (Math.abs(this.timelineOffset - nearestPosition) > 0.1) {
@@ -1483,7 +1732,7 @@ export class TimelineController {
                     if (this.timelineScene && this.timelineScene.getTimelinePlanes) {
                         const planes = this.timelineScene.getTimelinePlanes();
                         planes.forEach((plane, index) => {
-                            const originalX = (index * 2) - 4;
+                            const originalX = ((index + 5) * 2) - 4;
                             plane.position.x = originalX - this.timelineOffset;
                         });
                     }
@@ -1498,6 +1747,7 @@ export class TimelineController {
                 onComplete: () => {
                     // Trigger haptic feedback when snapping completes
                     this.triggerHapticFeedback('snap');
+                    this.currentSnapIndex = this.getNearestSnapIndex(nearestPosition);
                 }
             });
         }
