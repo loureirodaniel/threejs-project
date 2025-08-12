@@ -30,12 +30,32 @@ export class TimelineController {
         this.momentumTimeout = null;
 
         // Drag physics
-        this.dragSpeed = 0.006; // precise pixel->offset scale (reduced for finer control)
+        this.dragSpeed = 0.008; // more responsive drag (less perceived friction)
         this.dragVelocity = 0; // offset delta per frame
         this.dragLastTime = 0;
-        this.dragFriction = 0.9; // slight damping with a bit quicker settle
+        this.dragFriction = 0.96; // gentler damping
         this.isMomentumActive = false;
         this.momentumRaf = null;
+
+        // Drag zoom behavior (temporary zoom-out while dragging the timeline)
+        this.dragZoomActive = false;
+        this.dragZoomFovDelta = 4; // degrees to widen FOV during drag
+        this.dragZoomDuration = 0.2; // seconds
+
+        // Camera look-at smoothing driver (world X the camera looks at during timeline)
+        this.lookAtX = 0;
+
+        // Timeline vignette (center emphasis) parameters
+        this.timelineVignetteStrength = 0.6; // 0..1 amount of dimming at edges
+        this.timelineVignetteWidth = 4.0;     // radius in world units for full brightness region
+
+        // Drag snap threshold (world units along offset) to advance to next image on release
+        // Images are spaced by 2.0 units; 0.5 means ~25% of the distance triggers the next snap
+        this.dragSnapThresholdUnits = 0.5;
+
+        // Quick-release thresholds: if releasing while moving fast/recently, do not snap
+        this.releaseNoSnapVelocityThreshold = 0.02; // offset units/frame-equivalent
+        this.releaseNoSnapRecentMs = 60; // if last movement was within 60ms, treat as quick
 
         // Track current snap index (0..9 where 0 corresponds to -4)
         this.currentSnapIndex = 0;
@@ -611,6 +631,9 @@ export class TimelineController {
                 this.dragStartOffset = this.timelineOffset ?? -4;
                 this.dragStartNearestIndex = this.getNearestSnapIndex(this.dragStartOffset);
             }
+
+            // Slightly zoom out while dragging for better context
+            this.startDragZoomOut();
         }
     }
     
@@ -630,24 +653,26 @@ export class TimelineController {
             
             const now = performance.now();
             const deltaX = event.clientX - this.lastDragX;
+            // Ignore micro-movements to prevent jitter
+            if (Math.abs(deltaX) < 0.5) {
+                return;
+            }
             const instOffsetDelta = deltaX * this.dragSpeed;
             
             // Keep camera at X=0 and maintain proper Y position for timeline view
             this.camera.position.x = 0;
             
-            // Maintain camera Y and Z position from timeline scene configuration
+            // Maintain camera Y position from timeline scene configuration; do not change Z or lookAt here
             const currentConfig = this.sceneConfigs[1]; // Timeline scene config
             this.camera.position.y = currentConfig.position.y;
-            this.camera.position.z = currentConfig.position.z;
-            
-            // Update camera target to stay at center where images are positioned
-            this.camera.lookAt(currentConfig.target);
             
             this.lastDragX = event.clientX;
             
             // Move timeline images horizontally based on drag
             this.moveTimelineImages(instOffsetDelta);
             this.dragAccumulatedOffset += instOffsetDelta;
+            // Update vignette after positions move
+            this.updateTimelineVignette();
 
             // Detect first-drag direction when starting from first image
             if (!this.hasDraggedOnTimeline && this.dragStartNearestIndex === 0 && this.firstDragDirection === null) {
@@ -661,8 +686,7 @@ export class TimelineController {
             this.dragVelocity = this.dragVelocity * 0.7 + instOffsetDelta * 0.3;
             this.dragLastTime = now;
             
-            // Ensure timeline images remain visible
-            this.ensureTimelineImagesVisible();
+            // Avoid heavy visibility checks every mousemove; handled on release or on-demand
             
             // Add haptic feedback during drag
             this.triggerHapticFeedback();
@@ -681,6 +705,9 @@ export class TimelineController {
             
             // Haptic feedback for drag end
             this.triggerHapticFeedback('end');
+
+            // Restore camera zoom after drag ends
+            this.endDragZoomOut();
 
             // Intercept first rightward drag from first image: deterministically go to second image
             if (!this.hasDraggedOnTimeline && this.dragStartNearestIndex === 0 && this.firstDragDirection === 'right') {
@@ -720,8 +747,21 @@ export class TimelineController {
                     }
                 });
             } else {
-                // Start momentum deceleration with slight damping, then snap when it settles
-                this.startDragMomentum();
+                // Stop any momentum
+                this.stopDragMomentum();
+                // If release is quick/recent, keep the exact position (no snap)
+                const isRecent = (performance.now() - this.dragLastTime) < this.releaseNoSnapRecentMs;
+                const isFast = Math.abs(this.dragVelocity) > this.releaseNoSnapVelocityThreshold;
+                if (isRecent || isFast) {
+                    // Commit current state without snapping
+                    this.hasDraggedOnTimeline = true;
+                    this.updateCurrentYear();
+                    this.syncDebugPanel();
+                    this.updateTimelineVignette();
+                } else {
+                    // Otherwise, snap to the nearest image
+                    this.snapAfterDrag();
+                }
             }
             
             // Add a small delay to prevent click event from firing after drag
@@ -729,6 +769,36 @@ export class TimelineController {
                 this.isDragging = false;
             }, 100);
         }
+    }
+
+    // Temporarily widen FOV during drag, then restore on release
+    startDragZoomOut() {
+        if (this.dragZoomActive) return;
+        this.dragZoomActive = true;
+        const timelineConfig = this.sceneConfigs[1];
+        const baseFov = timelineConfig ? timelineConfig.fov : this.camera.fov;
+        const targetFov = baseFov + this.dragZoomFovDelta;
+        gsap.killTweensOf(this.camera);
+        gsap.to(this.camera, {
+            fov: targetFov,
+            duration: this.dragZoomDuration,
+            ease: 'power2.out',
+            onUpdate: () => this.camera.updateProjectionMatrix()
+        });
+    }
+
+    endDragZoomOut() {
+        if (!this.dragZoomActive) return;
+        const timelineConfig = this.sceneConfigs[1];
+        const baseFov = timelineConfig ? timelineConfig.fov : 30;
+        gsap.killTweensOf(this.camera);
+        gsap.to(this.camera, {
+            fov: baseFov,
+            duration: this.dragZoomDuration,
+            ease: 'power2.out',
+            onUpdate: () => this.camera.updateProjectionMatrix(),
+            onComplete: () => { this.dragZoomActive = false; }
+        });
     }
     
     handleSmoothTimelineScroll(delta) {
@@ -740,19 +810,16 @@ export class TimelineController {
         // Keep camera at X=0 and maintain proper Y position for timeline view
         this.camera.position.x = 0;
         
-        // Maintain camera Y position from timeline scene configuration
+        // Maintain camera Y position from timeline scene configuration; do not change Z or lookAt here
         const currentConfig = this.sceneConfigs[1];
         this.camera.position.y = currentConfig.position.y;
-        this.camera.position.z = currentConfig.position.z;
-        
-        // Update camera target to stay at center where images are positioned
-        this.camera.lookAt(currentConfig.target);
         
         // Apply smooth scrolling with subtle friction
         this.applySmoothScroll(delta);
+        // Update vignette after scroll movement
+        this.updateTimelineVignette();
         
-        // Ensure timeline images remain visible
-        this.ensureTimelineImagesVisible();
+        // Avoid heavy visibility checks on wheel while scrolling; handled on-demand
         
         // Update the current year display
         this.updateCurrentYear();
@@ -816,21 +883,7 @@ export class TimelineController {
         // Clamp timeline offset (new range: -4 to 14)
         this.timelineOffset = Math.max(-4, Math.min(14, this.timelineOffset));
 
-        // First-drag guard with unlock: when starting at the first image and dragging rightward,
-        // allow movement up to the center of the second image, and once the center is reached (>= -2),
-        // unlock continuous dragging so the user can continue to the third without releasing.
-        if (this.isDragging && !this.hasDraggedOnTimeline && this.dragStartNearestIndex === 0) {
-            if (this.timelineOffset >= -2) {
-                // Reached second image center; allow further movement in the same drag
-                this.hasDraggedOnTimeline = true;
-                this.currentSnapIndex = 1;
-            } else {
-                // Before reaching second, ensure we don't overshoot past it in the initial phase
-                if (this.timelineOffset > -2) {
-                    this.timelineOffset = -2;
-                }
-            }
-        }
+        // Remove in-drag clamping to prevent oscillation between -4 and -2
         
         // Check if we hit a boundary and trigger haptic feedback
         if (this.timelineOffset === -4 && previousOffset > -4) {
@@ -870,27 +923,74 @@ export class TimelineController {
         }
 
         // Smoothly pan camera look-at toward the nearest image based on current offset
-        // Find nearest original image X from the combined list [-4,-2,0,2,4,6,8,10,12,14]
+        // Use a single driver value to avoid stacking tweens and jitter
         const snapPositions = [-4, -2, 0, 2, 4, 6, 8, 10, 12, 14];
         let nearestX = snapPositions[0];
         let minDist = Infinity;
-        snapPositions.forEach((x) => {
-            const dist = Math.abs((x) - this.timelineOffset);
+        for (const x of snapPositions) {
+            const dist = Math.abs(x - this.timelineOffset);
             if (dist < minDist) {
                 minDist = dist;
                 nearestX = x;
             }
-        });
-        // Tween the camera look-at toward that image smoothly
+        }
         const timelineConfig = this.sceneConfigs[1];
         const targetY = timelineConfig ? timelineConfig.target.y : 0;
-        const worldX = nearestX - this.timelineOffset;
-        gsap.to({}, {
+        const targetLookAtX = nearestX - this.timelineOffset;
+        gsap.killTweensOf(this, { lookAtX: true });
+        gsap.to(this, {
+            lookAtX: targetLookAtX,
             duration: 0.2,
+            ease: 'power2.out',
             onUpdate: () => {
-                this.camera.lookAt(new THREE.Vector3(worldX, targetY, 0));
+                this.camera.lookAt(new THREE.Vector3(this.lookAtX, targetY, 0));
             }
         });
+    }
+
+    // Dim side images based on distance from viewport center
+    updateTimelineVignette() {
+        const strength = this.timelineVignetteStrength; // max dim at far edges
+        const width = Math.max(0.1, this.timelineVignetteWidth);
+        const invWidth = 1 / width;
+
+        const applyOpacityFalloff = (object, worldX) => {
+            // Distance from center line x=0 in world space
+            const dist = Math.abs(worldX);
+            // Smoothstep-like falloff: 0 at center, approaching 1 at distance >= width
+            let t = Math.min(1, dist * invWidth);
+            // Ease curve for smoother center weighting
+            t = t * t * (3 - 2 * t);
+            const dim = strength * t;
+            const base = 0.9; // base opacity used across app
+            const targetOpacity = Math.max(0.15, base * (1 - dim));
+            if (object.material && typeof object.material.opacity === 'number') {
+                object.material.opacity = targetOpacity;
+            }
+        };
+
+        // Additional timeline planes (2015-2019)
+        if (this.timelineScene && this.timelineScene.getTimelinePlanes) {
+            const planes = this.timelineScene.getTimelinePlanes();
+            planes.forEach((plane, index) => {
+                const originalX = ((index + 5) * 2) - 4; // 6..14
+                const worldX = originalX - (this.timelineOffset ?? -4);
+                // Skip if currently enlarged
+                if (!plane.userData.isEnlarged) applyOpacityFalloff(plane, worldX);
+            });
+        }
+
+        // Initial scene images that are part of the timeline (2010-2014)
+        if (window.app && window.app.imagePlanes) {
+            const initialImages = window.app.imagePlanes.getPlanes();
+            initialImages.forEach((image, index) => {
+                if (image.userData.isTimelineTransitioned) {
+                    const originalX = (index * 2) - 4; // -4..4
+                    const worldX = originalX - (this.timelineOffset ?? -4);
+                    if (!image.userData.isEnlarged) applyOpacityFalloff(image, worldX);
+                }
+            });
+        }
     }
     
     snapToNearestImage() {
@@ -1023,16 +1123,25 @@ export class TimelineController {
         const targetIndexRaw = this.getNearestSnapIndex(this.timelineOffset);
         let targetIndex = targetIndexRaw;
 
-        if (!this.hasDraggedOnTimeline && this.dragStartNearestIndex !== null) {
-            const deltaIdx = targetIndexRaw - this.dragStartNearestIndex;
-            if (Math.abs(deltaIdx) > 1) {
-                targetIndex = this.dragStartNearestIndex + Math.sign(deltaIdx);
+        // Directional threshold: advance to the next/prev image with smaller drag distance
+        if (this.dragStartNearestIndex !== null) {
+            const startPos = snaps[this.dragStartNearestIndex];
+            const delta = this.timelineOffset - startPos; // >0 means rightward
+            const threshold = this.dragSnapThresholdUnits;
+            if (delta >= threshold) {
+                targetIndex = Math.min(this.dragStartNearestIndex + 1, snaps.length - 1);
+            } else if (delta <= -threshold) {
+                targetIndex = Math.max(this.dragStartNearestIndex - 1, 0);
+            } else {
+                targetIndex = targetIndexRaw;
             }
-            // Hard guard for the very first interaction from the first image: tiny right-drag should land on second
-            if (this.dragStartNearestIndex === 0 && this.dragAccumulatedOffset > 0.02 && this.dragAccumulatedOffset < 1.2) {
-                targetIndex = 1;
+
+            // First-drag guard: limit large jumps to one step
+            if (!this.hasDraggedOnTimeline) {
+                const clamped = Math.max(this.dragStartNearestIndex - 1, Math.min(this.dragStartNearestIndex + 1, targetIndex));
+                targetIndex = clamped;
+                this.hasDraggedOnTimeline = true;
             }
-            this.hasDraggedOnTimeline = true;
         }
 
         const nearestPosition = snaps[targetIndex];
@@ -1443,6 +1552,8 @@ export class TimelineController {
         // This ensures we land with the first image centered when entering the timeline
         this.moveTimelineImages(0);
         this.updateCameraLookAtForOriginalX(-4);
+        // Ensure vignette is visible immediately when landing on first image
+        this.updateTimelineVignette();
         this.updateCurrentYear();
         this.syncDebugPanel();
     }

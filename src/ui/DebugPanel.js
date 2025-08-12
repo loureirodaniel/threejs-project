@@ -58,7 +58,7 @@ export class DebugPanel {
                 </div>
             </div>
             
-            <!-- Spotlight Effect Section -->
+             <!-- Spotlight Effect Section -->
             <div class="debug-section" style="margin-bottom: 15px;">
                 <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; padding: 8px 0; border-bottom: 1px solid #333;">
                     <h4 style="margin: 0; color: #00ff88;">Spotlight Effect</h4>
@@ -75,6 +75,16 @@ export class DebugPanel {
                     <div style="margin-bottom: 10px;">
                         <label style="display: block; margin-bottom: 5px;">Vignette Opacity: <span id="vignetteOpacity">1.0</span></label>
                         <input type="range" id="vignetteSlider" min="0.5" max="1.0" step="0.1" value="1.0" style="width: 100%;">
+                    </div>
+                    
+                    <!-- Timeline Vignette Controls -->
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Timeline Vignette Strength: <span id="timelineVignetteStrengthDisplay">0.60</span></label>
+                        <input type="range" id="timelineVignetteStrengthSlider" min="0" max="1" step="0.01" value="0.60" style="width: 100%;">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Timeline Vignette Width: <span id="timelineVignetteWidthDisplay">4.0</span></label>
+                        <input type="range" id="timelineVignetteWidthSlider" min="1" max="10" step="0.1" value="4.0" style="width: 100%;">
                     </div>
                     
                     <div style="margin-bottom: 10px;">
@@ -250,6 +260,11 @@ export class DebugPanel {
 
         this.controls.vignetteOpacityDisplay = document.getElementById('vignetteOpacity');
         this.controls.gridOpacityDisplay = document.getElementById('gridOpacity');
+        // Timeline vignette controls
+        this.controls.timelineVignetteStrengthSlider = document.getElementById('timelineVignetteStrengthSlider');
+        this.controls.timelineVignetteWidthSlider = document.getElementById('timelineVignetteWidthSlider');
+        this.controls.timelineVignetteStrengthDisplay = document.getElementById('timelineVignetteStrengthDisplay');
+        this.controls.timelineVignetteWidthDisplay = document.getElementById('timelineVignetteWidthDisplay');
         
         // Timeline camera controls
         this.controls.cameraXSlider = document.getElementById('cameraXSlider');

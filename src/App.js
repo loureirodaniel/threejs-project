@@ -233,14 +233,21 @@ export class App {
             this.updateSpotlightEffect();
         });
         
-
-        
+        // Vignette and grid opacity
         controls.vignetteSlider.addEventListener('input', () => {
             this.updateSpotlightEffect();
         });
         
         controls.gridSlider.addEventListener('input', () => {
             this.updateSpotlightEffect();
+        });
+
+        // Timeline vignette controls
+        controls.timelineVignetteStrengthSlider.addEventListener('input', () => {
+            this.updateTimelineVignetteControls();
+        });
+        controls.timelineVignetteWidthSlider.addEventListener('input', () => {
+            this.updateTimelineVignetteControls();
         });
         
         // Timeline scene transition events
@@ -406,6 +413,19 @@ export class App {
         this.spotlightEffect.updateSpotlight(radius, vignetteOpacity);
         this.vignetteEffect.setOpacity(vignetteOpacity);
         this.gridEffect.setOpacity(gridOpacity);
+    }
+
+    updateTimelineVignetteControls() {
+        const controls = this.debugPanel.getControls();
+        const strength = parseFloat(controls.timelineVignetteStrengthSlider.value);
+        const width = parseFloat(controls.timelineVignetteWidthSlider.value);
+        controls.timelineVignetteStrengthDisplay.textContent = strength.toFixed(2);
+        controls.timelineVignetteWidthDisplay.textContent = width.toFixed(1);
+        if (this.timelineController) {
+            this.timelineController.timelineVignetteStrength = Math.max(0, Math.min(1, strength));
+            this.timelineController.timelineVignetteWidth = Math.max(0.1, width);
+            this.timelineController.updateTimelineVignette();
+        }
     }
     
     updateBackgroundBlur() {

@@ -617,6 +617,15 @@ export class TimelineScene {
                 camera.userData._lastArcOffsetY = 0;
             }
         }, startTime);
+
+        // Immediately after the zoom-in lands, apply timeline vignette so it appears as soon as we reach the first image
+        masterTl.call(() => {
+            if (window.app && window.app.timelineController && typeof window.app.timelineController.updateTimelineVignette === 'function') {
+                try {
+                    window.app.timelineController.updateTimelineVignette();
+                } catch (_) {}
+            }
+        }, [], startTime + approachDuration + 0.01);
     }
     
     getCameraTransitionState() {
