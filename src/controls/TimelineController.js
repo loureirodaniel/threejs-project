@@ -53,6 +53,9 @@ export class TimelineController {
         // Images are spaced by 2.0 units; 0.5 means ~25% of the distance triggers the next snap
         this.dragSnapThresholdUnits = 0.5;
 
+        // Liquid effect should only show after actual drag movement begins
+        this.liquidDragStarted = false;
+
         // Quick-release thresholds: if releasing while moving fast/recently, do not snap
         this.releaseNoSnapVelocityThreshold = 0.02; // offset units/frame-equivalent
         this.releaseNoSnapRecentMs = 60; // if last movement was within 60ms, treat as quick
@@ -269,15 +272,15 @@ export class TimelineController {
             material: plane.material.clone()
         };
         
-        // Calculate 70% of viewport size
+        // Calculate 100% of viewport size for fullscreen effect
         const viewportHeight = 2 * Math.tan((this.camera.fov * Math.PI / 180) / 2) * Math.abs(this.camera.position.z);
         const viewportWidth = viewportHeight * this.camera.aspect;
         
-        const targetWidth = viewportWidth * 0.7;
-        const targetHeight = viewportHeight * 0.7;
+        const targetWidth = viewportWidth * 1.0;
+        const targetHeight = viewportHeight * 1.0;
         
         console.log('Viewport dimensions:', { viewportWidth, viewportHeight });
-        console.log('Target dimensions:', { targetWidth, targetHeight });
+        console.log('Target dimensions (100% viewport):', { targetWidth, targetHeight });
         
         // Calculate scale factor based on original plane size
         const originalWidth = 1.5; // Original plane width
@@ -287,19 +290,23 @@ export class TimelineController {
         const scaleY = targetHeight / originalHeight;
         const scale = Math.min(scaleX, scaleY); // Use the smaller scale to maintain aspect ratio
         
-        // Animate to center and scale up
-        const targetPosition = new THREE.Vector3(0, 0, 0);
+        // Animate to center and scale up - position at camera's look-at point for perfect centering
+        const cameraDirection = new THREE.Vector3();
+        this.camera.getWorldDirection(cameraDirection);
+        const targetPosition = new THREE.Vector3()
+            .copy(this.camera.position)
+            .add(cameraDirection.multiplyScalar(Math.abs(this.camera.position.z) * 0.9)); // Position slightly in front of camera
         
         // Mark this plane as enlarged to disable floating animation
         plane.userData.isEnlarged = true;
         
-        // Activate background blur effect immediately
-        if (this.backgroundBlurEffect) {
-            console.log('TimelineController: Activating background blur immediately');
-            this.backgroundBlurEffect.activate();
-        } else {
-            console.log('TimelineController: No background blur effect available');
-        }
+        // Background blur effect is disabled for fullscreen images
+        // if (this.backgroundBlurEffect) {
+        //     console.log('TimelineController: Activating background blur immediately');
+        //     this.backgroundBlurEffect.activate();
+        // } else {
+        //     console.log('TimelineController: No background blur effect available');
+        // }
         
         // Kill any existing animations on this plane to prevent conflicts
         gsap.killTweensOf(plane.position);
@@ -313,7 +320,7 @@ export class TimelineController {
         tl.to(plane.position, {
             x: targetPosition.x,
             y: targetPosition.y,
-            z: 2, // Move to front, above blur overlay
+            z: targetPosition.z, // Position at calculated point in front of camera
             duration: 0.6,
             ease: "power2.out"
         }, 0);
@@ -374,11 +381,11 @@ export class TimelineController {
         const plane = this.enlargedImage;
         const originalState = this.originalImageState;
         
-        // Deactivate background blur effect immediately
-        if (this.backgroundBlurEffect) {
-            console.log('TimelineController: Deactivating background blur immediately');
-            this.backgroundBlurEffect.fadeOutBlur();
-        }
+        // Background blur effect is disabled for fullscreen images
+        // if (this.backgroundBlurEffect) {
+        //     console.log('TimelineController: Deactivating background blur immediately');
+        //     this.backgroundBlurEffect.fadeOutBlur();
+        // }
         
         // Kill any existing animations on this plane to prevent conflicts
         gsap.killTweensOf(plane.position);
@@ -634,6 +641,16 @@ export class TimelineController {
 
             // Slightly zoom out while dragging for better context
             this.startDragZoomOut();
+
+            // Prepare liquid effect but do NOT show on mouse-down
+            this.liquidDragStarted = false;
+            if (window.app && window.app.liquidDistortionEffect) {
+                const eff = window.app.liquidDistortionEffect;
+                eff.setControlMode('external');
+                eff.setExcludeRect(0.45, 0.45, 0.55, 0.55);
+                eff.setSideMask(0);
+                eff.setApplyRect(0.0, 0.0, 0.0, 0.0);
+            }
         }
     }
     
@@ -685,6 +702,55 @@ export class TimelineController {
             // Use exponential moving average for stability; velocity measured in offset units
             this.dragVelocity = this.dragVelocity * 0.7 + instOffsetDelta * 0.3;
             this.dragLastTime = now;
+            
+            // Drive liquid effect velocity based on drag direction and magnitude
+            if (window.app && window.app.liquidDistortionEffect) {
+                // Map world center (x=0, y=targetY) to NDC/UV roughly at screen center
+                const uvX = 0.5;
+                const uvY = 0.5;
+                // Horizontal velocity influences shader swirl: sign mirrors drag direction
+                const velX = -instOffsetDelta * 2.5; // scale for visible effect
+                const velY = 0;
+                // Activate effect only after actual movement starts
+                if (!this.liquidDragStarted) {
+                    // Small threshold to avoid showing on micro-movements
+                    if (Math.abs(deltaX) >= 0.5) {
+                        if (!window.app.liquidDistortionEffect.isActive) {
+                            window.app.liquidDistortionEffect.activate();
+                        }
+                        this.liquidDragStarted = true;
+                        window.app.liquidDistortionEffect.fadeInEffect(0.6);
+                    } else {
+                        // Still not dragging enough; keep effect hidden
+                        window.app.liquidDistortionEffect.setApplyRect(0.0, 0.0, 0.0, 0.0);
+                        return;
+                    }
+                }
+                // Force directional-only mode for precise pull
+                window.app.liquidDistortionEffect.setDirectionalOnly(true);
+                window.app.liquidDistortionEffect.setExternalCenterAndVelocity(uvX, uvY, velX, velY);
+                // Apply only to the side opposite the center depending on drag direction
+                const side = instOffsetDelta > 0 ? -1 : (instOffsetDelta < 0 ? 1 : 0);
+                window.app.liquidDistortionEffect.setSideMask(side);
+
+                // Limit effect to the neighbor image rect in UV space
+                // Use approximate UV bounds for left/right thirds of the screen to keep it subtle and precise
+                if (side === -1) {
+                    // Dragging rightwards -> effect on left side image
+                    window.app.liquidDistortionEffect.setApplyRect(0.0, 0.2, 0.45, 0.8);
+                } else if (side === 1) {
+                    // Dragging leftwards -> effect on right side image
+                    window.app.liquidDistortionEffect.setApplyRect(0.55, 0.2, 1.0, 0.8);
+                } else {
+                    // No movement
+                    window.app.liquidDistortionEffect.setApplyRect(0.0, 0.0, 0.0, 0.0);
+                }
+                // Keep the exclude rect tight to center so focused image never distorts
+                window.app.liquidDistortionEffect.setExcludeRect(0.48, 0.40, 0.52, 0.60);
+                // Increase/decrease effect organically based on instantaneous speed
+                const speedMag = Math.min(1.0, Math.abs(instOffsetDelta) * 120.0);
+                window.app.liquidDistortionEffect.fadeInEffect(0.4 + 0.4 * speedMag);
+            }
             
             // Avoid heavy visibility checks every mousemove; handled on release or on-demand
             
@@ -768,6 +834,18 @@ export class TimelineController {
             setTimeout(() => {
                 this.isDragging = false;
             }, 100);
+
+            // Turn off liquid effect immediately after release
+            if (window.app && window.app.liquidDistortionEffect) {
+                // Smoothly fade out and then deactivate when fully faded
+                window.app.liquidDistortionEffect.fadeOutEffect();
+                setTimeout(() => {
+                    if (window.app && window.app.liquidDistortionEffect) {
+                        window.app.liquidDistortionEffect.deactivate();
+                    }
+                }, 120); // short fade window
+                this.liquidDragStarted = false;
+            }
         }
     }
 

@@ -15,6 +15,11 @@ export class LiquidDistortionEffect {
         this.mouseVelocity = new THREE.Vector2(0, 0);
         this.lastMousePosition = new THREE.Vector2(0, 0);
         this.time = 0;
+        this.controlMode = 'mouse'; // 'mouse' | 'external'
+        this.externalMouse = new THREE.Vector2(0.5, 0.5);
+        this.externalVelocity = new THREE.Vector2(0, 0);
+        this.currentEffectAmount = 0.0;
+        this.targetEffectAmount = 0.0;
         
         // Effect parameters
         this.distortionStrength = 0.02;
@@ -73,6 +78,13 @@ export class LiquidDistortionEffect {
             uniform float uNoiseScale;
             uniform float uNoiseStrength;
             uniform vec2 uResolution;
+            uniform vec2 uExcludeMin;
+            uniform vec2 uExcludeMax;
+            uniform float uSide; // -1.0 left, 1.0 right, 0.0 both
+            uniform vec2 uApplyMin;
+            uniform vec2 uApplyMax;
+            uniform float uDirectionalOnly; // 1.0 -> ignore ripple/noise, use velocity-only pull
+            uniform float uEffectAmount; // 0..1 overall intensity, smoothed on CPU
             
             varying vec2 vUv;
             
@@ -118,23 +130,40 @@ export class LiquidDistortionEffect {
                 // Calculate distance from current pixel to mouse position
                 float distance = length(uv - mouse);
                 
-                // Create ripple effect
-                float ripple = sin(distance * uRippleScale - uTime * uRippleSpeed) * exp(-distance / uFalloffDistance);
-                
-                // Create swirling effect based on mouse velocity
-                vec2 swirl = vec2(
-                    -mouseVelocity.y * 0.1,
-                    mouseVelocity.x * 0.1
-                ) * exp(-distance / uFalloffDistance);
-                
-                // Add noise for organic distortion
+                // Directional pull based on velocity (normalized direction)
+                vec2 dir = normalize(mouseVelocity + vec2(1e-6, 0.0));
+                float strengthProfile = exp(-distance / uFalloffDistance);
+                vec2 directionalPull = dir * uDistortionStrength * strengthProfile;
+
+                // Optional ripple/noise for organic feel
+                float ripple = sin(distance * uRippleScale - uTime * uRippleSpeed) * strengthProfile;
+                vec2 swirl = vec2(-mouseVelocity.y, mouseVelocity.x) * 0.1 * strengthProfile;
                 vec2 noiseOffset = vec2(
                     fractalNoise(uv * uNoiseScale + uTime * 0.5) - 0.5,
                     fractalNoise(uv * uNoiseScale + uTime * 0.3 + 100.0) - 0.5
                 ) * uNoiseStrength;
-                
-                // Combine all distortion effects
-                vec2 distortion = (ripple * uDistortionStrength + swirl + noiseOffset) * exp(-distance / uFalloffDistance);
+
+                vec2 distortion = mix(directionalPull + swirl + noiseOffset,
+                                       directionalPull,
+                                       clamp(uDirectionalOnly, 0.0, 1.0));
+
+                // Exclude rectangle (focused image) from distortion
+                float inRect = step(uExcludeMin.x, uv.x) * step(uv.x, uExcludeMax.x) * step(uExcludeMin.y, uv.y) * step(uv.y, uExcludeMax.y);
+                float rectMask = 1.0 - inRect;
+
+                // Side mask: only apply on one side depending on drag direction if requested
+                float sideMask = 1.0;
+                if (uSide > 0.5) {
+                    // Right side only
+                    sideMask = step(0.5, uv.x);
+                } else if (uSide < -0.5) {
+                    // Left side only
+                    sideMask = step(uv.x, 0.5);
+                }
+                // Apply rectangle to limit distortion to a specific image
+                float inApply = step(uApplyMin.x, uv.x) * step(uv.x, uApplyMax.x) * step(uApplyMin.y, uv.y) * step(uv.y, uApplyMax.y);
+                float finalMask = rectMask * sideMask * inApply;
+                distortion *= finalMask * clamp(uEffectAmount, 0.0, 1.0);
                 
                 // Apply distortion to UV coordinates
                 vec2 distortedUv = uv + distortion;
@@ -163,7 +192,14 @@ export class LiquidDistortionEffect {
                 uFalloffDistance: { value: this.falloffDistance },
                 uNoiseScale: { value: this.noiseScale },
                 uNoiseStrength: { value: this.noiseStrength },
-                uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+                uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                uExcludeMin: { value: new THREE.Vector2(0.45, 0.45) },
+                uExcludeMax: { value: new THREE.Vector2(0.55, 0.55) },
+                uSide: { value: 0.0 },
+                uApplyMin: { value: new THREE.Vector2(0.0, 0.0) },
+                uApplyMax: { value: new THREE.Vector2(1.0, 1.0) },
+                uDirectionalOnly: { value: 0.0 },
+                uEffectAmount: { value: 0.0 }
             },
             vertexShader: vertexShader,
             fragmentShader: fragmentShader
@@ -215,13 +251,27 @@ export class LiquidDistortionEffect {
         
         this.time += deltaTime;
         
+        // Smooth effect amount toward target for organic fade in/out
+        const lerpSpeed = 8.0; // higher is faster response
+        this.currentEffectAmount += (this.targetEffectAmount - this.currentEffectAmount) * Math.min(1, lerpSpeed * deltaTime);
+        if (Math.abs(this.currentEffectAmount - this.targetEffectAmount) < 0.001) {
+            this.currentEffectAmount = this.targetEffectAmount;
+        }
+        this.liquidPass.uniforms.uEffectAmount.value = this.currentEffectAmount;
+
         // Update shader uniforms
-        this.liquidPass.uniforms.uMouse.value.copy(this.mousePosition);
-        this.liquidPass.uniforms.uMouseVelocity.value.copy(this.mouseVelocity);
+        if (this.controlMode === 'mouse') {
+            this.liquidPass.uniforms.uMouse.value.copy(this.mousePosition);
+            this.liquidPass.uniforms.uMouseVelocity.value.copy(this.mouseVelocity);
+            // Decay mouse velocity for smooth effect
+            this.mouseVelocity.multiplyScalar(0.95);
+        } else {
+            this.liquidPass.uniforms.uMouse.value.copy(this.externalMouse);
+            this.liquidPass.uniforms.uMouseVelocity.value.copy(this.externalVelocity);
+            // Decay external velocity to smoothly fade effect
+            this.externalVelocity.multiplyScalar(0.92);
+        }
         this.liquidPass.uniforms.uTime.value = this.time;
-        
-        // Decay mouse velocity for smooth effect
-        this.mouseVelocity.multiplyScalar(0.95);
     }
     
     render() {
@@ -242,6 +292,54 @@ export class LiquidDistortionEffect {
     deactivate() {
         this.isActive = false;
         console.log('LiquidDistortionEffect: Deactivated');
+    }
+    
+    // External control API for timeline drag
+    setControlMode(mode) {
+        this.controlMode = mode === 'external' ? 'external' : 'mouse';
+    }
+    
+    setExternalCenterAndVelocity(uvX, uvY, velX, velY) {
+        this.externalMouse.set(uvX, uvY);
+        this.externalVelocity.set(velX, velY);
+        // Scale target effect based on velocity magnitude for organic response
+        const velMag = Math.min(1.0, Math.hypot(velX, velY) * 4.0);
+        this.targetEffectAmount = Math.max(this.targetEffectAmount, velMag);
+    }
+
+    setExcludeRect(minUvX, minUvY, maxUvX, maxUvY) {
+        if (this.liquidPass) {
+            this.liquidPass.uniforms.uExcludeMin.value.set(minUvX, minUvY);
+            this.liquidPass.uniforms.uExcludeMax.value.set(maxUvX, maxUvY);
+        }
+    }
+
+    setSideMask(side) {
+        // side: -1 left, 1 right, 0 both
+        if (this.liquidPass) {
+            this.liquidPass.uniforms.uSide.value = Math.max(-1, Math.min(1, side));
+        }
+    }
+
+    setApplyRect(minUvX, minUvY, maxUvX, maxUvY) {
+        if (this.liquidPass) {
+            this.liquidPass.uniforms.uApplyMin.value.set(minUvX, minUvY);
+            this.liquidPass.uniforms.uApplyMax.value.set(maxUvX, maxUvY);
+        }
+    }
+    
+    setDirectionalOnly(enabled) {
+        if (this.liquidPass) {
+            this.liquidPass.uniforms.uDirectionalOnly.value = enabled ? 1.0 : 0.0;
+        }
+    }
+
+    fadeInEffect(amount = 1.0) {
+        this.targetEffectAmount = Math.max(this.targetEffectAmount, Math.min(1.0, amount));
+    }
+    
+    fadeOutEffect() {
+        this.targetEffectAmount = 0.0;
     }
     
     // Parameter controls
