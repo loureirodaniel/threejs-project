@@ -30,12 +30,16 @@ export class TimelineController {
         this.momentumTimeout = null;
 
         // Drag physics
-        this.dragSpeed = 0.008; // more responsive drag (less perceived friction)
+        this.dragSpeed = 0.008; // base drag speed
         this.dragVelocity = 0; // offset delta per frame
         this.dragLastTime = 0;
         this.dragFriction = 0.96; // gentler damping
         this.isMomentumActive = false;
         this.momentumRaf = null;
+        
+        // Enhanced drag scaling for full timeline traversal
+        this.timelineWidth = 13.5; // Total timeline width (-5.25 to 8.25)
+        this.viewportDragScale = 1.0; // Scale factor for viewport-based dragging
 
         // Drag zoom behavior (temporary zoom-out while dragging the timeline)
         this.dragZoomActive = false;
@@ -95,6 +99,9 @@ export class TimelineController {
     }
     
     init() {
+        // Initialize dynamic drag scaling
+        this.updateDragScale();
+        
         // Disable default scroll behavior
         document.body.style.overflow = 'hidden';
         
@@ -116,6 +123,9 @@ export class TimelineController {
         
         // Add escape key to close enlarged image
         window.addEventListener('keydown', this.onKeyDown.bind(this));
+        
+        // Add resize listener to update drag scaling
+        window.addEventListener('resize', this.updateDragScale.bind(this));
         
         // Initialize smooth scrolling
         this.initSmoothScrolling();
@@ -674,7 +684,12 @@ export class TimelineController {
             if (Math.abs(deltaX) < 0.5) {
                 return;
             }
-            const instOffsetDelta = deltaX * this.dragSpeed;
+            
+            // Calculate dynamic drag speed for full timeline traversal
+            // If user drags across full viewport width, they should traverse the full timeline
+            const viewportWidth = window.innerWidth;
+            const dynamicDragSpeed = this.timelineWidth / viewportWidth * this.viewportDragScale;
+            const instOffsetDelta = deltaX * dynamicDragSpeed;
             
             // Keep camera at X=0 and maintain proper Y position for timeline view
             this.camera.position.x = 0;
@@ -2031,6 +2046,18 @@ export class TimelineController {
                     console.log(`Initial image ${index}: in frustum=${isInFrustum}, position=(${image.position.x.toFixed(2)}, ${image.position.y.toFixed(2)}, ${image.position.z.toFixed(2)})`);
                 }
             });
+        }
+    }
+    
+    updateDragScale() {
+        // Calculate drag scale based on viewport width vs timeline width
+        // This allows a full viewport drag to traverse the entire timeline
+        const viewportWidth = window.innerWidth;
+        if (viewportWidth > 0) {
+            // Scale factor for viewport-based dragging
+            // Adjust this value to fine-tune sensitivity (1.0 = full viewport = full timeline)
+            this.viewportDragScale = 1.0;
+            console.log(`Updated drag scale for viewport width: ${viewportWidth}px, timeline width: ${this.timelineWidth} units`);
         }
     }
 } 
