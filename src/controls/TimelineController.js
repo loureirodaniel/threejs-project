@@ -40,6 +40,36 @@ export class TimelineController {
         // Enhanced drag scaling for full timeline traversal
         this.timelineWidth = 13.5; // Total timeline width (-5.25 to 8.25)
         this.viewportDragScale = 1.0; // Scale factor for viewport-based dragging
+        
+        // Physics-based drag sensitivity
+        this.dragPhysics = {
+            velocitySmoothing: 0.8, // Smoothing factor for velocity calculation
+            screenVelocity: 0, // Current velocity in pixels/ms
+            lastScreenDelta: 0, // Last screen movement delta
+            
+            // Sensitivity scaling parameters
+            baseSensitivity: 1.0, // Base sensitivity multiplier
+            minSensitivity: 0.3, // Minimum sensitivity (for fast drags)
+            maxSensitivity: 2.0, // Maximum sensitivity (for slow drags)
+            velocityThreshold: {
+                slow: 0.5, // px/ms - below this is considered slow
+                fast: 5.0  // px/ms - above this is considered fast
+            },
+            
+            // Easing and smoothing
+            sensitivitySmoothing: 0.85, // How quickly sensitivity changes
+            currentSensitivity: 1.0, // Current applied sensitivity
+            
+            // Magnetic snap for slow dragging
+            magneticSnap: {
+                enabled: true,
+                activationVelocity: 1.2, // px/ms - only activate below this velocity
+                snapStrength: 0.12, // How strong the magnetic pull is (0-1)
+                snapZone: 0.4, // Distance from snap point where magnetism activates (in timeline units)
+                smoothing: 0.85, // How smoothly the snap is applied
+                deadZone: 0.05 // Very close to snap point, reduce magnetism to allow precise positioning
+            }
+        };
 
         // Drag zoom behavior (temporary zoom-out while dragging the timeline)
         this.dragZoomActive = false;
@@ -629,6 +659,12 @@ export class TimelineController {
             this.dragLastTime = performance.now();
             this.dragAccumulatedOffset = 0;
             this.firstDragDirection = null;
+            
+            // Reset physics state
+            this.dragPhysics.screenVelocity = 0;
+            this.dragPhysics.lastScreenDelta = 0;
+            this.dragPhysics.currentSensitivity = this.dragPhysics.baseSensitivity;
+            this.dragPhysics.magneticSnapOffset = 0;
             document.body.style.cursor = 'grabbing';
             this.dragWheelCooldownUntil = Date.now() + 250;
             // Clear any pending external snap timeouts to prevent race conditions
@@ -680,16 +716,24 @@ export class TimelineController {
             
             const now = performance.now();
             const deltaX = event.clientX - this.lastDragX;
+            const dt = Math.max(now - this.dragLastTime, 1);
+            
             // Ignore micro-movements to prevent jitter
             if (Math.abs(deltaX) < 0.5) {
                 return;
             }
             
-            // Calculate dynamic drag speed for full timeline traversal
-            // If user drags across full viewport width, they should traverse the full timeline
+            // Calculate physics-based sensitivity
+            this.updateDragPhysics(deltaX, dt);
+            
+            // Calculate dynamic drag speed with physics-based sensitivity
             const viewportWidth = window.innerWidth;
-            const dynamicDragSpeed = this.timelineWidth / viewportWidth * this.viewportDragScale;
-            const instOffsetDelta = deltaX * dynamicDragSpeed;
+            const baseDragSpeed = this.timelineWidth / viewportWidth * this.viewportDragScale;
+            const physicsAdjustedSpeed = baseDragSpeed * this.dragPhysics.currentSensitivity;
+            let instOffsetDelta = deltaX * physicsAdjustedSpeed;
+            
+            // Apply magnetic snap adjustment for slow drags
+            instOffsetDelta = this.applyMagneticSnap(instOffsetDelta);
             
             // Keep camera at X=0 and maintain proper Y position for timeline view
             this.camera.position.x = 0;
@@ -713,7 +757,6 @@ export class TimelineController {
             }
 
             // Update smoothed velocity for momentum
-            const dt = Math.max(now - this.dragLastTime, 1);
             // Use exponential moving average for stability; velocity measured in offset units
             this.dragVelocity = this.dragVelocity * 0.7 + instOffsetDelta * 0.3;
             this.dragLastTime = now;
@@ -1159,23 +1202,41 @@ export class TimelineController {
     startDragMomentum() {
         if (this.isMomentumActive) this.stopDragMomentum();
         this.isMomentumActive = true;
+        
+        // Apply physics-based momentum scaling
+        // Higher sensitivity at release means the momentum should be more controlled
+        const momentumScale = 1.0 / (this.dragPhysics.currentSensitivity * 0.5 + 0.5);
+        
         // Cap maximum projected additional travel to avoid skipping an image on release
         const projectedDistance = Math.abs(this.dragVelocity) / Math.max(1e-4, (1 - this.dragFriction));
-        const maxAdditionalTravel = 1.2; // less than the 2.0 unit spacing
+        const maxAdditionalTravel = 1.2 * momentumScale; // Scale based on current sensitivity
         if (projectedDistance > maxAdditionalTravel) {
             const scale = maxAdditionalTravel * (1 - this.dragFriction) / Math.max(Math.abs(this.dragVelocity), 1e-6);
             this.dragVelocity *= scale;
         }
+        
+        // Enhanced friction based on drag physics
+        const baseFriction = this.dragFriction;
+        const physicsAdjustedFriction = baseFriction + (1 - baseFriction) * (1 - this.dragPhysics.currentSensitivity) * 0.3;
+        
         const step = () => {
             if (!this.isMomentumActive) return;
-            // Apply velocity
+            // Apply velocity with physics-adjusted friction
             if (Math.abs(this.dragVelocity) > 0.0005) {
                 this.moveTimelineImages(this.dragVelocity);
-                this.dragVelocity *= this.dragFriction;
+                this.dragVelocity *= physicsAdjustedFriction;
+                
+                // Gradually reduce physics sensitivity during momentum
+                this.dragPhysics.screenVelocity *= 0.95;
+                this.updateDragPhysics(0, 16); // Simulate 16ms frame time
+                
                 this.momentumRaf = requestAnimationFrame(step);
             } else {
                 this.isMomentumActive = false;
                 this.dragVelocity = 0;
+                // Reset physics state after momentum ends
+                this.dragPhysics.screenVelocity = 0;
+                this.dragPhysics.currentSensitivity = this.dragPhysics.baseSensitivity;
                 // After settling, perform a smooth snap
                 this.snapAfterDrag();
             }
@@ -2046,6 +2107,128 @@ export class TimelineController {
                     console.log(`Initial image ${index}: in frustum=${isInFrustum}, position=(${image.position.x.toFixed(2)}, ${image.position.y.toFixed(2)}, ${image.position.z.toFixed(2)})`);
                 }
             });
+        }
+    }
+    
+    updateDragPhysics(deltaX, deltaTime) {
+        // Calculate screen velocity (pixels per millisecond)
+        const screenVelocity = Math.abs(deltaX) / deltaTime;
+        
+        // Smooth the velocity using exponential moving average
+        this.dragPhysics.screenVelocity = this.dragPhysics.screenVelocity * this.dragPhysics.velocitySmoothing + 
+                                         screenVelocity * (1 - this.dragPhysics.velocitySmoothing);
+        
+        // Calculate target sensitivity based on velocity
+        let targetSensitivity;
+        const { slow, fast } = this.dragPhysics.velocityThreshold;
+        const { minSensitivity, maxSensitivity, baseSensitivity } = this.dragPhysics;
+        
+        if (this.dragPhysics.screenVelocity <= slow) {
+            // Slow drag: high sensitivity for precise control
+            targetSensitivity = maxSensitivity;
+        } else if (this.dragPhysics.screenVelocity >= fast) {
+            // Fast drag: low sensitivity to prevent overshooting
+            targetSensitivity = minSensitivity;
+        } else {
+            // Interpolate between slow and fast thresholds
+            const t = (this.dragPhysics.screenVelocity - slow) / (fast - slow);
+            // Use ease-out curve for smooth transition
+            const easedT = 1 - Math.pow(1 - t, 2);
+            targetSensitivity = maxSensitivity + easedT * (minSensitivity - maxSensitivity);
+        }
+        
+        // Smooth sensitivity changes to avoid jarring transitions
+        this.dragPhysics.currentSensitivity = this.dragPhysics.currentSensitivity * this.dragPhysics.sensitivitySmoothing + 
+                                             targetSensitivity * (1 - this.dragPhysics.sensitivitySmoothing);
+        
+        // Calculate magnetic snap adjustment for slow dragging
+        this.calculateMagneticSnap();
+        
+        // Store last delta for debugging
+        this.dragPhysics.lastScreenDelta = deltaX;
+        
+        // Optional visual feedback for physics state
+        this.updatePhysicsVisualFeedback();
+        
+        // Debug logging (can be removed in production)
+        if (Math.random() < 0.05) { // Log only 5% of the time to reduce spam
+            const velocityCategory = this.dragPhysics.screenVelocity <= slow ? 'SLOW' : 
+                                   this.dragPhysics.screenVelocity >= fast ? 'FAST' : 'MEDIUM';
+            const magneticOffset = this.dragPhysics.magneticSnapOffset || 0;
+            const magneticActive = Math.abs(magneticOffset) > 0.001;
+            console.log(`Drag Physics: ${velocityCategory} velocity=${this.dragPhysics.screenVelocity.toFixed(2)}px/ms, sensitivity=${this.dragPhysics.currentSensitivity.toFixed(2)}x${magneticActive ? `, magnetic=${magneticOffset.toFixed(3)}` : ''}`);
+        }
+    }
+    
+    calculateMagneticSnap() {
+        const magneticConfig = this.dragPhysics.magneticSnap;
+        if (!magneticConfig.enabled) {
+            this.dragPhysics.magneticSnapOffset = 0;
+            return;
+        }
+        
+        // Only apply magnetic snap for slow dragging
+        if (this.dragPhysics.screenVelocity > magneticConfig.activationVelocity) {
+            this.dragPhysics.magneticSnapOffset = 0;
+            return;
+        }
+        
+        // Find nearest snap position
+        const snapPositions = this.getSnapPositions();
+        let nearestSnap = snapPositions[0];
+        let minDistance = Infinity;
+        
+        for (const snapPos of snapPositions) {
+            const distance = Math.abs(this.timelineOffset - snapPos);
+            if (distance < minDistance) {
+                minDistance = distance;
+                nearestSnap = snapPos;
+            }
+        }
+        
+        // Check if we're within the magnetic zone
+        if (minDistance <= magneticConfig.snapZone && minDistance > magneticConfig.deadZone) {
+            // Calculate magnetic pull strength based on distance
+            // Use a curve that provides gentle attraction with stronger pull in the middle range
+            const normalizedDistance = minDistance / magneticConfig.snapZone;
+            
+            // Create a bell curve effect: strongest pull at mid-distance, weaker at edges and very close
+            const bellCurve = Math.sin(normalizedDistance * Math.PI);
+            const pullStrength = bellCurve * magneticConfig.snapStrength;
+            
+            // Calculate the offset needed to pull toward the snap position
+            const directionToSnap = Math.sign(nearestSnap - this.timelineOffset);
+            const targetOffset = directionToSnap * pullStrength * minDistance * 0.5; // Reduced multiplier for subtlety
+            
+            // Smooth the magnetic offset to avoid jitter
+            const currentMagneticOffset = this.dragPhysics.magneticSnapOffset || 0;
+            this.dragPhysics.magneticSnapOffset = currentMagneticOffset * magneticConfig.smoothing + 
+                                                 targetOffset * (1 - magneticConfig.smoothing);
+        } else {
+            // Outside magnetic zone or in dead zone, gradually reduce any existing magnetic offset
+            this.dragPhysics.magneticSnapOffset = (this.dragPhysics.magneticSnapOffset || 0) * 0.92;
+        }
+    }
+    
+    applyMagneticSnap(baseDelta) {
+        const magneticOffset = this.dragPhysics.magneticSnapOffset || 0;
+        
+        // Apply magnetic offset to the base movement
+        // This creates a subtle pull toward snap positions during slow drags
+        return baseDelta + magneticOffset;
+    }
+    
+    updatePhysicsVisualFeedback() {
+        // Update cursor style based on drag sensitivity for subtle visual feedback
+        if (this.isDragging) {
+            const sensitivity = this.dragPhysics.currentSensitivity;
+            const opacity = Math.min(1, 0.3 + (sensitivity - 0.3) / 1.7 * 0.7); // Map 0.3-2.0 to 0.3-1.0
+            
+            // Subtle visual indication through cursor opacity or document effects
+            if (document.body.style.cursor === 'grabbing') {
+                // Could add subtle visual effects here, like changing the cursor or adding screen effects
+                // For now, we'll just maintain the existing cursor
+            }
         }
     }
     
