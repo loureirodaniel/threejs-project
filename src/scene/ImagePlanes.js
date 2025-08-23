@@ -11,12 +11,16 @@ export class ImagePlanes {
         this.animationDuration = 800; // 800ms for each scale animation
         
         // Realistic photography URLs (using Unsplash for high-quality images)
+        // Total of 8 images for the initial scene - these will be used in timeline positions 0-7
         this.imageUrls = [
             'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800&h=600&fit=crop', // Mountain landscape
             'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800&h=600&fit=crop', // Forest
             'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&h=600&fit=crop', // Ocean waves
             'https://images.unsplash.com/photo-1449824913935-59a10b8d2000?w=800&h=600&fit=crop', // City skyline
-            'https://images.unsplash.com/photo-1465101046530-73398c7f28ca?w=800&h=600&fit=crop'  // Desert sunset
+            'https://images.unsplash.com/photo-1465101046530-73398c7f28ca?w=800&h=600&fit=crop', // Desert sunset
+            'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=800&h=600&fit=crop', // Sunset over mountains
+            'https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=800&h=600&fit=crop', // Alpine lake
+            'https://images.unsplash.com/photo-1518837695005-2083093ee35b?w=800&h=600&fit=crop'  // Mountain range
         ];
         
         this.createImagePlanes();
@@ -51,7 +55,7 @@ export class ImagePlanes {
     
     createGridLayout(range, width, height) {
         // Use a 4 column × 4 row grid as requested
-        const numImages = 5;
+        const numImages = 8;
         const gridCols = 4;
         const gridRows = 4;
         
@@ -65,14 +69,17 @@ export class ImagePlanes {
         const startX = (range.maxX + range.minX - gridWidth) / 2;
         const startY = (range.maxY + range.minY - gridHeight) / 2;
         
-        // Define strategic grid positions for the 5 images to create a balanced layout
-        // Using positions that create visual balance across the 4×4 grid
+        // Define strategic grid positions for the 8 images to create a balanced layout
+        // Using positions that fill the 4×4 grid nicely
         const gridPositions = [
             { row: 0, col: 0 }, // Top-left corner
             { row: 0, col: 3 }, // Top-right corner
             { row: 1, col: 1 }, // Upper middle area, center-left
-            { row: 2, col: 2 }, // Lower middle area, center-right
-            { row: 3, col: 0 }  // Bottom-left corner
+            { row: 1, col: 2 }, // Upper middle area, center-right
+            { row: 2, col: 0 }, // Lower middle area, left
+            { row: 2, col: 3 }, // Lower middle area, right
+            { row: 3, col: 1 }, // Bottom area, center-left
+            { row: 3, col: 2 }  // Bottom area, center-right
         ];
         
         // Place all images in strategic grid positions with randomness within cells

@@ -241,8 +241,8 @@ export class SmoothScrollController {
             const originalSnap = this.timelineController.snapToNearestImage;
             
             this.timelineController.snapToNearestImage = () => {
-                // Define snap positions (every 2 units, corresponding to image positions, starting at -4)
-                const snapPositions = [-4, -2, 0, 2, 4, 6, 8, 10, 12, 14];
+                // Define snap positions (every 1.5 units, corresponding to image positions, starting at -5.25)
+                const snapPositions = [-5.25, -3.75, -2.25, -0.75, 0.75, 2.25, 3.75, 5.25, 6.75, 8.25];
                 
                 // Find the nearest snap position
                 let nearestPosition = 0;
@@ -269,9 +269,9 @@ export class SmoothScrollController {
                             // Update timeline images during animation
                             if (this.timelineController.timelineScene && this.timelineController.timelineScene.getTimelinePlanes) {
                                 const planes = this.timelineController.timelineScene.getTimelinePlanes();
-                                planes.forEach((plane, index) => {
-                                    const originalX = (index * 2) - 4;
-                                    plane.position.x = originalX - this.timelineController.timelineOffset;
+                                                            planes.forEach((plane, index) => {
+                                const originalX = ((index + 8) * 1.5) - 5.25;
+                                plane.position.x = originalX - this.timelineController.timelineOffset;
                                 });
                             }
 
@@ -280,7 +280,7 @@ export class SmoothScrollController {
                                 const initialImages = window.app.imagePlanes.getPlanes();
                                 initialImages.forEach((image, index) => {
                                     if (image.userData.isTimelineTransitioned) {
-                                        const originalX = (index * 2) - 4;
+                                        const originalX = (index * 1.5) - 5.25;
                                         image.position.x = originalX - this.timelineController.timelineOffset;
                                     }
                                 });
@@ -595,9 +595,9 @@ export class SmoothScrollController {
         
         // Calculate timeline offset for the year
         const yearRange = 2019 - 2010;
-        const xRange = 18;
+        const xRange = 13.5;
         const normalizedX = (year - 2010) / yearRange;
-        const targetOffset = -4 + (normalizedX * xRange);
+        const targetOffset = -5.25 + (normalizedX * xRange);
         
         this.scrollToTimelinePosition(targetOffset, duration);
     }

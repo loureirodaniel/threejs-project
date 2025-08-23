@@ -35,8 +35,8 @@ export class TimelineScene {
     }
     
     createTimelineElements() {
-        // Timeline image URLs - only create 5 additional images (positions 5-9)
-        // The first 5 images will come from the initial scene
+        // Timeline image URLs - only create 2 additional images (positions 8-9)
+        // The first 8 images will come from the initial scene
         this.additionalImageUrls = [
             'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=800&h=600&fit=crop', // Sunset over mountains
             'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800&h=600&fit=crop', // Forest path
@@ -45,8 +45,9 @@ export class TimelineScene {
             'https://images.unsplash.com/photo-1465101046530-73398c7f28ca?w=800&h=600&fit=crop'  // Desert landscape
         ];
         
-        // Create only 5 additional timeline image planes (positions 5-9, years 2015-2019)
-        const years = ['2015', '2016', '2017', '2018', '2019'];
+        // Create only 2 additional timeline image planes (positions 8-9, years 2018-2019)
+        // since initial scene now covers 2010-2017 (8 images)
+        const years = ['2018', '2019'];
         const aspectRatio = 4/3;
         const width = 1.5;
         const height = width / aspectRatio;
@@ -54,7 +55,7 @@ export class TimelineScene {
         console.log('TimelineScene: Creating additional timeline images for years:', years);
         
         years.forEach((year, index) => {
-            const x = ((index + 5) * 2) - 4; // Positions 6, 8, 10, 12, 14 (years 2015-2019)
+            const x = ((index + 8) * 1.5) - 5.25; // Positions 6.75, 8.25 (years 2018-2019)
             const y = 0;
             const z = 0;
             
@@ -99,12 +100,33 @@ export class TimelineScene {
         this.timelineGroup.visible = true;
         this.animationProgress = 0;
         
-        // Initially hide additional timeline images - they will be shown after the transition
-        this.timelinePlanes.forEach(plane => {
-            plane.visible = false;
+        // DEBUG: Force show all timeline images immediately for debugging
+        console.log('TimelineScene: Activated - DEBUG MODE: Showing all timeline images immediately');
+        this.timelinePlanes.forEach((plane, index) => {
+            const x = ((index + 8) * 1.5) - 5.25; // Positions 6.75, 8.25 (years 2018-2019)
+            plane.visible = true;
+            plane.position.set(x, 0, 0);
+            plane.scale.setScalar(0.75);
+            plane.rotation.set(0, 0, 0);
+            plane.material.opacity = 0.9;
+            console.log(`TimelineScene: DEBUG - Forced additional image ${index} visible at (${x}, 0, 0)`);
         });
         
-        console.log('TimelineScene: Activated - waiting for image layout transition');
+        // Also force initial images to their timeline positions for debugging
+        const initialImages = this.getInitialSceneImages();
+        console.log(`TimelineScene: DEBUG - Found ${initialImages.length} initial images`);
+        initialImages.forEach((image, index) => {
+            if (index < 8) {
+                const x = (index * 1.5) - 5.25;
+                image.visible = true;
+                image.position.set(x, 0, 0);
+                image.scale.setScalar(0.75);
+                image.rotation.set(0, 0, 0);
+                image.userData.isTimelineTransitioned = true;
+                console.log(`TimelineScene: DEBUG - Forced initial image ${index} to timeline position (${x}, 0, 0)`);
+            }
+        });
+        
         console.log(`TimelineScene: Created ${this.timelinePlanes.length} additional timeline images`);
     }
     
@@ -432,10 +454,11 @@ export class TimelineScene {
     animateImagesToTimeline(masterTl, initialImages, startTime) {
         console.log('TimelineScene: Animating images to timeline positions');
         
-        // Calculate timeline positions for the first 5 images (years 2010-2014)
+        // Calculate timeline positions for the first 8 images (years 2010-2017)
+        // Use closer spacing (1.5 units) to keep all images within camera view
         const timelinePositions = [];
-        for (let i = 0; i < 5; i++) {
-            const x = (i * 2) - 4; // Timeline positions: -4, -2, 0, 2, 4 (years 2010-2014)
+        for (let i = 0; i < 8; i++) {
+            const x = (i * 1.5) - 5.25; // Timeline positions: -5.25, -3.75, -2.25, -0.75, 0.75, 2.25, 3.75, 5.25 (years 2010-2017)
             timelinePositions.push({ x: x, y: 0, z: 0 }); // All images at Y=0 for perfect horizontal alignment
         }
         
@@ -510,11 +533,11 @@ export class TimelineScene {
             plane.scale.setScalar(0); // Start from scale 0
             
             // Ensure proper horizontal alignment and position
-            const x = ((index + 5) * 2) - 4; // Positions 6, 8, 10, 12, 14 (years 2015-2019)
+            const x = ((index + 8) * 1.5) - 5.25; // Positions 6.75, 8.25 (years 2018-2019)
             plane.position.set(x, 0, 0); // All images at Y=0 for perfect horizontal alignment
             plane.rotation.set(0, 0, 0);
             
-            console.log(`TimelineScene: Setting up additional image ${index} (year ${2015 + index}) at position (${x}, 0, 0)`);
+            console.log(`TimelineScene: Setting up additional image ${index} (year ${2018 + index}) at position (${x}, 0, 0)`);
             
             // Calculate individual start time with stagger
             const planeStartTime = startTime + (index * 0.15);
@@ -559,12 +582,12 @@ export class TimelineScene {
     animateCameraZoomIn(masterTl, camera, startTime) {
         console.log('TimelineScene: Animating camera zoom-in');
         
-        // Target camera position for timeline view: align with the first image's x (-4)
-        const targetPosition = new THREE.Vector3(-4, 0, 5);
+        // Target camera position for timeline view: align with the first image's x (-5.25)
+        const targetPosition = new THREE.Vector3(-5.25, 0, 5);
         // Slight arc on Y during approach to emulate handheld/dolly realism
         const approachPeakY = 0.25;
-        // Look straight ahead at the first image (x = -4)
-        const targetTarget = new THREE.Vector3(-4, 0, 0);
+        // Look straight ahead at the first image (x = -5.25)
+        const targetTarget = new THREE.Vector3(-5.25, 0, 0);
         const targetFov = 30;
         
         // Single smooth glide toward the target with strong ease-out to avoid snapping
@@ -639,7 +662,7 @@ export class TimelineScene {
     prePositionImagesForTransition(initialImages) {
         // Pre-position images to prevent glitches during transition
         initialImages.forEach((image, index) => {
-            if (index < 5) {
+            if (index < 8) {
                 // Ensure images are visible and at a stable position before transition
                 image.visible = true;
                 
@@ -663,8 +686,8 @@ export class TimelineScene {
         
         // Enforce initial images positions
         initialImages.forEach((image, index) => {
-            if (index < 5 && image.userData.isTimelineTransitioned) {
-                const x = (index * 2) - 4; // Timeline positions: -4, -2, 0, 2, 4
+            if (index < 8 && image.userData.isTimelineTransitioned) {
+                const x = (index * 1.5) - 5.25; // Timeline positions: -5.25, -3.75, -2.25, -0.75, 0.75, 2.25, 3.75, 5.25
                 image.position.set(x, 0, 0);
                 image.scale.setScalar(0.75);
                 image.rotation.set(0, 0, 0);
@@ -674,14 +697,14 @@ export class TimelineScene {
         
         // Enforce additional timeline images positions
         this.timelinePlanes.forEach((plane, index) => {
-            const x = ((index + 5) * 2) - 4; // Positions 6, 8, 10, 12, 14
+            const x = ((index + 8) * 1.5) - 5.25; // Positions 6.75, 8.25 (years 2018-2019)
             plane.position.set(x, 0, 0);
             plane.scale.setScalar(0.75);
             plane.rotation.set(0, 0, 0);
             plane.visible = true;
             plane.material.opacity = 0.9;
             
-            console.log(`TimelineScene: Enforced position for additional image ${index} (year ${2015 + index}) at (${x}, 0, 0)`);
+            console.log(`TimelineScene: Enforced position for additional image ${index} (year ${2018 + index}) at (${x}, 0, 0)`);
         });
     }
     
@@ -690,7 +713,7 @@ export class TimelineScene {
         console.log('TimelineScene: Ensuring additional images are visible');
         
         this.timelinePlanes.forEach((plane, index) => {
-            const x = ((index + 5) * 2) - 4; // Positions 6, 8, 10, 12, 14
+            const x = ((index + 8) * 1.5) - 5.25; // Positions 6.75, 8.25 (years 2018-2019)
             
             // Force visibility and position
             plane.visible = true;
@@ -699,7 +722,7 @@ export class TimelineScene {
             plane.rotation.set(0, 0, 0);
             plane.material.opacity = 0.9;
             
-            console.log(`TimelineScene: Ensured visibility for additional image ${index} (year ${2015 + index}) at (${x}, 0, 0)`);
+            console.log(`TimelineScene: Ensured visibility for additional image ${index} (year ${2018 + index}) at (${x}, 0, 0)`);
         });
         
         // Also ensure the timeline group is visible
@@ -711,7 +734,7 @@ export class TimelineScene {
         
         // Force all additional timeline images to be visible and properly positioned
         this.timelinePlanes.forEach((plane, index) => {
-            const x = ((index + 5) * 2) - 4; // Positions 6, 8, 10, 12, 14 (years 2015-2019)
+            const x = ((index + 8) * 1.5) - 5.25; // Positions 6.75, 8.25 (years 2018-2019)
             
             // Force visibility and position
             plane.visible = true;
@@ -720,7 +743,7 @@ export class TimelineScene {
             plane.rotation.set(0, 0, 0);
             plane.material.opacity = 0.9;
             
-            console.log(`TimelineScene: Forced visibility for additional image ${index} (year ${2015 + index}) at (${x}, 0, 0)`);
+            console.log(`TimelineScene: Forced visibility for additional image ${index} (year ${2018 + index}) at (${x}, 0, 0)`);
         });
         
         // Ensure timeline group is visible

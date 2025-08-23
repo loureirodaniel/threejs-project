@@ -50,7 +50,7 @@ export class TimelineController {
         this.timelineVignetteWidth = 4.0;     // radius in world units for full brightness region
 
         // Drag snap threshold (world units along offset) to advance to next image on release
-        // Images are spaced by 2.0 units; 0.5 means ~25% of the distance triggers the next snap
+        // Images are spaced by 1.5 units; 0.5 means ~33% of the distance triggers the next snap
         this.dragSnapThresholdUnits = 0.5;
 
         // Liquid effect should only show after actual drag movement begins
@@ -85,8 +85,8 @@ export class TimelineController {
             },
             {
                 name: 'timeline',
-                position: new THREE.Vector3(0, 0, 8), // Start at 2010 (centered)
-                target: new THREE.Vector3(0, 0, 0), // Look at center where images are positioned
+                position: new THREE.Vector3(-5.25, 0, 8), // Start at 2010 (first image position)
+                target: new THREE.Vector3(-5.25, 0, 0), // Look at first image
                 fov: 30
             }
         ];
@@ -635,7 +635,7 @@ export class TimelineController {
 
             // Record nearest index at drag start for first-drag guard
             if (this.currentSceneIndex === 1) {
-                this.dragStartOffset = this.timelineOffset ?? -4;
+                this.dragStartOffset = this.timelineOffset ?? -5.25;
                 this.dragStartNearestIndex = this.getNearestSnapIndex(this.dragStartOffset);
             }
 
@@ -777,7 +777,7 @@ export class TimelineController {
 
             // Intercept first rightward drag from first image: deterministically go to second image
             if (!this.hasDraggedOnTimeline && this.dragStartNearestIndex === 0 && this.firstDragDirection === 'right') {
-                const targetOffset = -2; // center second image
+                const targetOffset = -3.75; // center second image
                 this.stopDragMomentum();
                 gsap.to(this, {
                     timelineOffset: targetOffset,
@@ -788,7 +788,7 @@ export class TimelineController {
                         if (this.timelineScene && this.timelineScene.getTimelinePlanes) {
                             const planes = this.timelineScene.getTimelinePlanes();
                             planes.forEach((plane, index) => {
-                                const originalX = ((index + 5) * 2) - 4;
+                                const originalX = ((index + 8) * 1.5) - 5.25;
                                 plane.position.x = originalX - this.timelineOffset;
                             });
                         }
@@ -797,7 +797,7 @@ export class TimelineController {
                             const initialImages = window.app.imagePlanes.getPlanes();
                             initialImages.forEach((image, index) => {
                                 if (image.userData.isTimelineTransitioned) {
-                                    const originalX = (index * 2) - 4;
+                                    const originalX = (index * 1.5) - 5.25;
                                     image.position.x = originalX - this.timelineOffset;
                                 }
                             });
@@ -934,13 +934,13 @@ export class TimelineController {
     getCurrentYear() {
         // Calculate year based on timeline image positions
         // Since camera stays at X=0, we need to track timeline offset
-        if (this.timelineOffset === undefined || this.timelineOffset === null) this.timelineOffset = -4;
+        if (this.timelineOffset === undefined || this.timelineOffset === null) this.timelineOffset = -5.25;
         
         const yearRange = 2019 - 2010; // 9 years (2010-2019)
-        const xRange = 18; // -4 to 14 (images are at -4, -2, 0, 2, 4, 6, 8, 10, 12, 14)
+        const xRange = 13.5; // -5.25 to 8.25 (images are at -5.25, -3.75, -2.25, -0.75, 0.75, 2.25, 3.75, 5.25, 6.75, 8.25)
         
-        // Map timeline offset to year (offset=-4 is 2010, offset=14 is 2019)
-        const normalizedX = Math.max(0, Math.min(1, (this.timelineOffset + 4) / xRange)); // 0 to 1
+        // Map timeline offset to year (offset=-5.25 is 2010, offset=8.25 is 2019)
+        const normalizedX = Math.max(0, Math.min(1, (this.timelineOffset + 5.25) / xRange)); // 0 to 1
         const year = Math.round(2010 + (normalizedX * yearRange));
         
         return Math.max(2010, Math.min(2019, year));
@@ -958,16 +958,16 @@ export class TimelineController {
         const previousOffset = this.timelineOffset;
         this.timelineOffset += deltaX;
         
-        // Clamp timeline offset (new range: -4 to 14)
-        this.timelineOffset = Math.max(-4, Math.min(14, this.timelineOffset));
+        // Clamp timeline offset (new range: -5.25 to 8.25)
+        this.timelineOffset = Math.max(-5.25, Math.min(8.25, this.timelineOffset));
 
         // Remove in-drag clamping to prevent oscillation between -4 and -2
         
         // Check if we hit a boundary and trigger haptic feedback
-        if (this.timelineOffset === -4 && previousOffset > -4) {
+        if (this.timelineOffset === -5.25 && previousOffset > -5.25) {
             // Hit start boundary (2010)
             this.triggerHapticFeedback('boundary');
-        } else if (this.timelineOffset === 14 && previousOffset < 14) {
+        } else if (this.timelineOffset === 8.25 && previousOffset < 8.25) {
             // Hit end boundary (2019)
             this.triggerHapticFeedback('boundary');
         }
@@ -976,7 +976,7 @@ export class TimelineController {
         if (this.timelineScene && this.timelineScene.getTimelinePlanes) {
             const planes = this.timelineScene.getTimelinePlanes();
             planes.forEach((plane, index) => {
-                const originalX = ((index + 5) * 2) - 4; // Positions 6, 8, 10, 12, 14
+                const originalX = ((index + 8) * 1.5) - 5.25; // Positions 6, 8, 10, 12, 14
                 plane.position.x = originalX - this.timelineOffset;
                 
                 // Ensure images remain visible
@@ -990,7 +990,7 @@ export class TimelineController {
             const initialImages = window.app.imagePlanes.getPlanes();
             initialImages.forEach((image, index) => {
                 if (image.userData.isTimelineTransitioned) {
-                    const originalX = (index * 2) - 4; // Positions -4, -2, 0, 2, 4
+                    const originalX = (index * 1.5) - 5.25; // Positions -4, -2, 0, 2, 4
                     image.position.x = originalX - this.timelineOffset;
                     
                     // Ensure images remain visible
@@ -1002,7 +1002,7 @@ export class TimelineController {
 
         // Smoothly pan camera look-at toward the nearest image based on current offset
         // Use a single driver value to avoid stacking tweens and jitter
-        const snapPositions = [-4, -2, 0, 2, 4, 6, 8, 10, 12, 14];
+        const snapPositions = [-5.25, -3.75, -2.25, -0.75, 0.75, 2.25, 3.75, 5.25, 6.75, 8.25];
         let nearestX = snapPositions[0];
         let minDist = Infinity;
         for (const x of snapPositions) {
@@ -1051,8 +1051,8 @@ export class TimelineController {
         if (this.timelineScene && this.timelineScene.getTimelinePlanes) {
             const planes = this.timelineScene.getTimelinePlanes();
             planes.forEach((plane, index) => {
-                const originalX = ((index + 5) * 2) - 4; // 6..14
-                const worldX = originalX - (this.timelineOffset ?? -4);
+                const originalX = ((index + 8) * 1.5) - 5.25; // 6..14
+                const worldX = originalX - (this.timelineOffset ?? -5.25);
                 // Skip if currently enlarged
                 if (!plane.userData.isEnlarged) applyOpacityFalloff(plane, worldX);
             });
@@ -1063,8 +1063,8 @@ export class TimelineController {
             const initialImages = window.app.imagePlanes.getPlanes();
             initialImages.forEach((image, index) => {
                 if (image.userData.isTimelineTransitioned) {
-                    const originalX = (index * 2) - 4; // -4..4
-                    const worldX = originalX - (this.timelineOffset ?? -4);
+                    const originalX = (index * 1.5) - 5.25; // -4..4
+                    const worldX = originalX - (this.timelineOffset ?? -5.25);
                     if (!image.userData.isEnlarged) applyOpacityFalloff(image, worldX);
                 }
             });
@@ -1074,8 +1074,8 @@ export class TimelineController {
     snapToNearestImage() {
         if (this.timelineOffset === undefined || this.timelineOffset === null) return;
         
-        // Define snap positions (every 2 units, corresponding to image positions, starting at -4)
-        const snapPositions = [-4, -2, 0, 2, 4, 6, 8, 10, 12, 14];
+        // Define snap positions (every 1.5 units, corresponding to image positions, starting at -5.25)
+        const snapPositions = [-5.25, -3.75, -2.25, -0.75, 0.75, 2.25, 3.75, 5.25, 6.75, 8.25];
         
         // Find the nearest snap position
         let nearestPosition = 0;
@@ -1090,8 +1090,8 @@ export class TimelineController {
         });
 
         // First-drag guard: if starting at first and moving rightward, restrict snap to second image
-        if (!this.hasDraggedOnTimeline && this.dragStartNearestIndex === 0 && this.timelineOffset > -4) {
-            nearestPosition = -2;
+        if (!this.hasDraggedOnTimeline && this.dragStartNearestIndex === 0 && this.timelineOffset > -5.25) {
+            nearestPosition = -3.75;
         }
         
         // Only snap if we're not already at a snap position
@@ -1108,7 +1108,7 @@ export class TimelineController {
                     if (this.timelineScene && this.timelineScene.getTimelinePlanes) {
                         const planes = this.timelineScene.getTimelinePlanes();
                         planes.forEach((plane, index) => {
-                            const originalX = ((index + 5) * 2) - 4; // Positions 6, 8, 10, 12, 14
+                            const originalX = ((index + 8) * 1.5) - 5.25; // Positions 6, 8, 10, 12, 14
                             plane.position.x = originalX - this.timelineOffset;
                         });
                     }
@@ -1118,7 +1118,7 @@ export class TimelineController {
                         const initialImages = window.app.imagePlanes.getPlanes();
                         initialImages.forEach((image, index) => {
                             if (image.userData.isTimelineTransitioned) {
-                                const originalX = (index * 2) - 4; // Positions -4, -2, 0, 2, 4
+                                const originalX = (index * 1.5) - 5.25; // Positions -4, -2, 0, 2, 4
                                 image.position.x = originalX - this.timelineOffset;
                             }
                         });
@@ -1178,7 +1178,7 @@ export class TimelineController {
 
     // Utility to compute nearest snap
     getSnapPositions() {
-        return [-4, -2, 0, 2, 4, 6, 8, 10, 12, 14];
+        return [-5.25, -3.75, -2.25, -0.75, 0.75, 2.25, 3.75, 5.25, 6.75, 8.25];
     }
 
     getNearestSnapIndex(offset) {
@@ -1236,7 +1236,7 @@ export class TimelineController {
                 if (this.timelineScene && this.timelineScene.getTimelinePlanes) {
                     const planes = this.timelineScene.getTimelinePlanes();
                     planes.forEach((plane, index) => {
-                        const originalX = ((index + 5) * 2) - 4;
+                        const originalX = ((index + 8) * 1.5) - 5.25;
                         plane.position.x = originalX - this.timelineOffset;
                     });
                 }
@@ -1245,7 +1245,7 @@ export class TimelineController {
                     const initialImages = window.app.imagePlanes.getPlanes();
                     initialImages.forEach((image, index) => {
                         if (image.userData.isTimelineTransitioned) {
-                            const originalX = (index * 2) - 4;
+                            const originalX = (index * 1.5) - 5.25;
                             image.position.x = originalX - this.timelineOffset;
                         }
                     });
@@ -1602,9 +1602,9 @@ export class TimelineController {
             this.timelineScene.activate();
         }
         
-        // Initialize timeline offset so the FIRST image (original X = -4) lands centered at X=0
-        this.timelineOffset = -4;
-        console.log('TimelineController: Set timeline offset to -4 (first image centered)');
+        // Initialize timeline offset so the FIRST image (original X = -5.25) lands centered at X=0
+        this.timelineOffset = -5.25;
+        console.log('TimelineController: Set timeline offset to -5.25 (first image centered)');
 
         // Reset first-drag guard state when entering the timeline
         this.hasDraggedOnTimeline = false;
@@ -1629,7 +1629,7 @@ export class TimelineController {
         // Apply the current offset immediately to position images and align look-at
         // This ensures we land with the first image centered when entering the timeline
         this.moveTimelineImages(0);
-        this.updateCameraLookAtForOriginalX(-4);
+        this.updateCameraLookAtForOriginalX(-5.25);
         // Ensure vignette is visible immediately when landing on first image
         this.updateTimelineVignette();
         this.updateCurrentYear();
@@ -1778,7 +1778,7 @@ export class TimelineController {
                 if (this.timelineScene && this.timelineScene.getTimelinePlanes) {
                     const planes = this.timelineScene.getTimelinePlanes();
                     planes.forEach((plane, index) => {
-                        const originalX = ((index + 5) * 2) - 4; // Positions 6, 8, 10, 12, 14
+                        const originalX = ((index + 8) * 1.5) - 5.25; // Positions 6, 8, 10, 12, 14
                         plane.position.x = originalX - this.timelineOffset;
                         
                         // Ensure images remain visible
@@ -1792,7 +1792,7 @@ export class TimelineController {
                     const initialImages = window.app.imagePlanes.getPlanes();
                     initialImages.forEach((image, index) => {
                         if (image.userData.isTimelineTransitioned) {
-                            const originalX = (index * 2) - 4; // Positions -4, -2, 0, 2, 4
+                            const originalX = (index * 1.5) - 5.25; // Positions -4, -2, 0, 2, 4
                             image.position.x = originalX - this.timelineOffset;
                             
                             // Ensure images remain visible
@@ -1812,7 +1812,7 @@ export class TimelineController {
                 // During the year animation, pan camera look-at to the target image
                 // Compute the original X for the requested year
                 const yearIndex = year - 2010; // 0..9
-                const originalX = (yearIndex * 2) - 4; // -4..14
+                const originalX = (yearIndex * 1.5) - 5.25; // -5.25..8.25
                 this.updateCameraLookAtForOriginalX(originalX);
             },
             onComplete: () => {
@@ -1887,8 +1887,8 @@ export class TimelineController {
     }
     
     smoothSnapToNearestImage() {
-        // Define snap positions (every 2 units, corresponding to image positions, starting at -4)
-        const snapPositions = [-4, -2, 0, 2, 4, 6, 8, 10, 12, 14];
+        // Define snap positions (every 1.5 units, corresponding to image positions, starting at -5.25)
+        const snapPositions = [-5.25, -3.75, -2.25, -0.75, 0.75, 2.25, 3.75, 5.25, 6.75, 8.25];
         
         // Find the nearest snap position
         let nearestPosition = 0;
@@ -1921,7 +1921,7 @@ export class TimelineController {
                     if (this.timelineScene && this.timelineScene.getTimelinePlanes) {
                         const planes = this.timelineScene.getTimelinePlanes();
                         planes.forEach((plane, index) => {
-                            const originalX = ((index + 5) * 2) - 4;
+                            const originalX = ((index + 8) * 1.5) - 5.25;
                             plane.position.x = originalX - this.timelineOffset;
                         });
                     }
