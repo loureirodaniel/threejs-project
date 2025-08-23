@@ -41,45 +41,58 @@ export class ImagePlanes {
         const aspectRatio = 4/3;
         const width = 1.5; // Match the timeline image size
         const height = width / aspectRatio;
-        const placedRects = [];
-        const maxAttempts = 100;
+        
         // Get visible range at Z=0
         const range = this.getVisibleRangeAtZ0();
-        for (let i = 0; i < 5; i++) {
-            let attempts = 0;
-            let position = null;
-            let rect = null;
-            while (attempts < maxAttempts) {
-                // Only place so the whole image is visible
-                const minX = range.minX + width / 2;
-                const maxX = range.maxX - width / 2;
-                const minY = range.minY + height / 2;
-                const maxY = range.maxY - height / 2;
-                const randomX = Math.random() * (maxX - minX) + minX;
-                const randomY = Math.random() * (maxY - minY) + minY;
-                rect = {
-                    left: randomX - width / 2,
-                    right: randomX + width / 2,
-                    top: randomY + height / 2,
-                    bottom: randomY - height / 2
-                };
-                // Check for overlap
-                const overlaps = placedRects.some(r =>
-                    !(rect.right < r.left || rect.left > r.right || rect.top < r.bottom || rect.bottom > r.top)
-                );
-                if (!overlaps) {
-                    position = { x: randomX, y: randomY };
-                    placedRects.push(rect);
-                    break;
-                }
-                attempts++;
-            }
-            if (position) {
-                this.createImagePlane(i, position.x, position.y, 0, width, height);
-            } else {
-                // If we can't find a non-overlapping spot, just skip this plane
-                console.warn(`Could not place plane ${i + 1} without overlap after ${maxAttempts} attempts.`);
-            }
+        
+        // Create a grid layout while maintaining randomness
+        this.createGridLayout(range, width, height);
+    }
+    
+    createGridLayout(range, width, height) {
+        // Use a 4 column × 4 row grid as requested
+        const numImages = 5;
+        const gridCols = 4;
+        const gridRows = 4;
+        
+        // Calculate cell dimensions
+        const cellWidth = (range.maxX - range.minX) / gridCols;
+        const cellHeight = (range.maxY - range.minY) / gridRows;
+        
+        // Calculate grid start position to center the grid
+        const gridWidth = cellWidth * gridCols;
+        const gridHeight = cellHeight * gridRows;
+        const startX = (range.maxX + range.minX - gridWidth) / 2;
+        const startY = (range.maxY + range.minY - gridHeight) / 2;
+        
+        // Define strategic grid positions for the 5 images to create a balanced layout
+        // Using positions that create visual balance across the 4×4 grid
+        const gridPositions = [
+            { row: 0, col: 0 }, // Top-left corner
+            { row: 0, col: 3 }, // Top-right corner
+            { row: 1, col: 1 }, // Upper middle area, center-left
+            { row: 2, col: 2 }, // Lower middle area, center-right
+            { row: 3, col: 0 }  // Bottom-left corner
+        ];
+        
+        // Place all images in strategic grid positions with randomness within cells
+        for (let i = 0; i < Math.min(numImages, gridPositions.length); i++) {
+            const gridPos = gridPositions[i];
+            const cellCenterX = startX + (gridPos.col + 0.5) * cellWidth;
+            const cellCenterY = startY + (gridPos.row + 0.5) * cellHeight;
+            
+            // Add randomness within the cell (±30% of cell size for more variation)
+            const randomOffsetX = (Math.random() - 0.5) * cellWidth * 0.6;
+            const randomOffsetY = (Math.random() - 0.5) * cellHeight * 0.6;
+            
+            const finalX = cellCenterX + randomOffsetX;
+            const finalY = cellCenterY + randomOffsetY;
+            
+            // Ensure the image stays within visible bounds
+            const clampedX = Math.max(range.minX + width/2, Math.min(range.maxX - width/2, finalX));
+            const clampedY = Math.max(range.minY + height/2, Math.min(range.maxY - height/2, finalY));
+            
+            this.createImagePlane(i, clampedX, clampedY, 0, width, height);
         }
     }
     

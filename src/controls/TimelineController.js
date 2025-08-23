@@ -288,7 +288,7 @@ export class TimelineController {
         
         const scaleX = targetWidth / originalWidth;
         const scaleY = targetHeight / originalHeight;
-        const scale = Math.min(scaleX, scaleY); // Use the smaller scale to maintain aspect ratio
+        const scale = Math.max(scaleX, scaleY); // Use the larger scale to fill 100% of viewport
         
         // Animate to center and scale up - position at camera's look-at point for perfect centering
         const cameraDirection = new THREE.Vector3();
