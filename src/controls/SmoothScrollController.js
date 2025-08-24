@@ -75,6 +75,11 @@ export class SmoothScrollController {
         
         // Handle different scenes
         if (this.timelineController.getCurrentSceneIndex() === 1) {
+            // Safety mechanism: end any active pullback during scroll to prevent stuck camera
+            if (this.timelineController.holdPullback && this.timelineController.holdPullback.active) {
+                this.timelineController.endHoldToPullback();
+            }
+            
             // Timeline scene - horizontal smooth scrolling
             this.handleTimelineSmoothScroll(delta);
         } else {

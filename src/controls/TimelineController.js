@@ -71,10 +71,18 @@ export class TimelineController {
             }
         };
 
-        // Drag zoom behavior (temporary zoom-out while dragging the timeline)
-        this.dragZoomActive = false;
-        this.dragZoomFovDelta = 4; // degrees to widen FOV during drag
-        this.dragZoomDuration = 0.2; // seconds
+        // Hold-to-pullback camera behavior
+        this.holdPullback = {
+            active: false,
+            startTime: 0,
+            delayMs: 150, // Delay before pullback starts (to distinguish from quick clicks)
+            pullbackDistance: 6, // Additional Z distance to pull back
+            fovIncrease: 8, // Additional FOV for wider view
+            transitionDuration: 0.4, // Smooth transition duration in seconds
+            originalZ: 0, // Store original Z position
+            originalFov: 0, // Store original FOV
+            timeout: null // Timeout for delayed pullback
+        };
 
         // Camera look-at smoothing driver (world X the camera looks at during timeline)
         this.lookAtX = 0;
@@ -435,9 +443,35 @@ export class TimelineController {
         // Create a single timeline for all close animations to prevent conflicts
         const closeTl = gsap.timeline();
         
+        // Calculate correct timeline position and determine the image's original X for camera focus
+        let correctTimelineX = originalState.position.x; // Default fallback
+        let imageOriginalX = null; // Will store the original X position for camera focusing
+        
+        // Check if this is an additional timeline plane
+        const allTimelinePlanes = this.timelineScene.getTimelinePlanes();
+        const timelinePlaneIndex = allTimelinePlanes.indexOf(plane);
+        if (timelinePlaneIndex !== -1) {
+            // This is an additional timeline plane (years 2018-2019)
+            const originalX = ((timelinePlaneIndex + 8) * 1.5) - 5.25;
+            correctTimelineX = originalX - this.timelineOffset;
+            imageOriginalX = originalX; // Store for camera focusing
+        } else {
+            // Check if this is an initial scene image transitioned to timeline
+            if (window.app && window.app.imagePlanes) {
+                const initialImages = window.app.imagePlanes.getPlanes();
+                const initialImageIndex = initialImages.indexOf(plane);
+                if (initialImageIndex !== -1 && plane.userData.isTimelineTransitioned) {
+                    // This is an initial scene image in timeline (years 2010-2017)
+                    const originalX = (initialImageIndex * 1.5) - 5.25;
+                    correctTimelineX = originalX - this.timelineOffset;
+                    imageOriginalX = originalX; // Store for camera focusing
+                }
+            }
+        }
+        
         // Animate position and scale together in one smooth animation
         closeTl.to(plane.position, {
-            x: originalState.position.x,
+            x: correctTimelineX,
             y: originalState.position.y,
             z: originalState.position.z,
             duration: 0.6,
@@ -453,8 +487,7 @@ export class TimelineController {
         }, 0);
         
         // Fade in other timeline planes back to original opacity
-        const timelinePlanes = this.timelineScene.getTimelinePlanes();
-        timelinePlanes.forEach(otherPlane => {
+        allTimelinePlanes.forEach(otherPlane => {
             if (otherPlane !== plane) {
                 closeTl.to(otherPlane.material, {
                     opacity: 0.9,
@@ -490,6 +523,33 @@ export class TimelineController {
         
         // Remove close button
         this.removeCloseButton();
+        
+        // Simultaneously reposition camera while the image is closing
+        if (imageOriginalX !== null) {
+            // Calculate the new timeline offset needed to center this image
+            const targetTimelineOffset = imageOriginalX;
+            
+            // Start camera focus animation at the same time as the close animation
+            closeTl.to(this, {
+                timelineOffset: targetTimelineOffset,
+                duration: 0.6, // Same duration as close animation for synchronized movement
+                ease: "power2.out",
+                onUpdate: () => {
+                    // Update all timeline images positions
+                    this.moveTimelineImages(0); // Pass 0 delta to just update positions based on current offset
+                    
+                    // Update camera look-at to follow the closed image
+                    this.updateCameraLookAtForOriginalX(imageOriginalX);
+                    
+                    // Update year display and debug panel
+                    this.updateCurrentYear();
+                    this.syncDebugPanel();
+                },
+                onComplete: () => {
+                    console.log(`Camera focused on closed image at original X: ${imageOriginalX}`);
+                }
+            }, 0); // Start at time 0 (same time as close animation)
+        }
         
         // Reset state
         this.enlargedImage = null;
@@ -630,6 +690,11 @@ export class TimelineController {
         
         // If we're in the timeline scene, handle smooth horizontal scrolling
         if (this.currentSceneIndex === 1) {
+            // Safety mechanism: end any active pullback during scroll to prevent stuck camera
+            if (this.holdPullback.active) {
+                this.endHoldToPullback();
+            }
+            
             // Prevent vertical scrolling from affecting timeline
             event.preventDefault();
             this.handleSmoothTimelineScroll(delta);
@@ -685,8 +750,8 @@ export class TimelineController {
                 this.dragStartNearestIndex = this.getNearestSnapIndex(this.dragStartOffset);
             }
 
-            // Slightly zoom out while dragging for better context
-            this.startDragZoomOut();
+            // Start hold-to-pullback behavior (delayed)
+            this.startHoldToPullback();
 
             // Prepare liquid effect but do NOT show on mouse-down
             this.liquidDragStarted = false;
@@ -734,6 +799,9 @@ export class TimelineController {
             
             // Apply magnetic snap adjustment for slow drags
             instOffsetDelta = this.applyMagneticSnap(instOffsetDelta);
+            
+            // Cancel hold-to-pullback if user starts dragging
+            this.cancelHoldToPullback();
             
             // Keep camera at X=0 and maintain proper Y position for timeline view
             this.camera.position.x = 0;
@@ -825,13 +893,13 @@ export class TimelineController {
         if (this.isDragging) {
             this.isDragging = false;
             document.body.style.cursor = 'grab';
+            
+            // End hold-to-pullback behavior
+            this.endHoldToPullback();
             this.dragWheelCooldownUntil = Date.now() + 300;
             
             // Haptic feedback for drag end
             this.triggerHapticFeedback('end');
-
-            // Restore camera zoom after drag ends
-            this.endDragZoomOut();
 
             // Intercept first rightward drag from first image: deterministically go to second image
             if (!this.hasDraggedOnTimeline && this.dragStartNearestIndex === 0 && this.firstDragDirection === 'right') {
@@ -907,40 +975,123 @@ export class TimelineController {
         }
     }
 
-    // Temporarily widen FOV during drag, then restore on release
-    startDragZoomOut() {
-        if (this.dragZoomActive) return;
-        this.dragZoomActive = true;
-        const timelineConfig = this.sceneConfigs[1];
-        const baseFov = timelineConfig ? timelineConfig.fov : this.camera.fov;
-        const targetFov = baseFov + this.dragZoomFovDelta;
+
+    startHoldToPullback() {
+        // Don't start pullback if an image is enlarged
+        if (this.isImageEnlarged) {
+            return;
+        }
+        
+        // Cancel any existing pullback
+        this.cancelHoldToPullback();
+        
+        // Store current camera state
+        this.holdPullback.originalZ = this.camera.position.z;
+        this.holdPullback.originalFov = this.camera.fov;
+        this.holdPullback.startTime = performance.now();
+        
+        // Set a delayed timeout to start the pullback effect
+        this.holdPullback.timeout = setTimeout(() => {
+            this.executeHoldPullback();
+        }, this.holdPullback.delayMs);
+    }
+    
+    executeHoldPullback() {
+        if (this.holdPullback.active) return; // Already active
+        
+        this.holdPullback.active = true;
+        
+        // Calculate target camera position (pull back on Z-axis)
+        const targetZ = this.holdPullback.originalZ + this.holdPullback.pullbackDistance;
+        const targetFov = this.holdPullback.originalFov + this.holdPullback.fovIncrease;
+        
+        // Smooth camera pullback animation
+        gsap.killTweensOf(this.camera.position);
         gsap.killTweensOf(this.camera);
+        
+        gsap.to(this.camera.position, {
+            z: targetZ,
+            duration: this.holdPullback.transitionDuration,
+            ease: "power2.out"
+        });
+        
         gsap.to(this.camera, {
             fov: targetFov,
-            duration: this.dragZoomDuration,
-            ease: 'power2.out',
-            onUpdate: () => this.camera.updateProjectionMatrix()
+            duration: this.holdPullback.transitionDuration,
+            ease: "power2.out",
+            onUpdate: () => {
+                this.camera.updateProjectionMatrix();
+            }
         });
+        
+        console.log(`Hold pullback activated: Z ${this.holdPullback.originalZ} → ${targetZ}, FOV ${this.holdPullback.originalFov} → ${targetFov}`);
+        
+        // Safety timeout: auto-reset pullback after 5 seconds if it gets stuck
+        this.holdPullback.safetyTimeout = setTimeout(() => {
+            if (this.holdPullback.active) {
+                console.log('Safety timeout: Force-ending stuck pullback');
+                this.endHoldToPullback();
+            }
+        }, 5000);
     }
-
-    endDragZoomOut() {
-        if (!this.dragZoomActive) return;
-        const timelineConfig = this.sceneConfigs[1];
-        const baseFov = timelineConfig ? timelineConfig.fov : 30;
-        gsap.killTweensOf(this.camera);
-        gsap.to(this.camera, {
-            fov: baseFov,
-            duration: this.dragZoomDuration,
-            ease: 'power2.out',
-            onUpdate: () => this.camera.updateProjectionMatrix(),
-            onComplete: () => { this.dragZoomActive = false; }
-        });
+    
+    cancelHoldToPullback() {
+        // Clear the delayed timeout if it exists
+        if (this.holdPullback.timeout) {
+            clearTimeout(this.holdPullback.timeout);
+            this.holdPullback.timeout = null;
+        }
+        
+        // Clear safety timeout if it exists
+        if (this.holdPullback.safetyTimeout) {
+            clearTimeout(this.holdPullback.safetyTimeout);
+            this.holdPullback.safetyTimeout = null;
+        }
+        
+        // If pullback is active but user starts dragging, we keep it active
+        // The pullback will be ended when mouse is released
+    }
+    
+    endHoldToPullback() {
+        // Clear any pending timeout
+        this.cancelHoldToPullback();
+        
+        // If pullback was active, smoothly return to original position
+        if (this.holdPullback.active) {
+            this.holdPullback.active = false;
+            
+            // Smooth return to original camera position
+            gsap.killTweensOf(this.camera.position);
+            gsap.killTweensOf(this.camera);
+            
+            gsap.to(this.camera.position, {
+                z: this.holdPullback.originalZ,
+                duration: this.holdPullback.transitionDuration * 0.8, // Slightly faster return
+                ease: "power2.out"
+            });
+            
+            gsap.to(this.camera, {
+                fov: this.holdPullback.originalFov,
+                duration: this.holdPullback.transitionDuration * 0.8,
+                ease: "power2.out",
+                onUpdate: () => {
+                    this.camera.updateProjectionMatrix();
+                }
+            });
+            
+            console.log(`Hold pullback ended: returning to Z ${this.holdPullback.originalZ}, FOV ${this.holdPullback.originalFov}`);
+        }
     }
     
     handleSmoothTimelineScroll(delta) {
         // Disable scrolling when an image is enlarged
         if (this.isImageEnlarged) {
             return;
+        }
+        
+        // Safety mechanism: end any active pullback during scroll to prevent stuck camera
+        if (this.holdPullback.active) {
+            this.endHoldToPullback();
         }
         
         // Keep camera at X=0 and maintain proper Y position for timeline view
