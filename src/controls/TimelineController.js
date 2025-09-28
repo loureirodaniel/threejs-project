@@ -338,12 +338,17 @@ export class TimelineController {
         const scaleY = targetHeight / originalHeight;
         const scale = Math.max(scaleX, scaleY); // Use the larger scale to fill 100% of viewport
         
-        // Animate to center and scale up - position at camera's look-at point for perfect centering
-        const cameraDirection = new THREE.Vector3();
-        this.camera.getWorldDirection(cameraDirection);
-        const targetPosition = new THREE.Vector3()
-            .copy(this.camera.position)
-            .add(cameraDirection.multiplyScalar(Math.abs(this.camera.position.z) * 0.9)); // Position slightly in front of camera
+        // Calculate target position more precisely for better alignment
+        // Use camera's current look-at target rather than world direction to ensure alignment
+        const currentConfig = this.sceneConfigs[1]; // Timeline scene config
+        const cameraLookAtTarget = new THREE.Vector3(this.lookAtX || 0, currentConfig?.target?.y || 0, 0);
+        
+        // Position the image exactly at the camera's look-at point with proper Z distance
+        const targetPosition = new THREE.Vector3(
+            cameraLookAtTarget.x, // Match camera's X look-at position exactly
+            cameraLookAtTarget.y, // Match camera's Y look-at position exactly
+            Math.abs(this.camera.position.z) * 0.85 // Slightly closer for proper visibility
+        );
         
         // Mark this plane as enlarged to disable floating animation
         plane.userData.isEnlarged = true;
@@ -364,21 +369,21 @@ export class TimelineController {
         // Create a single timeline for all animations to prevent conflicts
         const tl = gsap.timeline();
         
-        // Animate position, scale, and z-index together in one smooth animation
+        // Animate position, scale, and z-index together in one smooth animation with improved easing
         tl.to(plane.position, {
             x: targetPosition.x,
             y: targetPosition.y,
             z: targetPosition.z, // Position at calculated point in front of camera
-            duration: 0.6,
-            ease: "power2.out"
+            duration: 0.5,
+            ease: "power3.out"
         }, 0);
         
         tl.to(plane.scale, {
             x: scale,
             y: scale,
             z: scale,
-            duration: 0.6,
-            ease: "power2.out"
+            duration: 0.5,
+            ease: "power3.out"
         }, 0);
         
         // Make the enlarged image fully opaque
@@ -469,21 +474,21 @@ export class TimelineController {
             }
         }
         
-        // Animate position and scale together in one smooth animation
+        // Animate position and scale together in one smooth animation with improved easing
         closeTl.to(plane.position, {
             x: correctTimelineX,
             y: originalState.position.y,
             z: originalState.position.z,
-            duration: 0.6,
-            ease: "power2.out"
+            duration: 0.5,
+            ease: "power3.out"
         }, 0);
         
         closeTl.to(plane.scale, {
             x: originalState.scale.x,
             y: originalState.scale.y,
             z: originalState.scale.z,
-            duration: 0.6,
-            ease: "power2.out"
+            duration: 0.5,
+            ease: "power3.out"
         }, 0);
         
         // Fade in other timeline planes back to original opacity
@@ -710,10 +715,10 @@ export class TimelineController {
     
     onMouseDown(event) {
         if (this.currentSceneIndex === 1) {
-            // Disable dragging when an image is enlarged
+            // Allow dragging when an image is enlarged by closing it first for smooth transition
             if (this.isImageEnlarged) {
-                console.log('Drag disabled - image is enlarged');
-                return;
+                console.log('Image is enlarged - closing it to allow smooth dragging');
+                this.closeEnlargedImage();
             }
             
             this.isDragging = true;
@@ -773,10 +778,10 @@ export class TimelineController {
     
     onMouseMove(event) {
         if (this.isDragging && this.currentSceneIndex === 1) {
-            // Disable dragging when an image is enlarged
+            // Allow dragging when an image is enlarged by closing it first for smooth transition
             if (this.isImageEnlarged) {
-                console.log('Drag move disabled - image is enlarged');
-                return;
+                console.log('Image is enlarged - closing it to allow smooth dragging');
+                this.closeEnlargedImage();
             }
             
             const now = performance.now();
@@ -1084,9 +1089,10 @@ export class TimelineController {
     }
     
     handleSmoothTimelineScroll(delta) {
-        // Disable scrolling when an image is enlarged
+        // Allow scrolling when an image is enlarged by closing it first for smooth transition
         if (this.isImageEnlarged) {
-            return;
+            console.log('Image is enlarged - closing it to allow smooth scrolling');
+            this.closeEnlargedImage();
         }
         
         // Safety mechanism: end any active pullback during scroll to prevent stuck camera
@@ -1156,10 +1162,10 @@ export class TimelineController {
     }
     
     moveTimelineImages(deltaX) {
-        // Disable timeline movement when an image is enlarged
+        // Allow limited timeline movement when an image is enlarged but close it first
         if (this.isImageEnlarged) {
-            console.log('Timeline movement disabled - image is enlarged');
-            return;
+            console.log('Image is enlarged - closing it to allow smooth timeline movement');
+            this.closeEnlargedImage();
         }
         
         // Track timeline offset for year calculation
@@ -1972,10 +1978,10 @@ export class TimelineController {
     }
     
     animateToYear(year, targetOffset) {
-        // Disable timeline movement when an image is enlarged
+        // Allow timeline movement when an image is enlarged by closing it first
         if (this.isImageEnlarged) {
-            console.log('Timeline animation disabled - image is enlarged');
-            return;
+            console.log('Image is enlarged - closing it to allow smooth timeline animation');
+            this.closeEnlargedImage();
         }
         
         console.log(`Animating to year ${year} with offset ${targetOffset}`);
