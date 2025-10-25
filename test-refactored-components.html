@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Refactored Components Test</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #1a1a1a;
+            color: white;
+            font-family: Arial, sans-serif;
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #333;
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.3);
+        }
+        .test-section h2 {
+            color: #00ff88;
+            margin-top: 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Refactored Components Test</h1>
+    
+    <div class="test-section">
+        <h2>Button Component Test</h2>
+        <div id="button-test"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Slider Component Test</h2>
+        <div id="slider-test"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Panel Component Test</h2>
+        <div id="panel-test"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Section Component Test</h2>
+        <div id="section-test"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Debug Panel Test</h2>
+        <div id="debug-panel-test"></div>
+    </div>
+
+    <script type="module">
+        import { Button } from './src/components/Button/Button.js';
+        import { Slider } from './src/components/Slider/Slider.js';
+        import { Panel } from './src/components/Panel/Panel.js';
+        import { Section } from './src/components/Section/Section.js';
+        import { DebugPanelRefactored } from './src/ui/DebugPanelRefactored.js';
+
+        // Test Button Component
+        const buttonTest = document.getElementById('button-test');
+        
+        const primaryBtn = new Button({
+            children: 'Primary Button',
+            variant: 'primary',
+            onClick: () => alert('Primary button clicked!')
+        });
+        buttonTest.appendChild(primaryBtn.create());
+        
+        const secondaryBtn = new Button({
+            children: 'Secondary Button',
+            variant: 'secondary',
+            onClick: () => alert('Secondary button clicked!')
+        });
+        buttonTest.appendChild(secondaryBtn.create());
+        
+        const dangerBtn = new Button({
+            children: 'Danger Button',
+            variant: 'danger',
+            onClick: () => alert('Danger button clicked!')
+        });
+        buttonTest.appendChild(dangerBtn.create());
+
+        // Test Slider Component
+        const sliderTest = document.getElementById('slider-test');
+        
+        const testSlider = new Slider({
+            label: 'Test Slider',
+            value: 50,
+            min: 0,
+            max: 100,
+            step: 1,
+            onChange: (value) => console.log('Slider value:', value)
+        });
+        sliderTest.appendChild(testSlider.create());
+
+        // Test Panel Component
+        const panelTest = document.getElementById('panel-test');
+        
+        const testPanel = new Panel({
+            title: 'Test Panel',
+            children: '<p>This is panel content with <strong>HTML</strong> support!</p>',
+            isCollapsed: false,
+            onToggle: (collapsed) => console.log('Panel collapsed:', collapsed)
+        });
+        panelTest.appendChild(testPanel.create());
+
+        // Test Section Component
+        const sectionTest = document.getElementById('section-test');
+        
+        const testSection = new Section({
+            title: 'Test Section',
+            children: '<p>This is section content!</p>',
+            isExpanded: false,
+            onToggle: (expanded) => console.log('Section expanded:', expanded)
+        });
+        sectionTest.appendChild(testSection.create());
+
+        // Test Debug Panel
+        const debugPanelTest = document.getElementById('debug-panel-test');
+        
+        const debugPanel = new DebugPanelRefactored();
+        debugPanelTest.appendChild(debugPanel.getDebugPanel());
+
+        // Add some spacing between buttons
+        buttonTest.style.display = 'flex';
+        buttonTest.style.gap = '10px';
+        buttonTest.style.flexWrap = 'wrap';
+    </script>
+</body>
+</html>
