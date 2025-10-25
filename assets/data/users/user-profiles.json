@@ -1,0 +1,166 @@
+{
+  "lastUpdated": 1640995800000,
+  "totalProfiles": 8,
+  "profiles": [
+    {
+      "userId": "user_123456789",
+      "displayName": "John Doe",
+      "email": "john.doe@example.com",
+      "avatar": "/assets/images/ui/default-avatar.png",
+      "joinDate": "2010-01-01",
+      "lastActive": 1640995200000,
+      "preferences": {
+        "theme": "dark",
+        "notifications": true,
+        "emailUpdates": true
+      },
+      "statistics": {
+        "totalComments": 15,
+        "totalLikes": 45,
+        "totalReplies": 8
+      },
+      "isModerator": false,
+      "isBanned": false
+    },
+    {
+      "userId": "user_987654321",
+      "displayName": "Sarah Wilson",
+      "email": "sarah.wilson@example.com",
+      "avatar": "/assets/images/ui/default-avatar.png",
+      "joinDate": "2010-02-15",
+      "lastActive": 1640995260000,
+      "preferences": {
+        "theme": "light",
+        "notifications": true,
+        "emailUpdates": false
+      },
+      "statistics": {
+        "totalComments": 22,
+        "totalLikes": 67,
+        "totalReplies": 12
+      },
+      "isModerator": false,
+      "isBanned": false
+    },
+    {
+      "userId": "user_456789123",
+      "displayName": "Mike Chen",
+      "email": "mike.chen@example.com",
+      "avatar": "/assets/images/ui/default-avatar.png",
+      "joinDate": "2010-03-10",
+      "lastActive": 1640995320000,
+      "preferences": {
+        "theme": "dark",
+        "notifications": false,
+        "emailUpdates": true
+      },
+      "statistics": {
+        "totalComments": 8,
+        "totalLikes": 23,
+        "totalReplies": 3
+      },
+      "isModerator": false,
+      "isBanned": false
+    },
+    {
+      "userId": "user_111222333",
+      "displayName": "Alex Rodriguez",
+      "email": "alex.rodriguez@example.com",
+      "avatar": "/assets/images/ui/default-avatar.png",
+      "joinDate": "2012-06-01",
+      "lastActive": 1640995500000,
+      "preferences": {
+        "theme": "dark",
+        "notifications": true,
+        "emailUpdates": true
+      },
+      "statistics": {
+        "totalComments": 35,
+        "totalLikes": 89,
+        "totalReplies": 18
+      },
+      "isModerator": true,
+      "isBanned": false
+    },
+    {
+      "userId": "user_444555666",
+      "displayName": "Emma Thompson",
+      "email": "emma.thompson@example.com",
+      "avatar": "/assets/images/ui/default-avatar.png",
+      "joinDate": "2013-09-15",
+      "lastActive": 1640995560000,
+      "preferences": {
+        "theme": "light",
+        "notifications": true,
+        "emailUpdates": true
+      },
+      "statistics": {
+        "totalComments": 28,
+        "totalLikes": 76,
+        "totalReplies": 15
+      },
+      "isModerator": false,
+      "isBanned": false
+    },
+    {
+      "userId": "user_777888999",
+      "displayName": "David Kim",
+      "email": "david.kim@example.com",
+      "avatar": "/assets/images/ui/default-avatar.png",
+      "joinDate": "2014-01-20",
+      "lastActive": 1640995620000,
+      "preferences": {
+        "theme": "dark",
+        "notifications": false,
+        "emailUpdates": false
+      },
+      "statistics": {
+        "totalComments": 19,
+        "totalLikes": 54,
+        "totalReplies": 7
+      },
+      "isModerator": false,
+      "isBanned": false
+    },
+    {
+      "userId": "user_000111222",
+      "displayName": "Lisa Park",
+      "email": "lisa.park@example.com",
+      "avatar": "/assets/images/ui/default-avatar.png",
+      "joinDate": "2014-11-05",
+      "lastActive": 1640995680000,
+      "preferences": {
+        "theme": "light",
+        "notifications": true,
+        "emailUpdates": true
+      },
+      "statistics": {
+        "totalComments": 31,
+        "totalLikes": 92,
+        "totalReplies": 21
+      },
+      "isModerator": true,
+      "isBanned": false
+    },
+    {
+      "userId": "user_333444555",
+      "displayName": "Robert Johnson",
+      "email": "robert.johnson@example.com",
+      "avatar": "/assets/images/ui/default-avatar.png",
+      "joinDate": "2015-02-28",
+      "lastActive": 1640995740000,
+      "preferences": {
+        "theme": "dark",
+        "notifications": true,
+        "emailUpdates": false
+      },
+      "statistics": {
+        "totalComments": 12,
+        "totalLikes": 38,
+        "totalReplies": 5
+      },
+      "isModerator": false,
+      "isBanned": false
+    }
+  ]
+}

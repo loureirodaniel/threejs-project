@@ -1,0 +1,38 @@
+{
+  "year": 2015,
+  "description": "Major breakthrough year",
+  "images": [
+    {
+      "filename": "2015-03-15-breakthrough.jpg",
+      "date": "2015-03-15",
+      "title": "Major Breakthrough",
+      "description": "Achieving a major technological breakthrough",
+      "tags": ["breakthrough", "technology"],
+      "camera": {
+        "position": { "x": -1, "y": 2, "z": 7 },
+        "target": { "x": 0, "y": 0, "z": 0 }
+      },
+      "sizes": {
+        "thumbnail": "2015-03-15-breakthrough-thumb.jpg",
+        "medium": "2015-03-15-breakthrough-med.jpg",
+        "large": "2015-03-15-breakthrough-large.jpg"
+      }
+    },
+    {
+      "filename": "2015-09-10-expansion.jpg",
+      "date": "2015-09-10",
+      "title": "Global Expansion",
+      "description": "Expanding our reach globally",
+      "tags": ["expansion", "global"],
+      "camera": {
+        "position": { "x": 3, "y": -1, "z": 8 },
+        "target": { "x": 0, "y": 0, "z": 0 }
+      },
+      "sizes": {
+        "thumbnail": "2015-09-10-expansion-thumb.jpg",
+        "medium": "2015-09-10-expansion-med.jpg",
+        "large": "2015-09-10-expansion-large.jpg"
+      }
+    }
+  ]
+}

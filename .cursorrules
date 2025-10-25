@@ -1,0 +1,582 @@
+# Cursor Rules for Three.js Timeline Project
+
+## Project Overview
+This is a Three.js-based interactive timeline project with camera animations, image-based content, and scroll-driven interactions. All Cursor agents should follow these rules when working with this codebase.
+
+## Three.js Human Language Mappings
+
+### Camera Control Commands
+- **"Move camera to frame X"** → `cameraController.moveToFrame(frameIndex)`
+- **"Ease camera to position"** → `cameraController.easeToPosition(x, y, z, duration, easing)`
+- **"Pan left/right"** → `cameraController.pan(direction, amount, duration)`
+- **"Orbit around target"** → `cameraController.orbit(target, radius, angle, duration)`
+- **"Focus on element"** → `cameraController.focusOn(element, offset, duration)`
+- **"Play camera timeline step 3"** → `cameraController.playTimelineStep(3)`
+- **"Smooth transition to scene"** → `cameraController.transitionToScene(sceneId, options)`
+- **"Reset camera to default"** → `cameraController.resetToDefault()`
+- **"Set camera FOV"** → `cameraController.setFOV(fov, duration)`
+- **"Look at target"** → `cameraController.lookAt(x, y, z, duration)`
+- **"Move camera to show timeline better"** → Ask: "Which part of the timeline? What angle would you prefer?"
+- **"Make the animation smoother"** → Ask: "Which animation? What duration and easing would you like?"
+
+### Scene Management Commands
+- **"Add object to scene"** → `sceneManager.addObject(object, position, rotation, scale)`
+- **"Remove object from scene"** → `sceneManager.removeObject(objectId)`
+- **"Update object properties"** → `sceneManager.updateObject(objectId, properties)`
+- **"Animate object"** → `sceneManager.animateObject(objectId, animationConfig)`
+- **"Load image plane"** → `sceneManager.loadImagePlane(imageUrl, position, size)`
+- **"Update timeline content"** → `timelineManager.updateContent(year, content)`
+- **"Add a new image to 2015"** → `timelineManager.addImage(2015, imageData)`
+- **"Adjust the lighting"** → Ask: "Which lights need adjustment? What mood are you trying to achieve?"
+
+### Comment System Commands
+- **"Add comment to 2015 event"** → `commentManager.addComment(2015, eventId, commentData)`
+- **"Show comments for this event"** → `commentManager.showComments(eventId)`
+- **"Hide comments"** → `commentManager.hideComments()`
+- **"Edit comment"** → `commentManager.editComment(commentId, newContent)`
+- **"Delete comment"** → `commentManager.deleteComment(commentId)`
+- **"Reply to comment"** → `commentManager.replyToComment(commentId, replyData)`
+- **"Like comment"** → `commentManager.likeComment(commentId)`
+- **"Report comment"** → `commentManager.reportComment(commentId, reason)`
+- **"Moderate comments"** → `commentManager.moderateComments(eventId)`
+- **"Export comments"** → `commentManager.exportComments(eventId, format)`
+
+### Animation Commands
+- **"Play intro animation"** → `animationManager.playIntro()`
+- **"Start timeline animation"** → `animationManager.startTimeline()`
+- **"Pause all animations"** → `animationManager.pauseAll()`
+- **"Resume animations"** → `animationManager.resumeAll()`
+- **"Ease between keyframes"** → `animationManager.easeBetween(startFrame, endFrame, duration)`
+
+## Debug UI Requirements
+
+### Automatic Debug Controls
+For every Three.js element added to the scene, automatically create debug controls with:
+- **Range sliders from 1 to 10** for all numeric properties
+- **Toggle switches** for boolean properties
+- **Color pickers** for color properties
+- **Dropdown selectors** for enum properties
+- **Text inputs** for string properties
+- **Performance monitors** for each object
+
+### Debug Control Naming Convention
+- Use descriptive names: `cameraPositionX`, `lightIntensity`, `materialOpacity`
+- Group related controls in collapsible sections
+- Include current values in labels: `"Camera X: 5.2"`
+- Add reset buttons for each control group
+- Include performance metrics: `"FPS: 60, Memory: 45MB"`
+
+### Debug UI Structure
+```javascript
+// Enhanced debug control generation with 1-10 range
+const debugControls = {
+  camera: {
+    position: { 
+      x: { min: 1, max: 10, value: 5, step: 0.1, label: "Camera X" }, 
+      y: { min: 1, max: 10, value: 5, step: 0.1, label: "Camera Y" }, 
+      z: { min: 1, max: 10, value: 5, step: 0.1, label: "Camera Z" } 
+    },
+    rotation: { 
+      x: { min: 1, max: 10, value: 5, step: 0.1, label: "Rotation X" }, 
+      y: { min: 1, max: 10, value: 5, step: 0.1, label: "Rotation Y" }, 
+      z: { min: 1, max: 10, value: 5, step: 0.1, label: "Rotation Z" } 
+    },
+    fov: { min: 1, max: 10, value: 5, step: 0.1, label: "FOV" }
+  },
+  effects: {
+    spotlight: {
+      radius: { min: 1, max: 10, value: 5, step: 0.1, label: "Spotlight Radius" },
+      opacity: { min: 1, max: 10, value: 5, step: 0.1, label: "Spotlight Opacity" }
+    },
+    blur: {
+      amount: { min: 1, max: 10, value: 5, step: 0.1, label: "Blur Amount" },
+      opacity: { min: 1, max: 10, value: 5, step: 0.1, label: "Blur Opacity" }
+    }
+  },
+  comments: {
+    visibility: { min: 1, max: 10, value: 5, step: 0.1, label: "Comment Visibility" },
+    maxDisplay: { min: 1, max: 10, value: 5, step: 0.1, label: "Max Comments Displayed" },
+    animationSpeed: { min: 1, max: 10, value: 5, step: 0.1, label: "Comment Animation Speed" },
+    moderation: { type: "toggle", value: false, label: "Enable Comment Moderation" }
+  },
+  performance: {
+    fps: { label: "FPS", value: 60, unit: "fps" },
+    memory: { label: "Memory", value: 45, unit: "MB" },
+    drawCalls: { label: "Draw Calls", value: 25, unit: "calls" }
+  }
+};
+```
+
+### Debug Control Generator
+```javascript
+class DebugControlGenerator {
+  generateControls(object, name) {
+    const controls = {};
+    
+    // Standardized 1-10 range for all numeric properties
+    if (object.position) {
+      controls[`${name}PositionX`] = this.createSlider('Position X', 1, 10, this.normalizeValue(object.position.x, -10, 10));
+      controls[`${name}PositionY`] = this.createSlider('Position Y', 1, 10, this.normalizeValue(object.position.y, -10, 10));
+      controls[`${name}PositionZ`] = this.createSlider('Position Z', 1, 10, this.normalizeValue(object.position.z, 1, 20));
+    }
+    
+    // Add performance monitoring for each control
+    controls[`${name}Performance`] = this.createPerformanceDisplay(name);
+    
+    return controls;
+  }
+
+  normalizeValue(value, min, max) {
+    // Convert actual value to 1-10 range
+    return Math.max(1, Math.min(10, ((value - min) / (max - min)) * 9 + 1));
+  }
+
+  denormalizeValue(normalizedValue, min, max) {
+    // Convert 1-10 range back to actual value
+    return min + ((normalizedValue - 1) / 9) * (max - min);
+  }
+}
+```
+
+## State Management Rules
+
+### Central State Store
+- Use `AppStateManager` for all scene state
+- All state changes must go through the state manager
+- State updates must be immutable
+- Use event bus for state change notifications
+
+### State Update Pattern
+```javascript
+// Correct state update
+this.stateManager.setState({
+  camera: {
+    position: { x: newX, y: newY, z: newZ },
+    rotation: { x: newRX, y: newRY, z: newRZ }
+  }
+});
+
+// Emit change event
+this.eventBus.emit('cameraStateChanged', { position: newPosition, rotation: newRotation });
+```
+
+### Comment System State Management
+```javascript
+// Comment state structure
+const commentState = {
+  comments: {
+    [eventId]: [
+      {
+        id: 'comment_123',
+        eventId: 'event_456',
+        userId: 'user_789',
+        content: 'This is a great milestone!',
+        timestamp: 1640995200000,
+        likes: 5,
+        replies: [],
+        isModerated: false,
+        isVisible: true
+      }
+    ]
+  },
+  ui: {
+    selectedEvent: null,
+    showComments: false,
+    commentFormVisible: false,
+    moderationMode: false
+  },
+  settings: {
+    maxCommentsPerEvent: 50,
+    autoModeration: false,
+    allowReplies: true,
+    allowLikes: true
+  }
+};
+
+// Comment state updates
+this.stateManager.setState({
+  comments: {
+    ...this.stateManager.getState().comments,
+    [eventId]: [...existingComments, newComment]
+  }
+});
+
+// Emit comment events
+this.eventBus.emit('commentAdded', { eventId, comment: newComment });
+this.eventBus.emit('commentUpdated', { commentId, updates });
+this.eventBus.emit('commentDeleted', { commentId, eventId });
+```
+
+### Camera Behavior Coordination
+- **Priority System**: User input > Scroll-driven > Timeline > Default
+- **Interrupt Handling**: Always allow user input to interrupt animations
+- **Smooth Blending**: Use GSAP for all transitions with easing
+- **State Validation**: Validate all camera positions before applying
+
+## Image Asset Management
+
+### Required Directory Structure
+```
+assets/
+├── images/
+│   ├── timeline/
+│   │   ├── 2010/
+│   │   │   ├── 2010-01-15-launch.jpg
+│   │   │   ├── 2010-06-20-milestone.jpg
+│   │   │   └── metadata.json
+│   │   ├── 2011/
+│   │   └── ...
+│   ├── ui/
+│   │   ├── buttons/
+│   │   ├── icons/
+│   │   └── backgrounds/
+│   └── textures/
+│       ├── materials/
+│       └── environments/
+├── models/
+│   ├── low-poly/
+│   ├── high-poly/
+│   └── lod/
+├── audio/
+│   ├── ambient/
+│   ├── effects/
+│   └── music/
+└── data/
+    ├── comments/
+    │   ├── 2010/
+    │   │   ├── 2010-01-15-launch-comments.json
+    │   │   └── 2010-06-20-milestone-comments.json
+    │   ├── 2011/
+    │   └── ...
+    ├── users/
+    │   ├── user-profiles.json
+    │   └── user-preferences.json
+    └── moderation/
+        ├── reported-comments.json
+        └── moderation-log.json
+```
+
+### Naming Conventions
+- Timeline images: `YYYY-MM-DD-description.jpg`
+- UI images: `ui-element-state.png`
+- Textures: `material-type-variant.jpg`
+- Models: `object-name-LOD.obj`
+- Comment files: `YYYY-MM-DD-event-comments.json`
+- User profiles: `user-profiles.json`
+- Moderation data: `reported-comments.json`
+
+### Comment Data Structure
+```javascript
+// Comment data structure
+const commentData = {
+  id: 'comment_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+  eventId: 'event_2015_03_15_breakthrough',
+  userId: 'user_' + userId,
+  userDisplayName: 'John Doe',
+  userAvatar: 'https://example.com/avatars/user123.jpg',
+  content: 'This was a pivotal moment in our journey!',
+  timestamp: Date.now(),
+  editedAt: null,
+  likes: 0,
+  dislikes: 0,
+  replies: [],
+  parentCommentId: null, // For replies
+  isModerated: false,
+  isVisible: true,
+  isPinned: false,
+  tags: ['milestone', 'celebration'],
+  metadata: {
+    ipAddress: '192.168.1.1',
+    userAgent: 'Mozilla/5.0...',
+    location: { country: 'US', city: 'San Francisco' }
+  }
+};
+
+// Event comment file structure
+const eventCommentsFile = {
+  eventId: 'event_2015_03_15_breakthrough',
+  eventTitle: 'Major Breakthrough',
+  eventDate: '2015-03-15',
+  totalComments: 25,
+  lastUpdated: Date.now(),
+  comments: [commentData],
+  statistics: {
+    totalLikes: 150,
+    totalReplies: 12,
+    averageRating: 4.2,
+    mostActiveUsers: ['user123', 'user456']
+  }
+};
+```
+
+### Image Loading Enhancement
+```javascript
+class ImageAssetManager {
+  constructor() {
+    this.cache = new Map();
+    this.loadingQueue = [];
+    this.performanceMonitor = new PerformanceMonitor();
+  }
+
+  async loadImage(url, options = {}) {
+    const startTime = performance.now();
+    
+    try {
+      // Check cache first
+      if (this.cache.has(url)) {
+        return this.cache.get(url);
+      }
+
+      // Progressive loading with placeholder
+      const placeholder = this.createPlaceholder(options.size);
+      const image = await this.loadWithProgress(url, placeholder);
+      
+      // Cache the loaded image
+      this.cache.set(url, image);
+      
+      // Log performance
+      const loadTime = performance.now() - startTime;
+      this.performanceMonitor.logImageLoad(url, loadTime);
+      
+      return image;
+    } catch (error) {
+      console.error('Image load failed:', url, error);
+      return this.createErrorPlaceholder();
+    }
+  }
+}
+```
+
+### Image Loading Rules
+- Always use lazy loading for timeline images
+- Implement progressive loading with placeholders
+- Use WebP format with JPEG fallbacks
+- Include loading states and error handling
+- Cache images in IndexedDB for offline use
+
+## Performance Guidelines
+
+### Three.js Best Practices
+- Use LOD (Level of Detail) for complex objects
+- Implement frustum culling for off-screen objects
+- Use instanced rendering for repeated objects
+- Optimize geometry with BufferGeometry
+- Use texture atlases to reduce draw calls
+- Implement occlusion culling where possible
+
+### Performance Budgets
+- **FPS Target**: 60fps on desktop, 30fps on mobile
+- **Frame Time**: < 16.67ms desktop, < 33.33ms mobile
+- **Memory Limit**: 512MB for images, 256MB for geometry
+- **Draw Calls**: < 100 per frame
+- **Triangles**: < 1M per frame
+- **Load Time**: < 3 seconds initial load, < 1 second for timeline transitions
+- **Bundle Size**: < 2MB initial bundle, lazy load additional features
+
+### Performance Monitoring
+```javascript
+class PerformanceMonitor {
+  constructor() {
+    this.metrics = {
+      fps: 0,
+      frameTime: 0,
+      memoryUsage: 0,
+      drawCalls: 0,
+      triangles: 0
+    };
+    this.startTime = performance.now();
+  }
+
+  update() {
+    this.metrics.fps = this.calculateFPS();
+    this.metrics.frameTime = this.calculateFrameTime();
+    this.metrics.memoryUsage = this.getMemoryUsage();
+    this.metrics.drawCalls = this.getDrawCalls();
+    this.metrics.triangles = this.getTriangles();
+  }
+
+  logPerformance() {
+    console.debug('Performance:', {
+      fps: this.metrics.fps,
+      frameTime: `${this.metrics.frameTime.toFixed(2)}ms`,
+      memory: `${(this.metrics.memoryUsage / 1024 / 1024).toFixed(2)}MB`,
+      drawCalls: this.metrics.drawCalls,
+      triangles: this.metrics.triangles
+    });
+  }
+}
+```
+
+## Error Handling & Debugging
+
+### Enhanced Error Handling Pattern
+```javascript
+class ErrorHandler {
+  constructor() {
+    this.errorCount = 0;
+    this.maxErrors = 10;
+    this.errorLog = [];
+  }
+
+  handleError(error, context) {
+    this.errorCount++;
+    this.errorLog.push({
+      timestamp: Date.now(),
+      error: error.message,
+      context: context,
+      stack: error.stack
+    });
+
+    console.error(`[${context}] Error #${this.errorCount}:`, error);
+
+    // Implement fallback behavior
+    this.implementFallback(context, error);
+
+    // Report critical errors
+    if (this.errorCount > this.maxErrors) {
+      this.reportCriticalError();
+    }
+  }
+
+  implementFallback(context, error) {
+    switch (context) {
+      case 'cameraTransition':
+        this.resetCameraToSafePosition();
+        break;
+      case 'imageLoad':
+        this.showImageErrorPlaceholder();
+        break;
+      case 'animation':
+        this.pauseAnimations();
+        break;
+    }
+  }
+}
+```
+
+### Error Recovery Strategies
+- **Camera Errors**: Reset to last known good position
+- **Image Load Errors**: Show placeholder with retry option
+- **Animation Errors**: Pause and allow manual reset
+- **State Errors**: Restore from last valid state
+
+### Logging Conventions
+- **Debug**: `console.debug('CameraController:', 'Moving to position', position)`
+- **Info**: `console.info('TimelineManager:', 'Loaded year', year)`
+- **Warn**: `console.warn('Performance:', 'Low FPS detected', fps)`
+- **Error**: `console.error('SceneManager:', 'Failed to load object', error)`
+
+### Debug UI Integration
+- All debug controls must update the actual Three.js objects
+- Changes should be immediately visible in the scene
+- Include reset buttons for each control group
+- Show current values in real-time
+- Display performance metrics for each object
+
+## Security & Stability
+
+### Input Validation
+- Validate all user inputs before applying to Three.js objects
+- Sanitize image URLs before loading
+- Limit camera movement ranges to prevent extreme positions
+- Rate limit automated changes (max 10 per second)
+
+### Safe Execution
+- Wrap all Three.js operations in try-catch blocks
+- Provide fallback behaviors for failed operations
+- Validate object existence before manipulation
+- Use defensive programming patterns
+
+### Cursor Agent Safety
+- Always ask for clarification when instructions are ambiguous
+- Provide specific examples when suggesting changes
+- Test changes in isolation before integration
+- Use feature flags for experimental features
+
+## Testing Guidelines
+
+### Unit Tests
+- Test all camera controller methods
+- Test state manager updates
+- Test event bus functionality
+- Test debug UI interactions
+
+### Integration Tests
+- Test camera transitions between scenes
+- Test timeline navigation
+- Test image loading and display
+- Test user interaction flows
+
+### Visual Regression Tests
+- Capture screenshots of key scenes
+- Compare before/after for visual changes
+- Test on multiple viewport sizes
+- Verify camera positions and angles
+
+### Performance Tests
+- Load testing with large image sets
+- Stress testing with rapid user interactions
+- Memory testing over time
+- Frame rate consistency testing
+
+## Code Organization Rules
+
+### File Structure
+- Keep files under 300 lines
+- Use descriptive file names
+- Group related functionality
+- Separate concerns clearly
+
+### Component Patterns
+- Use class-based components for Three.js objects
+- Implement proper lifecycle methods
+- Use props for configuration
+- Include destroy methods for cleanup
+
+### Event Handling
+- Use the central event bus for all communication
+- Emit events for state changes
+- Listen for events in appropriate components
+- Clean up event listeners on destroy
+
+## Cursor Agent Communication
+
+### When to Ask for Clarification
+- When camera movement instructions are ambiguous
+- When multiple objects could be affected
+- When performance implications are unclear
+- When user intent is not clear from context
+
+### Response Format
+- Always provide code examples
+- Explain the reasoning behind suggestions
+- Include performance considerations
+- Mention potential side effects
+
+### Human Language Examples
+- "Move the camera to show the timeline better" → Ask: "Which part of the timeline? What angle would you prefer?"
+- "Make the animation smoother" → Ask: "Which animation? What duration and easing would you like?"
+- "Fix the lighting" → Ask: "Which lights need adjustment? What mood are you trying to achieve?"
+
+## Integration Points
+
+### Cursor Agent Actions
+1. **Read Scene State**: Use `sceneManager.getState()` to understand current scene
+2. **Modify Objects**: Use `sceneManager.updateObject()` for safe updates
+3. **Animate Changes**: Use `animationManager.animate()` for smooth transitions
+4. **Update Debug UI**: Automatically update debug controls when modifying objects
+5. **Log Actions**: Always log what changes were made and why
+
+### State Synchronization
+- Debug UI must always reflect actual Three.js object state
+- Changes in debug UI must immediately update Three.js objects
+- State changes must be logged and traceable
+- Provide undo/redo functionality for debug changes
+
+### Performance Integration
+- Monitor performance for every Three.js operation
+- Log performance metrics in debug UI
+- Alert when performance budgets are exceeded
+- Provide performance optimization suggestions
+
+This enhanced rules file ensures that Cursor agents can effectively work with the Three.js project while maintaining code quality, performance, and user experience standards. The standardized 1-10 debug control range, comprehensive performance monitoring, and enhanced error handling make the development process more efficient and reliable.

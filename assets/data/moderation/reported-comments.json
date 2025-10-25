@@ -1,0 +1,33 @@
+{
+  "lastUpdated": 1640996000000,
+  "totalReports": 2,
+  "reports": [
+    {
+      "id": "report_1640995900000_abc123",
+      "commentId": "comment_1640995200000_abc123def",
+      "eventId": "event_2010_01_15_launch",
+      "reporterId": "user_999888777",
+      "reason": "inappropriate_content",
+      "description": "This comment contains inappropriate language",
+      "timestamp": 1640995900000,
+      "status": "pending",
+      "moderatorId": null,
+      "action": null,
+      "resolvedAt": null
+    },
+    {
+      "id": "report_1640995950000_def456",
+      "commentId": "comment_1640995500000_pqr123stu",
+      "eventId": "event_2015_03_15_breakthrough",
+      "reporterId": "user_666777888",
+      "reason": "spam",
+      "description": "This comment appears to be promotional spam",
+      "timestamp": 1640995950000,
+      "status": "resolved",
+      "moderatorId": "user_111222333",
+      "action": "dismiss",
+      "resolvedAt": 1640995980000,
+      "resolution": "Comment was reviewed and found to be legitimate content, not spam"
+    }
+  ]
+}

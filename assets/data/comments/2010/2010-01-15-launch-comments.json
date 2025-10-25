@@ -1,0 +1,88 @@
+{
+  "eventId": "event_2010_01_15_launch",
+  "eventTitle": "Project Launch",
+  "eventDate": "2010-01-15",
+  "lastUpdated": 1640995200000,
+  "totalComments": 3,
+  "comments": [
+    {
+      "id": "comment_1640995200000_abc123def",
+      "eventId": "event_2010_01_15_launch",
+      "userId": "user_123456789",
+      "userDisplayName": "John Doe",
+      "userAvatar": "/assets/images/ui/default-avatar.png",
+      "content": "This was such an exciting day! I remember being part of the team that made this happen. The energy in the office was incredible!",
+      "timestamp": 1640995200000,
+      "editedAt": null,
+      "likes": 12,
+      "dislikes": 0,
+      "replies": [],
+      "parentCommentId": null,
+      "isModerated": false,
+      "isVisible": true,
+      "isPinned": false,
+      "tags": ["milestone", "celebration"],
+      "metadata": {
+        "ipAddress": "192.168.1.100",
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "location": { "country": "US", "city": "San Francisco" }
+      }
+    },
+    {
+      "id": "comment_1640995260000_def456ghi",
+      "eventId": "event_2010_01_15_launch",
+      "userId": "user_987654321",
+      "userDisplayName": "Sarah Wilson",
+      "userAvatar": "/assets/images/ui/default-avatar.png",
+      "content": "Looking back at this moment, it's amazing to see how far we've come. The foundation we built here was crucial for everything that followed.",
+      "timestamp": 1640995260000,
+      "editedAt": null,
+      "likes": 8,
+      "dislikes": 0,
+      "replies": ["comment_1640995320000_jkl789mno"],
+      "parentCommentId": null,
+      "isModerated": false,
+      "isVisible": true,
+      "isPinned": false,
+      "tags": ["reflection", "foundation"],
+      "metadata": {
+        "ipAddress": "192.168.1.101",
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        "location": { "country": "US", "city": "New York" }
+      }
+    },
+    {
+      "id": "comment_1640995320000_jkl789mno",
+      "eventId": "event_2010_01_15_launch",
+      "userId": "user_456789123",
+      "userDisplayName": "Mike Chen",
+      "userAvatar": "/assets/images/ui/default-avatar.png",
+      "content": "Absolutely! The team collaboration was outstanding. Everyone brought their A-game that day.",
+      "timestamp": 1640995320000,
+      "editedAt": null,
+      "likes": 5,
+      "dislikes": 0,
+      "replies": [],
+      "parentCommentId": "comment_1640995260000_def456ghi",
+      "isModerated": false,
+      "isVisible": true,
+      "isPinned": false,
+      "tags": ["teamwork", "collaboration"],
+      "metadata": {
+        "ipAddress": "192.168.1.102",
+        "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
+        "location": { "country": "US", "city": "Seattle" }
+      }
+    }
+  ],
+  "statistics": {
+    "totalLikes": 25,
+    "totalReplies": 1,
+    "averageRating": 8.3,
+    "mostActiveUsers": [
+      { "userId": "user_123456789", "count": 1 },
+      { "userId": "user_987654321", "count": 1 },
+      { "userId": "user_456789123", "count": 1 }
+    ]
+  }
+}

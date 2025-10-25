@@ -1,0 +1,136 @@
+{
+  "eventId": "event_2015_03_15_breakthrough",
+  "eventTitle": "Major Breakthrough",
+  "eventDate": "2015-03-15",
+  "lastUpdated": 1640995500000,
+  "totalComments": 5,
+  "comments": [
+    {
+      "id": "comment_1640995500000_pqr123stu",
+      "eventId": "event_2015_03_15_breakthrough",
+      "userId": "user_111222333",
+      "userDisplayName": "Alex Rodriguez",
+      "userAvatar": "/assets/images/ui/default-avatar.png",
+      "content": "This breakthrough changed everything! The technology we developed here revolutionized our entire industry. I'm proud to have been part of this innovation.",
+      "timestamp": 1640995500000,
+      "editedAt": null,
+      "likes": 18,
+      "dislikes": 0,
+      "replies": ["comment_1640995560000_vwx456yza"],
+      "parentCommentId": null,
+      "isModerated": false,
+      "isVisible": true,
+      "isPinned": true,
+      "tags": ["breakthrough", "innovation", "technology"],
+      "metadata": {
+        "ipAddress": "192.168.1.110",
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "location": { "country": "US", "city": "Austin" }
+      }
+    },
+    {
+      "id": "comment_1640995560000_vwx456yza",
+      "eventId": "event_2015_03_15_breakthrough",
+      "userId": "user_444555666",
+      "userDisplayName": "Emma Thompson",
+      "userAvatar": "/assets/images/ui/default-avatar.png",
+      "content": "I remember the late nights and early mornings working on this project. The dedication of the entire team was incredible!",
+      "timestamp": 1640995560000,
+      "editedAt": null,
+      "likes": 14,
+      "dislikes": 0,
+      "replies": [],
+      "parentCommentId": "comment_1640995500000_pqr123stu",
+      "isModerated": false,
+      "isVisible": true,
+      "isPinned": false,
+      "tags": ["dedication", "teamwork", "hardwork"],
+      "metadata": {
+        "ipAddress": "192.168.1.111",
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        "location": { "country": "US", "city": "Boston" }
+      }
+    },
+    {
+      "id": "comment_1640995620000_bcd789efg",
+      "eventId": "event_2015_03_15_breakthrough",
+      "userId": "user_777888999",
+      "userDisplayName": "David Kim",
+      "userAvatar": "/assets/images/ui/default-avatar.png",
+      "content": "The impact of this breakthrough is still being felt today. It opened up so many new possibilities and opportunities for growth.",
+      "timestamp": 1640995620000,
+      "editedAt": null,
+      "likes": 9,
+      "dislikes": 0,
+      "replies": [],
+      "parentCommentId": null,
+      "isModerated": false,
+      "isVisible": true,
+      "isPinned": false,
+      "tags": ["impact", "growth", "opportunities"],
+      "metadata": {
+        "ipAddress": "192.168.1.112",
+        "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
+        "location": { "country": "US", "city": "Denver" }
+      }
+    },
+    {
+      "id": "comment_1640995680000_hij012klm",
+      "eventId": "event_2015_03_15_breakthrough",
+      "userId": "user_000111222",
+      "userDisplayName": "Lisa Park",
+      "userAvatar": "/assets/images/ui/default-avatar.png",
+      "content": "This was a defining moment for our company. The breakthrough not only solved our immediate challenges but also positioned us as industry leaders.",
+      "timestamp": 1640995680000,
+      "editedAt": null,
+      "likes": 11,
+      "dislikes": 0,
+      "replies": [],
+      "parentCommentId": null,
+      "isModerated": false,
+      "isVisible": true,
+      "isPinned": false,
+      "tags": ["defining", "leadership", "industry"],
+      "metadata": {
+        "ipAddress": "192.168.1.113",
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "location": { "country": "US", "city": "Chicago" }
+      }
+    },
+    {
+      "id": "comment_1640995740000_nop345qrs",
+      "eventId": "event_2015_03_15_breakthrough",
+      "userId": "user_333444555",
+      "userDisplayName": "Robert Johnson",
+      "userAvatar": "/assets/images/ui/default-avatar.png",
+      "content": "The research and development process was intense, but the results were worth every effort. This breakthrough set the standard for future innovations.",
+      "timestamp": 1640995740000,
+      "editedAt": null,
+      "likes": 7,
+      "dislikes": 0,
+      "replies": [],
+      "parentCommentId": null,
+      "isModerated": false,
+      "isVisible": true,
+      "isPinned": false,
+      "tags": ["research", "development", "innovation"],
+      "metadata": {
+        "ipAddress": "192.168.1.114",
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        "location": { "country": "US", "city": "Miami" }
+      }
+    }
+  ],
+  "statistics": {
+    "totalLikes": 59,
+    "totalReplies": 1,
+    "averageRating": 11.8,
+    "mostActiveUsers": [
+      { "userId": "user_111222333", "count": 1 },
+      { "userId": "user_444555666", "count": 1 },
+      { "userId": "user_777888999", "count": 1 },
+      { "userId": "user_000111222", "count": 1 },
+      { "userId": "user_333444555", "count": 1 }
+    ]
+  }
+}

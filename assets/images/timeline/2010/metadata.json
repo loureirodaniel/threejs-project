@@ -1,0 +1,38 @@
+{
+  "year": 2010,
+  "description": "The beginning of our journey",
+  "images": [
+    {
+      "filename": "2010-01-15-launch.jpg",
+      "date": "2010-01-15",
+      "title": "Project Launch",
+      "description": "The beginning of this amazing 3D timeline project",
+      "tags": ["milestone", "launch"],
+      "camera": {
+        "position": { "x": 0, "y": 0, "z": 5 },
+        "target": { "x": 0, "y": 0, "z": 0 }
+      },
+      "sizes": {
+        "thumbnail": "2010-01-15-launch-thumb.jpg",
+        "medium": "2010-01-15-launch-med.jpg",
+        "large": "2010-01-15-launch-large.jpg"
+      }
+    },
+    {
+      "filename": "2010-06-20-milestone.jpg",
+      "date": "2010-06-20",
+      "title": "First Milestone",
+      "description": "Reaching our first major milestone",
+      "tags": ["milestone", "progress"],
+      "camera": {
+        "position": { "x": 2, "y": 1, "z": 6 },
+        "target": { "x": 0, "y": 0, "z": 0 }
+      },
+      "sizes": {
+        "thumbnail": "2010-06-20-milestone-thumb.jpg",
+        "medium": "2010-06-20-milestone-med.jpg",
+        "large": "2010-06-20-milestone-large.jpg"
+      }
+    }
+  ]
+}
