@@ -14,6 +14,7 @@ For detailed information about this project, consult these documentation files l
 ### Feature Documentation  
 - **docs/COMMENT_SYSTEM_README.md** - Comprehensive guide to the comment system implementation
 - **docs/ENHANCED_RULES_README.md** - Explanation of enhanced rules and guidelines
+- **docs/TECHNIQUES_REFERENCE.md** - Advanced techniques from premium web experiences (Getty, Hatom, Igloo)
 
 ### Development & Integration
 - **docs/INTEGRATION_COMPLETE.md** - Integration status and implementation details

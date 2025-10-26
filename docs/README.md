@@ -11,6 +11,7 @@ This directory contains all project documentation organized by category.
 ### Feature Documentation
 - **[COMMENT_SYSTEM_README.md](./COMMENT_SYSTEM_README.md)** - Comment system guide
 - **[ENHANCED_RULES_README.md](./ENHANCED_RULES_README.md)** - Enhanced rules explanation
+- **[TECHNIQUES_REFERENCE.md](./TECHNIQUES_REFERENCE.md)** - Advanced techniques from premium web experiences
 
 ### Development & Integration
 - **[INTEGRATION_COMPLETE.md](./INTEGRATION_COMPLETE.md)** - Integration status report
