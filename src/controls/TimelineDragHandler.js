@@ -33,14 +33,17 @@ export class TimelineDragHandler {
                 snapZone: 0.4, // Distance from snap point where magnetism activates (in timeline units)
                 smoothing: 0.85, // How smoothly the snap is applied
                 deadZone: 0.05 // Very close to snap point, reduce magnetism to allow precise positioning
-            }
+            },
+            
+            // Magnetic snap offset (calculated during drag)
+            magneticSnapOffset: 0
         };
         
         // Initialize viewport drag scale
         this.viewportDragScale = 1.0;
-        this.timelineWidth = this.controller.timelineWidth;
+        this.timelineWidth = 13.5; // Set default, will be updated from controller if needed
         
-        this.init();
+        // Don't call init() here - let the controller manage initialization timing
     }
     
     init() {
@@ -57,6 +60,9 @@ export class TimelineDragHandler {
      * @param {number} deltaTime - Time delta in milliseconds
      */
     updateDragPhysics(deltaX, deltaTime) {
+        // Guard: ensure controller is available
+        if (!this.controller) return;
+        
         const controller = this.controller;
         
         // Calculate screen velocity (pixels per millisecond)
@@ -113,6 +119,9 @@ export class TimelineDragHandler {
      * @param {TimelineController} controller - The timeline controller instance
      */
     calculateMagneticSnap(controller) {
+        // Guard clause: make sure controller is available
+        if (!controller) return;
+        
         const magneticConfig = this.dragPhysics.magneticSnap;
         if (!magneticConfig.enabled) {
             this.dragPhysics.magneticSnapOffset = 0;
@@ -126,6 +135,8 @@ export class TimelineDragHandler {
         }
         
         // Find nearest snap position
+        if (typeof controller.getSnapPositions !== 'function') return;
+        
         const snapPositions = controller.getSnapPositions();
         let nearestSnap = snapPositions[0];
         let minDistance = Infinity;
@@ -161,6 +172,9 @@ export class TimelineDragHandler {
      * Start drag momentum after release
      */
     startDragMomentum() {
+        // Guard: ensure controller is available
+        if (!this.controller) return;
+        
         const controller = this.controller;
         
         if (controller.isMomentumActive) this.stopDragMomentum();
@@ -211,6 +225,9 @@ export class TimelineDragHandler {
      * Stop drag momentum
      */
     stopDragMomentum() {
+        // Guard: ensure controller is available
+        if (!this.controller) return;
+        
         const controller = this.controller;
         controller.isMomentumActive = false;
         if (controller.momentumRaf) {
@@ -223,6 +240,9 @@ export class TimelineDragHandler {
      * Update visual feedback for drag physics
      */
     updatePhysicsVisualFeedback() {
+        // Guard: ensure controller is available
+        if (!this.controller) return;
+        
         const controller = this.controller;
         // Update cursor style based on drag sensitivity for subtle visual feedback
         if (controller.isDragging) {

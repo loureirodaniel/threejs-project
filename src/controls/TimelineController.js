@@ -40,37 +40,7 @@ export class TimelineController {
         
         // Enhanced drag scaling for full timeline traversal
         this.timelineWidth = 13.5; // Total timeline width (-5.25 to 8.25)
-        this.viewportDragScale = 1.0; // Scale factor for viewport-based dragging
-        
-        // Physics-based drag sensitivity
-        this.dragPhysics = {
-            velocitySmoothing: 0.8, // Smoothing factor for velocity calculation
-            screenVelocity: 0, // Current velocity in pixels/ms
-            lastScreenDelta: 0, // Last screen movement delta
-            
-            // Sensitivity scaling parameters
-            baseSensitivity: 1.0, // Base sensitivity multiplier
-            minSensitivity: 0.3, // Minimum sensitivity (for fast drags)
-            maxSensitivity: 2.0, // Maximum sensitivity (for slow drags)
-            velocityThreshold: {
-                slow: 0.5, // px/ms - below this is considered slow
-                fast: 5.0  // px/ms - above this is considered fast
-            },
-            
-            // Easing and smoothing
-            sensitivitySmoothing: 0.85, // How quickly sensitivity changes
-            currentSensitivity: 1.0, // Current applied sensitivity
-            
-            // Magnetic snap for slow dragging
-            magneticSnap: {
-                enabled: true,
-                activationVelocity: 1.2, // px/ms - only activate below this velocity
-                snapStrength: 0.12, // How strong the magnetic pull is (0-1)
-                snapZone: 0.4, // Distance from snap point where magnetism activates (in timeline units)
-                smoothing: 0.85, // How smoothly the snap is applied
-                deadZone: 0.05 // Very close to snap point, reduce magnetism to allow precise positioning
-            }
-        };
+        this.viewportDragScale = 1.0; // Scale factor for viewport-based dragging (managed by drag handler)
 
         // Hold-to-pullback camera behavior
         this.holdPullback = {
@@ -143,8 +113,11 @@ export class TimelineController {
         // Initialize drag handler
         this.dragHandler = new TimelineDragHandler(this);
         
-        // Initialize dynamic drag scaling
-        this.updateDragScale();
+        // Initialize drag handler
+        this.dragHandler.init();
+        
+        // Update drag scale via handler
+        this.viewportDragScale = this.dragHandler.viewportDragScale;
         
         // Disable default scroll behavior
         document.body.style.overflow = 'hidden';
@@ -168,8 +141,8 @@ export class TimelineController {
         // Add escape key to close enlarged image
         window.addEventListener('keydown', this.onKeyDown.bind(this));
         
-        // Add resize listener to update drag scaling
-        window.addEventListener('resize', this.updateDragScale.bind(this));
+        // Resize listener is handled by drag handler
+        // No need to add it here
         
         // Initialize smooth scrolling
         this.initSmoothScrolling();
@@ -684,11 +657,19 @@ export class TimelineController {
     }
     
     onScroll(event) {
+        console.log('onScroll called, currentSceneIndex:', this.currentSceneIndex, 'isTransitioning:', this.isTransitioning);
+        
         if (this.isTransitioning) return;
         // Ignore wheel while dragging timeline or shortly after drag end to avoid interference
         if (this.currentSceneIndex === 1) {
-            if (this.isDragging) return;
-            if (Date.now() < this.dragWheelCooldownUntil) return;
+            if (this.isDragging) {
+                console.log('Scroll ignored - isDragging is true');
+                return;
+            }
+            if (Date.now() < this.dragWheelCooldownUntil) {
+                console.log('Scroll ignored - within drag cooldown');
+                return;
+            }
         }
         
         // Disable scrolling when an image is enlarged
@@ -1807,8 +1788,12 @@ export class TimelineController {
         this.dragHandler.stopDragMomentum();
         this.currentSnapIndex = 0;
         
-        // Mark transition as complete
+        // Force transition completion for timeline scene
+        console.log('TimelineController: Activating timeline scene and forcing transition complete');
         this.isTransitioning = false;
+        this.transitionProgress = 1;
+        this.transitionStartTime = 0; // Reset transition start time
+        
         this.onTransitionComplete();
         
         // Dispatch scene change event to update UI
@@ -1819,6 +1804,8 @@ export class TimelineController {
             }
         });
         window.dispatchEvent(event);
+        
+        console.log('TimelineController: Transition state cleared, scrolling should work now');
 
         // Apply the current offset immediately to position images and align look-at
         // This ensures we land with the first image centered when entering the timeline
@@ -1835,7 +1822,10 @@ export class TimelineController {
         
         // Check if timeline scene is handling the transition
         if (this.currentSceneIndex === 1 && this.timelineScene && this.timelineScene.isTransitioning()) {
-            // Timeline scene is handling the camera transition, don't interfere
+            // Timeline scene is handling the camera transition, mark this transition as complete
+            this.isTransitioning = false;
+            this.transitionProgress = 1;
+            console.log('TimelineController: Transition complete, scene taking over');
             return;
         }
         
@@ -2228,137 +2218,11 @@ export class TimelineController {
         }
     }
     
-    updateDragPhysics(deltaX, deltaTime) {
-        // Calculate screen velocity (pixels per millisecond)
-        const screenVelocity = Math.abs(deltaX) / deltaTime;
-        
-        // Smooth the velocity using exponential moving average
-        this.dragPhysics.screenVelocity = this.dragPhysics.screenVelocity * this.dragPhysics.velocitySmoothing + 
-                                         screenVelocity * (1 - this.dragPhysics.velocitySmoothing);
-        
-        // Calculate target sensitivity based on velocity
-        let targetSensitivity;
-        const { slow, fast } = this.dragPhysics.velocityThreshold;
-        const { minSensitivity, maxSensitivity, baseSensitivity } = this.dragPhysics;
-        
-        if (this.dragPhysics.screenVelocity <= slow) {
-            // Slow drag: high sensitivity for precise control
-            targetSensitivity = maxSensitivity;
-        } else if (this.dragPhysics.screenVelocity >= fast) {
-            // Fast drag: low sensitivity to prevent overshooting
-            targetSensitivity = minSensitivity;
-        } else {
-            // Interpolate between slow and fast thresholds
-            const t = (this.dragPhysics.screenVelocity - slow) / (fast - slow);
-            // Use ease-out curve for smooth transition
-            const easedT = 1 - Math.pow(1 - t, 2);
-            targetSensitivity = maxSensitivity + easedT * (minSensitivity - maxSensitivity);
-        }
-        
-        // Smooth sensitivity changes to avoid jarring transitions
-        this.dragPhysics.currentSensitivity = this.dragPhysics.currentSensitivity * this.dragPhysics.sensitivitySmoothing + 
-                                             targetSensitivity * (1 - this.dragPhysics.sensitivitySmoothing);
-        
-        // Calculate magnetic snap adjustment for slow dragging
-        this.calculateMagneticSnap();
-        
-        // Store last delta for debugging
-        this.dragPhysics.lastScreenDelta = deltaX;
-        
-        // Optional visual feedback for physics state
-        this.dragHandler.updatePhysicsVisualFeedback();
-        
-        // Debug logging (can be removed in production)
-        if (Math.random() < 0.05) { // Log only 5% of the time to reduce spam
-            const velocityCategory = this.dragPhysics.screenVelocity <= slow ? 'SLOW' : 
-                                   this.dragPhysics.screenVelocity >= fast ? 'FAST' : 'MEDIUM';
-            const magneticOffset = this.dragPhysics.magneticSnapOffset || 0;
-            const magneticActive = Math.abs(magneticOffset) > 0.001;
-            console.log(`Drag Physics: ${velocityCategory} velocity=${this.dragPhysics.screenVelocity.toFixed(2)}px/ms, sensitivity=${this.dragPhysics.currentSensitivity.toFixed(2)}x${magneticActive ? `, magnetic=${magneticOffset.toFixed(3)}` : ''}`);
-        }
-    }
-    
-    calculateMagneticSnap() {
-        const magneticConfig = this.dragPhysics.magneticSnap;
-        if (!magneticConfig.enabled) {
-            this.dragPhysics.magneticSnapOffset = 0;
-            return;
-        }
-        
-        // Only apply magnetic snap for slow dragging
-        if (this.dragPhysics.screenVelocity > magneticConfig.activationVelocity) {
-            this.dragPhysics.magneticSnapOffset = 0;
-            return;
-        }
-        
-        // Find nearest snap position
-        const snapPositions = this.getSnapPositions();
-        let nearestSnap = snapPositions[0];
-        let minDistance = Infinity;
-        
-        for (const snapPos of snapPositions) {
-            const distance = Math.abs(this.timelineOffset - snapPos);
-            if (distance < minDistance) {
-                minDistance = distance;
-                nearestSnap = snapPos;
-            }
-        }
-        
-        // Check if we're within the magnetic zone
-        if (minDistance <= magneticConfig.snapZone && minDistance > magneticConfig.deadZone) {
-            // Calculate magnetic pull strength based on distance
-            // Use a curve that provides gentle attraction with stronger pull in the middle range
-            const normalizedDistance = minDistance / magneticConfig.snapZone;
-            
-            // Create a bell curve effect: strongest pull at mid-distance, weaker at edges and very close
-            const bellCurve = Math.sin(normalizedDistance * Math.PI);
-            const pullStrength = bellCurve * magneticConfig.snapStrength;
-            
-            // Calculate the offset needed to pull toward the snap position
-            const directionToSnap = Math.sign(nearestSnap - this.timelineOffset);
-            const targetOffset = directionToSnap * pullStrength * minDistance * 0.5; // Reduced multiplier for subtlety
-            
-            // Smooth the magnetic offset to avoid jitter
-            const currentMagneticOffset = this.dragPhysics.magneticSnapOffset || 0;
-            this.dragPhysics.magneticSnapOffset = currentMagneticOffset * magneticConfig.smoothing + 
-                                                 targetOffset * (1 - magneticConfig.smoothing);
-        } else {
-            // Outside magnetic zone or in dead zone, gradually reduce any existing magnetic offset
-            this.dragPhysics.magneticSnapOffset = (this.dragPhysics.magneticSnapOffset || 0) * 0.92;
-        }
-    }
-    
     applyMagneticSnap(baseDelta) {
         const magneticOffset = this.dragHandler.getMagneticSnapOffset();
         
         // Apply magnetic offset to the base movement
         // This creates a subtle pull toward snap positions during slow drags
         return baseDelta + magneticOffset;
-    }
-    
-    updatePhysicsVisualFeedback() {
-        // Update cursor style based on drag sensitivity for subtle visual feedback
-        if (this.isDragging) {
-            const sensitivity = this.dragPhysics.currentSensitivity;
-            const opacity = Math.min(1, 0.3 + (sensitivity - 0.3) / 1.7 * 0.7); // Map 0.3-2.0 to 0.3-1.0
-            
-            // Subtle visual indication through cursor opacity or document effects
-            if (document.body.style.cursor === 'grabbing') {
-                // Could add subtle visual effects here, like changing the cursor or adding screen effects
-                // For now, we'll just maintain the existing cursor
-            }
-        }
-    }
-    
-    updateDragScale() {
-        // Calculate drag scale based on viewport width vs timeline width
-        // This allows a full viewport drag to traverse the entire timeline
-        const viewportWidth = window.innerWidth;
-        if (viewportWidth > 0) {
-            // Scale factor for viewport-based dragging
-            // Adjust this value to fine-tune sensitivity (1.0 = full viewport = full timeline)
-            this.viewportDragScale = 1.0;
-            console.log(`Updated drag scale for viewport width: ${viewportWidth}px, timeline width: ${this.timelineWidth} units`);
-        }
     }
 } 
