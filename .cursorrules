@@ -3,6 +3,26 @@
 ## Project Overview
 This is a Three.js-based interactive timeline project with camera animations, image-based content, and scroll-driven interactions. All Cursor agents should follow these rules when working with this codebase.
 
+## Documentation References
+
+For detailed information about this project, consult these documentation files located in the `docs/` directory:
+
+### Architecture & Design
+- **docs/architecture.md** - Complete system architecture, components, and design patterns
+- **docs/PRD.md** - Product Requirements Document with goals, constraints, and acceptance criteria
+
+### Feature Documentation  
+- **docs/COMMENT_SYSTEM_README.md** - Comprehensive guide to the comment system implementation
+- **docs/ENHANCED_RULES_README.md** - Explanation of enhanced rules and guidelines
+
+### Development & Integration
+- **docs/INTEGRATION_COMPLETE.md** - Integration status and implementation details
+- **docs/IMPLEMENTATION_SUMMARY.md** - Summary of what has been implemented
+- **docs/RULES_VERIFICATION.md** - Checklist for verifying rules are working
+- **docs/VERIFICATION_REPORT.md** - Current status of rule implementation
+
+**Note:** When working with specific features (camera, timeline, comments, etc.), refer to the relevant documentation files for deeper context, architecture patterns, and implementation details.
+
 ## Three.js Human Language Mappings
 
 ### Camera Control Commands
