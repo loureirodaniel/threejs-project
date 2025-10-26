@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { gsap } from 'gsap';
 import { TimelineDragHandler } from './TimelineDragHandler.js';
+import { TimelineSnapHandler } from './TimelineSnapHandler.js';
 
 export class TimelineController {
     constructor(camera, sceneManager, timelineScene, backgroundBlurEffect = null) {
@@ -23,9 +24,9 @@ export class TimelineController {
         // Snap functionality
         this.snapTimeout = null;
         
-        // Smooth scrolling properties
-        this.smoothScrollSensitivity = 0.25;
-        this.smoothScrollFriction = 0.85;
+        // Smooth scrolling properties (balanced for smooth, controlled scrolling)
+        this.smoothScrollSensitivity = 0.50;
+        this.smoothScrollFriction = 0.92;
         this.smoothScrollVelocity = 0;
         this.lastScrollTime = 0;
         this.momentumTimeout = null;
@@ -105,6 +106,7 @@ export class TimelineController {
         ];
         
         this.dragHandler = null; // Initialize drag handler after construction
+        this.snapHandler = null; // Initialize snap handler after construction
         
         this.init();
     }
@@ -112,9 +114,10 @@ export class TimelineController {
     init() {
         // Initialize drag handler
         this.dragHandler = new TimelineDragHandler(this);
-        
-        // Initialize drag handler
         this.dragHandler.init();
+        
+        // Initialize snap handler
+        this.snapHandler = new TimelineSnapHandler(this);
         
         // Update drag scale via handler
         this.viewportDragScale = this.dragHandler.viewportDragScale;
@@ -1112,10 +1115,12 @@ export class TimelineController {
             clearTimeout(this.snapTimeout);
         }
         
-        // Set a timeout to snap after scrolling stops
+        // Set a timeout to snap after scrolling stops (shorter for better responsiveness)
         this.snapTimeout = setTimeout(() => {
-            this.smoothSnapToNearestImage();
-        }, 600); // Slightly longer delay for smoother feel
+            if (this.snapHandler) {
+                this.snapHandler.smoothSnapToNearestImage();
+            }
+        }, 400); // Quick snap for better control
     }
     
     syncDebugPanel() {
@@ -1351,88 +1356,18 @@ export class TimelineController {
         this.dragHandler.stopDragMomentum();
     }
 
-    // Utility to compute nearest snap
+    // Utility to compute nearest snap - delegated to handler
     getSnapPositions() {
-        return [-5.25, -3.75, -2.25, -0.75, 0.75, 2.25, 3.75, 5.25, 6.75, 8.25];
+        return this.snapHandler.getSnapPositions();
     }
 
     getNearestSnapIndex(offset) {
-        const snaps = this.getSnapPositions();
-        let bestIndex = 0;
-        let minDist = Infinity;
-        snaps.forEach((p, i) => {
-            const d = Math.abs(offset - p);
-            if (d < minDist) {
-                minDist = d;
-                bestIndex = i;
-            }
-        });
-        return bestIndex;
+        return this.snapHandler.getNearestSnapIndex(offset);
     }
 
-    // Snap after a drag ends, with first-drag guard limiting to at most one step from start
+    // Snap after a drag ends - delegated to handler
     snapAfterDrag() {
-        const snaps = this.getSnapPositions();
-        const targetIndexRaw = this.getNearestSnapIndex(this.timelineOffset);
-        let targetIndex = targetIndexRaw;
-
-        // Directional threshold: advance to the next/prev image with smaller drag distance
-        if (this.dragStartNearestIndex !== null) {
-            const startPos = snaps[this.dragStartNearestIndex];
-            const delta = this.timelineOffset - startPos; // >0 means rightward
-            const threshold = this.dragSnapThresholdUnits;
-            if (delta >= threshold) {
-                targetIndex = Math.min(this.dragStartNearestIndex + 1, snaps.length - 1);
-            } else if (delta <= -threshold) {
-                targetIndex = Math.max(this.dragStartNearestIndex - 1, 0);
-            } else {
-                targetIndex = targetIndexRaw;
-            }
-
-            // First-drag guard: limit large jumps to one step
-            if (!this.hasDraggedOnTimeline) {
-                const clamped = Math.max(this.dragStartNearestIndex - 1, Math.min(this.dragStartNearestIndex + 1, targetIndex));
-                targetIndex = clamped;
-                this.hasDraggedOnTimeline = true;
-            }
-        }
-
-        const nearestPosition = snaps[targetIndex];
-        if (Math.abs(this.timelineOffset - nearestPosition) <= 0.1) {
-            return;
-        }
-
-        gsap.to(this, {
-            timelineOffset: nearestPosition,
-            duration: 0.8,
-            ease: "power2.out",
-            onUpdate: () => {
-                // Update additional timeline images
-                if (this.timelineScene && this.timelineScene.getTimelinePlanes) {
-                    const planes = this.timelineScene.getTimelinePlanes();
-                    planes.forEach((plane, index) => {
-                        const originalX = ((index + 8) * 1.5) - 5.25;
-                        plane.position.x = originalX - this.timelineOffset;
-                    });
-                }
-                // Update initial scene images
-                if (window.app && window.app.imagePlanes) {
-                    const initialImages = window.app.imagePlanes.getPlanes();
-                    initialImages.forEach((image, index) => {
-                        if (image.userData.isTimelineTransitioned) {
-                            const originalX = (index * 1.5) - 5.25;
-                            image.position.x = originalX - this.timelineOffset;
-                        }
-                    });
-                }
-                this.updateCurrentYear();
-                this.syncDebugPanel();
-                this.updateCameraLookAtForOriginalX(nearestPosition);
-            },
-            onComplete: () => {
-                this.triggerHapticFeedback('snap');
-            }
-        });
+        this.snapHandler.snapAfterDrag();
     }
     
     triggerHapticFeedback(type = 'drag') {
@@ -2016,9 +1951,9 @@ export class TimelineController {
     
     // Clean smooth scrolling implementation
     initSmoothScrolling() {
-        // Initialize smooth scrolling with optimal values
-        this.smoothScrollSensitivity = 0.25;
-        this.smoothScrollFriction = 0.85;
+        // Initialize smooth scrolling with optimal values (balanced for smooth control)
+        this.smoothScrollSensitivity = 0.50;
+        this.smoothScrollFriction = 0.92;
         this.smoothScrollVelocity = 0;
         this.lastScrollTime = 0;
     }
@@ -2033,8 +1968,8 @@ export class TimelineController {
         // Apply velocity with friction
         this.smoothScrollVelocity = this.smoothScrollVelocity * this.smoothScrollFriction + scrollVelocity;
         
-        // Clamp velocity to prevent excessive speed
-        this.smoothScrollVelocity = Math.max(-0.5, Math.min(0.5, this.smoothScrollVelocity));
+        // Clamp velocity to prevent excessive speed (balanced for smooth scrolling)
+        this.smoothScrollVelocity = Math.max(-0.9, Math.min(0.9, this.smoothScrollVelocity));
         
         // Move timeline images based on velocity
         this.moveTimelineImages(-this.smoothScrollVelocity);
@@ -2053,7 +1988,7 @@ export class TimelineController {
     }
     
     applyMomentumDeceleration() {
-        if (Math.abs(this.smoothScrollVelocity) > 0.001) {
+        if (Math.abs(this.smoothScrollVelocity) > 0.005) {
             // Apply friction to slow down
             this.smoothScrollVelocity *= this.smoothScrollFriction;
             
@@ -2071,58 +2006,9 @@ export class TimelineController {
     }
     
     smoothSnapToNearestImage() {
-        // Define snap positions (every 1.5 units, corresponding to image positions, starting at -5.25)
-        const snapPositions = [-5.25, -3.75, -2.25, -0.75, 0.75, 2.25, 3.75, 5.25, 6.75, 8.25];
-        
-        // Find the nearest snap position
-        let nearestPosition = 0;
-        let minDistance = Infinity;
-        
-        snapPositions.forEach(position => {
-            const distance = Math.abs(this.timelineOffset - position);
-            if (distance < minDistance) {
-                minDistance = distance;
-                nearestPosition = position;
-            }
-        });
-
-        // First-drag guard: limit to at most one step from currentSnapIndex
-        if (!this.hasDraggedOnTimeline && this.currentSnapIndex !== null && this.currentSnapIndex !== undefined) {
-            const targetIndexRaw = this.getNearestSnapIndex(nearestPosition);
-            const clampedIndex = Math.max(this.currentSnapIndex - 1, Math.min(this.currentSnapIndex + 1, targetIndexRaw));
-            nearestPosition = snapPositions[clampedIndex];
-        }
-        
-        // Only snap if we're not already at a snap position
-        if (Math.abs(this.timelineOffset - nearestPosition) > 0.1) {
-            // Animate to the nearest snap position with smooth easing
-            gsap.to(this, {
-                timelineOffset: nearestPosition,
-                duration: 0.8,
-                ease: "power2.out",
-                onUpdate: () => {
-                    // Update timeline images during animation
-                    if (this.timelineScene && this.timelineScene.getTimelinePlanes) {
-                        const planes = this.timelineScene.getTimelinePlanes();
-                        planes.forEach((plane, index) => {
-                            const originalX = ((index + 8) * 1.5) - 5.25;
-                            plane.position.x = originalX - this.timelineOffset;
-                        });
-                    }
-                    
-                    // Update year display and sync debug panel
-                    this.updateCurrentYear();
-                    this.syncDebugPanel();
-
-                    // Pan camera look-at toward the snapping image
-                    this.updateCameraLookAtForOriginalX(nearestPosition);
-                },
-                onComplete: () => {
-                    // Trigger haptic feedback when snapping completes
-                    this.triggerHapticFeedback('snap');
-                    this.currentSnapIndex = this.getNearestSnapIndex(nearestPosition);
-                }
-            });
+        // Delegate to snap handler
+        if (this.snapHandler) {
+            this.snapHandler.smoothSnapToNearestImage();
         }
     }
     
