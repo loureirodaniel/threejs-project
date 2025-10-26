@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { gsap } from 'gsap';
+import { TimelineDragHandler } from './TimelineDragHandler.js';
 
 export class TimelineController {
     constructor(camera, sceneManager, timelineScene, backgroundBlurEffect = null) {
@@ -133,10 +134,15 @@ export class TimelineController {
             }
         ];
         
+        this.dragHandler = null; // Initialize drag handler after construction
+        
         this.init();
     }
     
     init() {
+        // Initialize drag handler
+        this.dragHandler = new TimelineDragHandler(this);
+        
         // Initialize dynamic drag scaling
         this.updateDragScale();
         
@@ -731,10 +737,10 @@ export class TimelineController {
             this.firstDragDirection = null;
             
             // Reset physics state
-            this.dragPhysics.screenVelocity = 0;
-            this.dragPhysics.lastScreenDelta = 0;
-            this.dragPhysics.currentSensitivity = this.dragPhysics.baseSensitivity;
-            this.dragPhysics.magneticSnapOffset = 0;
+            this.dragHandler.dragPhysics.screenVelocity = 0;
+            this.dragHandler.dragPhysics.lastScreenDelta = 0;
+            this.dragHandler.dragPhysics.currentSensitivity = this.dragHandler.dragPhysics.baseSensitivity;
+            this.dragHandler.dragPhysics.magneticSnapOffset = 0;
             document.body.style.cursor = 'grabbing';
             this.dragWheelCooldownUntil = Date.now() + 250;
             // Clear any pending external snap timeouts to prevent race conditions
@@ -747,7 +753,7 @@ export class TimelineController {
             this.triggerHapticFeedback('start');
 
             // Stop any ongoing momentum
-            this.stopDragMomentum();
+            this.dragHandler.stopDragMomentum();
 
             // Record nearest index at drag start for first-drag guard
             if (this.currentSceneIndex === 1) {
@@ -794,12 +800,12 @@ export class TimelineController {
             }
             
             // Calculate physics-based sensitivity
-            this.updateDragPhysics(deltaX, dt);
+            this.dragHandler.updateDragPhysics(deltaX, dt);
             
             // Calculate dynamic drag speed with physics-based sensitivity
             const viewportWidth = window.innerWidth;
             const baseDragSpeed = this.timelineWidth / viewportWidth * this.viewportDragScale;
-            const physicsAdjustedSpeed = baseDragSpeed * this.dragPhysics.currentSensitivity;
+            const physicsAdjustedSpeed = baseDragSpeed * this.dragHandler.getSensitivity();
             let instOffsetDelta = deltaX * physicsAdjustedSpeed;
             
             // Apply magnetic snap adjustment for slow drags
@@ -909,7 +915,7 @@ export class TimelineController {
             // Intercept first rightward drag from first image: deterministically go to second image
             if (!this.hasDraggedOnTimeline && this.dragStartNearestIndex === 0 && this.firstDragDirection === 'right') {
                 const targetOffset = -3.75; // center second image
-                this.stopDragMomentum();
+                this.dragHandler.stopDragMomentum();
                 gsap.to(this, {
                     timelineOffset: targetOffset,
                     duration: 0.6,
@@ -945,7 +951,7 @@ export class TimelineController {
                 });
             } else {
                 // Stop any momentum
-                this.stopDragMomentum();
+                this.dragHandler.stopDragMomentum();
                 // If release is quick/recent, keep the exact position (no snap)
                 const isRecent = (performance.now() - this.dragLastTime) < this.releaseNoSnapRecentMs;
                 const isFast = Math.abs(this.dragVelocity) > this.releaseNoSnapVelocityThreshold;
@@ -1355,58 +1361,13 @@ export class TimelineController {
         }
     }
 
-    // Momentum handling for drag release
+    // Momentum handling for drag release - delegated to drag handler
     startDragMomentum() {
-        if (this.isMomentumActive) this.stopDragMomentum();
-        this.isMomentumActive = true;
-        
-        // Apply physics-based momentum scaling
-        // Higher sensitivity at release means the momentum should be more controlled
-        const momentumScale = 1.0 / (this.dragPhysics.currentSensitivity * 0.5 + 0.5);
-        
-        // Cap maximum projected additional travel to avoid skipping an image on release
-        const projectedDistance = Math.abs(this.dragVelocity) / Math.max(1e-4, (1 - this.dragFriction));
-        const maxAdditionalTravel = 1.2 * momentumScale; // Scale based on current sensitivity
-        if (projectedDistance > maxAdditionalTravel) {
-            const scale = maxAdditionalTravel * (1 - this.dragFriction) / Math.max(Math.abs(this.dragVelocity), 1e-6);
-            this.dragVelocity *= scale;
-        }
-        
-        // Enhanced friction based on drag physics
-        const baseFriction = this.dragFriction;
-        const physicsAdjustedFriction = baseFriction + (1 - baseFriction) * (1 - this.dragPhysics.currentSensitivity) * 0.3;
-        
-        const step = () => {
-            if (!this.isMomentumActive) return;
-            // Apply velocity with physics-adjusted friction
-            if (Math.abs(this.dragVelocity) > 0.0005) {
-                this.moveTimelineImages(this.dragVelocity);
-                this.dragVelocity *= physicsAdjustedFriction;
-                
-                // Gradually reduce physics sensitivity during momentum
-                this.dragPhysics.screenVelocity *= 0.95;
-                this.updateDragPhysics(0, 16); // Simulate 16ms frame time
-                
-                this.momentumRaf = requestAnimationFrame(step);
-            } else {
-                this.isMomentumActive = false;
-                this.dragVelocity = 0;
-                // Reset physics state after momentum ends
-                this.dragPhysics.screenVelocity = 0;
-                this.dragPhysics.currentSensitivity = this.dragPhysics.baseSensitivity;
-                // After settling, perform a smooth snap
-                this.snapAfterDrag();
-            }
-        };
-        this.momentumRaf = requestAnimationFrame(step);
+        this.dragHandler.startDragMomentum();
     }
 
     stopDragMomentum() {
-        this.isMomentumActive = false;
-        if (this.momentumRaf) {
-            cancelAnimationFrame(this.momentumRaf);
-            this.momentumRaf = null;
-        }
+        this.dragHandler.stopDragMomentum();
     }
 
     // Utility to compute nearest snap
@@ -1843,7 +1804,7 @@ export class TimelineController {
         this.hasDraggedOnTimeline = false;
         this.dragStartNearestIndex = null;
         this.dragStartOffset = null;
-        this.stopDragMomentum();
+        this.dragHandler.stopDragMomentum();
         this.currentSnapIndex = 0;
         
         // Mark transition as complete
@@ -2305,7 +2266,7 @@ export class TimelineController {
         this.dragPhysics.lastScreenDelta = deltaX;
         
         // Optional visual feedback for physics state
-        this.updatePhysicsVisualFeedback();
+        this.dragHandler.updatePhysicsVisualFeedback();
         
         // Debug logging (can be removed in production)
         if (Math.random() < 0.05) { // Log only 5% of the time to reduce spam
@@ -2368,7 +2329,7 @@ export class TimelineController {
     }
     
     applyMagneticSnap(baseDelta) {
-        const magneticOffset = this.dragPhysics.magneticSnapOffset || 0;
+        const magneticOffset = this.dragHandler.getMagneticSnapOffset();
         
         // Apply magnetic offset to the base movement
         // This creates a subtle pull toward snap positions during slow drags
