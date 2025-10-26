@@ -10,11 +10,14 @@ export class TitleOverlay {
         this.lastMousePosition = { x: 0.5, y: 0.5 };
         this.time = 0;
         this.animationId = null;
+        this.scrambleAnimationActive = false;
         
         this.init();
     }
     
     init() {
+        console.log('TitleOverlay: Initializing title overlay');
+        
         // Add text using HTML overlay for better quality
         this.titleDiv = document.createElement('div');
         this.titleDiv.style.position = 'absolute';
@@ -35,17 +38,17 @@ export class TitleOverlay {
         
         this.subtitle = document.getElementById('subtitle');
         
+        console.log('TitleOverlay: Title div created and added to DOM');
+        
         // Setup mouse tracking for distortion effect
         this.setupMouseTracking();
         
-        // Animate text appearance with GSAP
-        gsap.to(this.titleDiv, {
-            opacity: 1,
-            scale: 1,
-            duration: 1.2,
-            ease: "back.out(1.7)",
-            delay: 0.3
-        });
+        // Start scramble animation after a delay to ensure DOM is ready
+        // Use a longer delay to allow for intro sequence setup
+        setTimeout(() => {
+            console.log('TitleOverlay: Starting scramble animation after delay');
+            this.startScrambleAnimation();
+        }, 500);
     }
     
     setTitleFontSize(size) {
@@ -73,6 +76,11 @@ export class TitleOverlay {
     }
     
     setTitle(text) {
+        // Stop scramble animation if running
+        if (this.scrambleAnimationActive) {
+            this.scrambleAnimationActive = false;
+        }
+        
         // Extract the subtitle part and keep it
         const subtitleText = this.subtitle ? this.subtitle.outerHTML : '';
         this.titleDiv.innerHTML = text + '<br>' + subtitleText;
@@ -349,6 +357,106 @@ export class TitleOverlay {
     
     isDistortionActive() {
         return this.isDistortionActive;
+    }
+    
+    /**
+     * Start scramble text animation
+     * Scrambles the title text and animates it to reveal the actual text
+     */
+    startScrambleAnimation() {
+        const targetText = 'THREE.JS PROJECT';
+        const scrambleChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ.!@#$%^&*()_+-=[]{}|;:,.<>?';
+        
+        this.scrambleAnimationActive = true;
+        let iterations = 0;
+        const maxIterations = 30; // Increased iterations for longer animation
+        const scrambleSpeed = 80; // Slower speed to make it more visible
+        
+        console.log('TitleOverlay: Starting scramble animation');
+        
+        try {
+            // Make title visible immediately with opacity and full scale
+            // Use direct style manipulation for immediate effect
+            this.titleDiv.style.opacity = '1';
+            this.titleDiv.style.scale = '1';
+            this.titleDiv.style.visibility = 'visible';
+            this.titleDiv.style.display = 'block';
+            
+            // Hide subtitle during scramble
+            if (this.subtitle) {
+                this.subtitle.style.opacity = '0';
+                this.subtitle.style.visibility = 'hidden';
+            }
+            
+            console.log('TitleOverlay: Title made visible, starting scramble iterations');
+        } catch (error) {
+            console.error('TitleOverlay: Error setting up scramble:', error);
+            this.scrambleAnimationActive = false;
+            return;
+        }
+        
+        const animate = () => {
+            if (!this.scrambleAnimationActive) return;
+            
+            if (iterations < maxIterations) {
+                // Scramble the text with more variety
+                let scrambledText = '';
+                for (let i = 0; i < targetText.length; i++) {
+                    if (targetText[i] === ' ') {
+                        scrambledText += ' ';
+                    } else {
+                        scrambledText += scrambleChars[Math.floor(Math.random() * scrambleChars.length)];
+                    }
+                }
+                
+                // Update only the main title (before the <br>)
+                const parts = this.titleDiv.innerHTML.split('<br>');
+                parts[0] = scrambledText;
+                this.titleDiv.innerHTML = parts.join('<br>');
+                
+                iterations++;
+                setTimeout(animate, scrambleSpeed);
+            } else {
+                // Reveal actual text
+                const parts = this.titleDiv.innerHTML.split('<br>');
+                parts[0] = targetText;
+                this.titleDiv.innerHTML = parts.join('<br>');
+                
+                // Show subtitle with fade in
+                if (this.subtitle) {
+                    this.subtitle.style.visibility = 'visible';
+                    gsap.to(this.subtitle, {
+                        opacity: 1,
+                        duration: 0.6
+                    });
+                }
+                
+                console.log('TitleOverlay: Scramble animation complete, revealing text');
+                
+                // Animate scale down then up with bounce effect
+                gsap.to(this.titleDiv, {
+                    scale: 1.1,
+                    duration: 0.4,
+                    ease: "power2.out",
+                    onComplete: () => {
+                        gsap.to(this.titleDiv, {
+                            scale: 1,
+                            duration: 0.8,
+                            ease: "back.out(1.7)"
+                        });
+                    }
+                });
+                
+                this.scrambleAnimationActive = false;
+            }
+        };
+        
+        // Start animation after ensuring element is rendered
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                animate();
+            });
+        });
     }
     
     checkSVGSupport() {
