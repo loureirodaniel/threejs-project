@@ -18,6 +18,10 @@ import { AppStateManager } from './core/AppStateManager.js';
 import { eventBus } from './core/EventBus.js';
 import { AppEventHandlers } from './core/AppEventHandlers.js';
 import { AppIntroSequence } from './core/AppIntroSequence.js';
+import { CommentManager } from './features/comments/CommentManager.js';
+import { CommentStorage } from './features/comments/CommentStorage.js';
+import { CommentModeration } from './features/comments/CommentModeration.js';
+import { CommentUI } from './features/comments/CommentUI.js';
 
 
 export class App {
@@ -50,6 +54,12 @@ export class App {
         // Controllers
         this.mouseController = null;
         this.timelineController = null;
+
+        // Comment system
+        this.commentStorage = null;
+        this.commentModeration = null;
+        this.commentManager = null;
+        this.commentUI = null;
         
         this.init();
     }
@@ -104,9 +114,15 @@ export class App {
         this.mouseController = new MouseController(camera);
         this.timelineController = new TimelineController(camera, this.sceneManager, this.timelineScene, this.backgroundBlurEffect);
 
+        // Initialize comment system
+        this.commentStorage = new CommentStorage();
+        this.commentModeration = new CommentModeration();
+        this.commentManager = new CommentManager(this.stateManager, this.eventBus, this.commentStorage, this.commentModeration);
+        this.commentUI = new CommentUI(scene, camera, this.commentManager, this.eventBus);
+
         // Play a short intro dolly/arc before enabling interactions
         this.introSequence.playIntro();
-
+        
         // Setup event listeners
         this.eventHandlers.setupEventListeners();
         
@@ -164,6 +180,38 @@ export class App {
     
     hideScrollHint() {
         this.introSequence.hideScrollHint();
+    }
+    
+    // Comment system methods
+    async showCommentsForEvent(eventId) {
+        if (!this.commentUI || !this.commentManager) return;
+        
+        try {
+            // Get event position from timeline scene
+            const eventPosition = this.timelineScene.getEventPosition(eventId);
+            if (eventPosition) {
+                await this.commentUI.showCommentsForEvent(eventId, eventPosition);
+            }
+        } catch (error) {
+            console.error('Failed to show comments:', error);
+        }
+    }
+    
+    hideComments() {
+        if (this.commentUI) {
+            this.commentUI.hideComments();
+        }
+    }
+    
+    async addCommentToEvent(eventId, commentData) {
+        if (!this.commentManager) return null;
+        
+        try {
+            return await this.commentManager.addComment(eventId, commentData);
+        } catch (error) {
+            console.error('Failed to add comment:', error);
+            return null;
+        }
     }
     
     onSceneTransitionComplete(sceneDetail) {
