@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { gsap } from 'gsap';
 import { TimelineDragHandler } from './TimelineDragHandler.js';
 import { TimelineSnapHandler } from './TimelineSnapHandler.js';
+import { TimelineCameraController } from './TimelineCameraController.js';
 
 export class TimelineController {
     constructor(camera, sceneManager, timelineScene, backgroundBlurEffect = null) {
@@ -44,17 +45,7 @@ export class TimelineController {
         this.viewportDragScale = 1.0; // Scale factor for viewport-based dragging (managed by drag handler)
 
         // Hold-to-pullback camera behavior
-        this.holdPullback = {
-            active: false,
-            startTime: 0,
-            delayMs: 150, // Delay before pullback starts (to distinguish from quick clicks)
-            pullbackDistance: 6, // Additional Z distance to pull back
-            fovIncrease: 8, // Additional FOV for wider view
-            transitionDuration: 0.4, // Smooth transition duration in seconds
-            originalZ: 0, // Store original Z position
-            originalFov: 0, // Store original FOV
-            timeout: null // Timeout for delayed pullback
-        };
+        // Hold-to-pullback camera behavior (now managed by TimelineCameraController)
 
         // Camera look-at smoothing driver (world X the camera looks at during timeline)
         this.lookAtX = 0;
@@ -107,6 +98,7 @@ export class TimelineController {
         
         this.dragHandler = null; // Initialize drag handler after construction
         this.snapHandler = null; // Initialize snap handler after construction
+        this.cameraController = null; // Initialize camera controller after construction
         
         this.init();
     }
@@ -118,6 +110,9 @@ export class TimelineController {
         
         // Initialize snap handler
         this.snapHandler = new TimelineSnapHandler(this);
+        
+        // Initialize camera controller
+        this.cameraController = new TimelineCameraController(this);
         
         // Update drag scale via handler
         this.viewportDragScale = this.dragHandler.viewportDragScale;
@@ -197,13 +192,10 @@ export class TimelineController {
     // Compute world-space X of a timeline image given its original X and current offset,
     // then update the camera's look-at to smoothly follow that focal point
     updateCameraLookAtForOriginalX(originalImageX) {
-        const timelineConfig = this.sceneConfigs[1];
-        const targetY = timelineConfig ? timelineConfig.target.y : 0;
-        if (this.timelineOffset === undefined || this.timelineOffset === null) {
-            this.timelineOffset = 0;
+        // Delegate to camera controller
+        if (this.cameraController) {
+            this.cameraController.updateCameraLookAtForOriginalX(originalImageX);
         }
-        const worldX = originalImageX - this.timelineOffset;
-        this.camera.lookAt(new THREE.Vector3(worldX, targetY, 0));
     }
     
     onClick(event) {
@@ -686,7 +678,7 @@ export class TimelineController {
         // If we're in the timeline scene, handle smooth horizontal scrolling
         if (this.currentSceneIndex === 1) {
             // Safety mechanism: end any active pullback during scroll to prevent stuck camera
-            if (this.holdPullback.active) {
+            if (this.cameraController && this.cameraController.isHoldPullbackActive()) {
                 this.endHoldToPullback();
             }
             
@@ -972,109 +964,26 @@ export class TimelineController {
 
 
     startHoldToPullback() {
-        // Don't start pullback if an image is enlarged
-        if (this.isImageEnlarged) {
-            return;
+        if (this.cameraController) {
+            this.cameraController.startHoldToPullback();
         }
-        
-        // Cancel any existing pullback
-        this.cancelHoldToPullback();
-        
-        // Store current camera state
-        this.holdPullback.originalZ = this.camera.position.z;
-        this.holdPullback.originalFov = this.camera.fov;
-        this.holdPullback.startTime = performance.now();
-        
-        // Set a delayed timeout to start the pullback effect
-        this.holdPullback.timeout = setTimeout(() => {
-            this.executeHoldPullback();
-        }, this.holdPullback.delayMs);
     }
     
     executeHoldPullback() {
-        if (this.holdPullback.active) return; // Already active
-        
-        this.holdPullback.active = true;
-        
-        // Calculate target camera position (pull back on Z-axis)
-        const targetZ = this.holdPullback.originalZ + this.holdPullback.pullbackDistance;
-        const targetFov = this.holdPullback.originalFov + this.holdPullback.fovIncrease;
-        
-        // Smooth camera pullback animation
-        gsap.killTweensOf(this.camera.position);
-        gsap.killTweensOf(this.camera);
-        
-        gsap.to(this.camera.position, {
-            z: targetZ,
-            duration: this.holdPullback.transitionDuration,
-            ease: "power2.out"
-        });
-        
-        gsap.to(this.camera, {
-            fov: targetFov,
-            duration: this.holdPullback.transitionDuration,
-            ease: "power2.out",
-            onUpdate: () => {
-                this.camera.updateProjectionMatrix();
-            }
-        });
-        
-        console.log(`Hold pullback activated: Z ${this.holdPullback.originalZ} → ${targetZ}, FOV ${this.holdPullback.originalFov} → ${targetFov}`);
-        
-        // Safety timeout: auto-reset pullback after 5 seconds if it gets stuck
-        this.holdPullback.safetyTimeout = setTimeout(() => {
-            if (this.holdPullback.active) {
-                console.log('Safety timeout: Force-ending stuck pullback');
-                this.endHoldToPullback();
-            }
-        }, 5000);
+        if (this.cameraController) {
+            this.cameraController.executeHoldPullback();
+        }
     }
     
     cancelHoldToPullback() {
-        // Clear the delayed timeout if it exists
-        if (this.holdPullback.timeout) {
-            clearTimeout(this.holdPullback.timeout);
-            this.holdPullback.timeout = null;
+        if (this.cameraController) {
+            this.cameraController.cancelHoldToPullback();
         }
-        
-        // Clear safety timeout if it exists
-        if (this.holdPullback.safetyTimeout) {
-            clearTimeout(this.holdPullback.safetyTimeout);
-            this.holdPullback.safetyTimeout = null;
-        }
-        
-        // If pullback is active but user starts dragging, we keep it active
-        // The pullback will be ended when mouse is released
     }
     
     endHoldToPullback() {
-        // Clear any pending timeout
-        this.cancelHoldToPullback();
-        
-        // If pullback was active, smoothly return to original position
-        if (this.holdPullback.active) {
-            this.holdPullback.active = false;
-            
-            // Smooth return to original camera position
-            gsap.killTweensOf(this.camera.position);
-            gsap.killTweensOf(this.camera);
-            
-            gsap.to(this.camera.position, {
-                z: this.holdPullback.originalZ,
-                duration: this.holdPullback.transitionDuration * 0.8, // Slightly faster return
-                ease: "power2.out"
-            });
-            
-            gsap.to(this.camera, {
-                fov: this.holdPullback.originalFov,
-                duration: this.holdPullback.transitionDuration * 0.8,
-                ease: "power2.out",
-                onUpdate: () => {
-                    this.camera.updateProjectionMatrix();
-                }
-            });
-            
-            console.log(`Hold pullback ended: returning to Z ${this.holdPullback.originalZ}, FOV ${this.holdPullback.originalFov}`);
+        if (this.cameraController) {
+            this.cameraController.endHoldToPullback();
         }
     }
     
@@ -1086,7 +995,7 @@ export class TimelineController {
         }
         
         // Safety mechanism: end any active pullback during scroll to prevent stuck camera
-        if (this.holdPullback.active) {
+        if (this.cameraController && this.cameraController.isHoldPullbackActive()) {
             this.endHoldToPullback();
         }
         
@@ -1693,7 +1602,12 @@ export class TimelineController {
     }
     
     performOriginalTransition(targetIndex, startConfig, endConfig) {
-        // Store initial camera state
+        // Delegate to camera controller
+        if (this.cameraController) {
+            this.cameraController.setupTransition(targetIndex, startConfig, endConfig);
+        }
+        
+        // Also store locally for update() method
         this.startPosition = this.camera.position.clone();
         this.startTarget = new THREE.Vector3();
         this.camera.getWorldDirection(this.startTarget);
@@ -1847,11 +1761,9 @@ export class TimelineController {
     }
     
     updateTimelineCameraConfig(config) {
-        // Update the timeline scene configuration
-        if (this.sceneConfigs[1]) { // Timeline scene is at index 1
-            this.sceneConfigs[1].position.set(config.position.x, config.position.y, config.position.z);
-            this.sceneConfigs[1].target.set(config.target.x, config.target.y, config.target.z);
-            this.sceneConfigs[1].fov = config.fov;
+        // Delegate to camera controller
+        if (this.cameraController) {
+            this.cameraController.updateTimelineCameraConfig(config);
         }
     }
     
