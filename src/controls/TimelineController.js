@@ -4,6 +4,9 @@ import { TimelineDragHandler } from './TimelineDragHandler.js';
 import { TimelineSnapHandler } from './TimelineSnapHandler.js';
 import { TimelineCameraController } from './TimelineCameraController.js';
 import { TimelineImageManager } from './TimelineImageManager.js';
+import { TimelineEffects } from './TimelineEffects.js';
+import { TimelineEventHandler } from './TimelineEventHandler.js';
+import { TimelineSceneController } from './TimelineSceneController.js';
 
 export class TimelineController {
     constructor(camera, sceneManager, timelineScene, backgroundBlurEffect = null) {
@@ -97,10 +100,13 @@ export class TimelineController {
             }
         ];
         
-        this.dragHandler = null; // Initialize drag handler after construction
-        this.snapHandler = null; // Initialize snap handler after construction
-        this.cameraController = null; // Initialize camera controller after construction
-        this.imageManager = null; // Initialize image manager after construction
+        this.dragHandler = null;
+        this.snapHandler = null;
+        this.cameraController = null;
+        this.imageManager = null;
+        this.effects = null;
+        this.eventHandler = null;
+        this.sceneController = null;
         
         this.init();
     }
@@ -119,79 +125,26 @@ export class TimelineController {
         // Initialize image manager
         this.imageManager = new TimelineImageManager(this);
         
+        // Initialize effects manager
+        this.effects = new TimelineEffects(this);
+        
+        // Initialize event handler
+        this.eventHandler = new TimelineEventHandler(this);
+        
+        // Initialize scene controller
+        this.sceneController = new TimelineSceneController(this);
+        
         // Update drag scale via handler
         this.viewportDragScale = this.dragHandler.viewportDragScale;
         
         // Disable default scroll behavior
         document.body.style.overflow = 'hidden';
         
-        // Add scroll event listener
-        window.addEventListener('wheel', this.onScroll.bind(this), { passive: false });
-        
-        // Add mouse drag events for timeline
-        this.isDragging = false;
-        this.dragStartX = 0;
-        this.dragStartY = 0;
-        this.lastDragX = 0;
-        
-        window.addEventListener('mousedown', this.onMouseDown.bind(this));
-        window.addEventListener('mousemove', this.onMouseMove.bind(this));
-        window.addEventListener('mouseup', this.onMouseUp.bind(this));
-        
-        // Add click event for image enlargement
-        window.addEventListener('click', this.onClick.bind(this));
-        
-        // Add escape key to close enlarged image
-        window.addEventListener('keydown', this.onKeyDown.bind(this));
-        
-        // Resize listener is handled by drag handler
-        // No need to add it here
+        // Initialize event handler (handles all events including touch)
+        this.eventHandler.init();
         
         // Initialize smooth scrolling
         this.initSmoothScrolling();
-        
-        // Add touch events for mobile
-        let touchStartY = 0;
-        let touchStartX = 0;
-        window.addEventListener('touchstart', (e) => {
-            touchStartY = e.touches[0].clientY;
-            touchStartX = e.touches[0].clientX;
-        }, { passive: true });
-        
-        window.addEventListener('touchend', (e) => {
-            // Disable touch events when an image is enlarged
-            if (this.isImageEnlarged) {
-                console.log('Touch events disabled - image is enlarged');
-                return;
-            }
-            
-            const touchEndY = e.changedTouches[0].clientY;
-            const touchEndX = e.changedTouches[0].clientX;
-            const deltaY = touchStartY - touchEndY;
-            const deltaX = touchStartX - touchEndX;
-            
-            if (this.currentSceneIndex === 1) {
-                // In timeline scene, handle horizontal scrolling only
-                if (Math.abs(deltaX) > 50) { // Minimum swipe distance
-                    if (deltaX > 0) {
-                        // Swipe left - scroll right in timeline (towards 2019)
-                        this.handleTimelineScroll(-1);
-                    } else {
-                        // Swipe right - scroll left in timeline (towards 2010)
-                        this.handleTimelineScroll(1);
-                    }
-                }
-            } else {
-                // In initial scene, handle scene transitions
-                if (Math.abs(deltaY) > 50) { // Minimum swipe distance
-                    if (deltaY > 0) {
-                        this.nextScene();
-                    } else {
-                        this.previousScene();
-                    }
-                }
-            }
-        }, { passive: true });
     }
 
     // Compute world-space X of a timeline image given its original X and current offset,
@@ -204,446 +157,59 @@ export class TimelineController {
     }
     
     onClick(event) {
-        // Only handle clicks in timeline scene
-        if (this.currentSceneIndex !== 1) return;
-        
-        console.log('Click detected in timeline scene');
-        
-        // If an image is already enlarged, close it
-        if (this.isImageEnlarged) {
-            console.log('Closing enlarged image');
-            this.closeEnlargedImage();
-            return;
-        }
-        
-        // Check if we're dragging (don't trigger click if dragging)
-        if (this.isDragging) {
-            console.log('Ignoring click - dragging detected');
-            return;
-        }
-        
-        // Check if mouse moved significantly since mousedown (indicates drag)
-        const mouseDeltaX = Math.abs(event.clientX - this.dragStartX);
-        const mouseDeltaY = Math.abs(event.clientY - this.dragStartY);
-        if (mouseDeltaX > 5 || mouseDeltaY > 5) {
-            console.log('Ignoring click - mouse moved too much');
-            return; // Small threshold for click vs drag
-        }
-        
-        // Get mouse position
-        const mouse = new THREE.Vector2();
-        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-        
-        console.log('Mouse position:', mouse);
-        
-        // Create raycaster
-        const raycaster = new THREE.Raycaster();
-        raycaster.setFromCamera(mouse, this.camera);
-        
-        // Get all clickable images: timeline planes + initial scene images that are part of timeline
-        const clickableImages = [];
-        
-        // Add timeline planes (additional timeline images)
-        const timelinePlanes = this.timelineScene.getTimelinePlanes();
-        if (timelinePlanes) {
-            clickableImages.push(...timelinePlanes);
-        }
-        
-        // Add initial scene images that have been transitioned to timeline
-        if (window.app && window.app.imagePlanes) {
-            const initialImages = window.app.imagePlanes.getPlanes();
-            initialImages.forEach(image => {
-                if (image.userData.isTimelineTransitioned) {
-                    clickableImages.push(image);
-                }
-            });
-        }
-        
-        console.log('Total clickable images:', clickableImages.length);
-        console.log('Timeline planes count:', timelinePlanes ? timelinePlanes.length : 0);
-        console.log('Initial images in timeline:', clickableImages.length - (timelinePlanes ? timelinePlanes.length : 0));
-        
-        // Check for intersections with all clickable images
-        const intersects = raycaster.intersectObjects(clickableImages);
-        
-        console.log('Intersections found:', intersects.length);
-        
-        if (intersects.length > 0) {
-            const clickedPlane = intersects[0].object;
-            console.log('Enlarging image:', clickedPlane);
-            this.enlargeImage(clickedPlane);
+        // Delegate to event handler
+        if (this.eventHandler) {
+            this.eventHandler.onClick(event);
         }
     }
     
+    
     onKeyDown(event) {
-        // Close enlarged image with Escape key
-        if (event.key === 'Escape' && this.isImageEnlarged) {
-            this.closeEnlargedImage();
+        // Delegate to event handler
+        if (this.eventHandler) {
+            this.eventHandler.onKeyDown(event);
         }
     }
     
     enlargeImage(plane) {
-        if (this.isImageEnlarged) return;
-        
-        console.log('Starting image enlargement - bringing to front and reducing other images to 25% opacity');
-        
-        this.enlargedImage = plane;
-        this.isImageEnlarged = true;
-        
-        // Store original state
-        this.originalImageState = {
-            position: plane.position.clone(),
-            scale: plane.scale.clone(),
-            rotation: plane.rotation.clone(),
-            material: plane.material.clone()
-        };
-        
-        // Calculate 100% of viewport size for fullscreen effect
-        const viewportHeight = 2 * Math.tan((this.camera.fov * Math.PI / 180) / 2) * Math.abs(this.camera.position.z);
-        const viewportWidth = viewportHeight * this.camera.aspect;
-        
-        const targetWidth = viewportWidth * 1.0;
-        const targetHeight = viewportHeight * 1.0;
-        
-        console.log('Viewport dimensions:', { viewportWidth, viewportHeight });
-        console.log('Target dimensions (100% viewport):', { targetWidth, targetHeight });
-        
-        // Calculate scale factor based on original plane size
-        const originalWidth = 1.5; // Original plane width
-        const originalHeight = 1.5 / (4/3); // Original plane height (4:3 aspect ratio)
-        
-        const scaleX = targetWidth / originalWidth;
-        const scaleY = targetHeight / originalHeight;
-        const scale = Math.max(scaleX, scaleY); // Use the larger scale to fill 100% of viewport
-        
-        // Calculate target position more precisely for better alignment
-        // Use camera's current look-at target rather than world direction to ensure alignment
-        const currentConfig = this.sceneConfigs[1]; // Timeline scene config
-        const cameraLookAtTarget = new THREE.Vector3(this.lookAtX || 0, currentConfig?.target?.y || 0, 0);
-        
-        // Position the image exactly at the camera's look-at point with proper Z distance
-        const targetPosition = new THREE.Vector3(
-            cameraLookAtTarget.x, // Match camera's X look-at position exactly
-            cameraLookAtTarget.y, // Match camera's Y look-at position exactly
-            Math.abs(this.camera.position.z) * 0.85 // Slightly closer for proper visibility
-        );
-        
-        // Mark this plane as enlarged to disable floating animation
-        plane.userData.isEnlarged = true;
-        
-        // Background blur effect is disabled for fullscreen images
-        // if (this.backgroundBlurEffect) {
-        //     console.log('TimelineController: Activating background blur immediately');
-        //     this.backgroundBlurEffect.activate();
-        // } else {
-        //     console.log('TimelineController: No background blur effect available');
-        // }
-        
-        // Kill any existing animations on this plane to prevent conflicts
-        gsap.killTweensOf(plane.position);
-        gsap.killTweensOf(plane.scale);
-        gsap.killTweensOf(plane.material);
-        
-        // Create a single timeline for all animations to prevent conflicts
-        const tl = gsap.timeline();
-        
-        // Animate position, scale, and z-index together in one smooth animation with improved easing
-        tl.to(plane.position, {
-            x: targetPosition.x,
-            y: targetPosition.y,
-            z: targetPosition.z, // Position at calculated point in front of camera
-            duration: 0.5,
-            ease: "power3.out"
-        }, 0);
-        
-        tl.to(plane.scale, {
-            x: scale,
-            y: scale,
-            z: scale,
-            duration: 0.5,
-            ease: "power3.out"
-        }, 0);
-        
-        // Make the enlarged image fully opaque
-        tl.to(plane.material, {
-            opacity: 1.0,
-            duration: 0.5,
-            ease: "power2.out"
-        }, 0);
-        
-        // Fade out other timeline planes
-        const timelinePlanes = this.timelineScene.getTimelinePlanes();
-        timelinePlanes.forEach(otherPlane => {
-            if (otherPlane !== plane) {
-                // Reduce opacity to 25%
-                tl.to(otherPlane.material, {
-                    opacity: 0.25,
-                    duration: 0.5,
-                    ease: "power2.out"
-                }, 0);
-            }
-        });
-        
-        // Fade out initial scene images that are part of timeline
-        if (window.app && window.app.imagePlanes) {
-            const initialImages = window.app.imagePlanes.getPlanes();
-            initialImages.forEach(otherImage => {
-                if (otherImage.userData.isTimelineTransitioned && otherImage !== plane) {
-                    // Reduce opacity to 25%
-                    tl.to(otherImage.material, {
-                        opacity: 0.25,
-                        duration: 0.5,
-                        ease: "power2.out"
-                    }, 0);
-                }
-            });
+        // Delegate to image manager
+        if (this.imageManager) {
+            this.imageManager.enlargeImage(plane);
         }
-        
-        // Add background overlay to obscure other images
-        this.addBackgroundOverlay();
-        
-        // Add close button overlay
-        this.addCloseButton();
     }
+    
     
     closeEnlargedImage() {
-        if (!this.isImageEnlarged || !this.enlargedImage || !this.originalImageState) return;
-        
-        const plane = this.enlargedImage;
-        const originalState = this.originalImageState;
-        
-        // Background blur effect is disabled for fullscreen images
-        // if (this.backgroundBlurEffect) {
-        //     console.log('TimelineController: Deactivating background blur immediately');
-        //     this.backgroundBlurEffect.fadeOutBlur();
-        // }
-        
-        // Kill any existing animations on this plane to prevent conflicts
-        gsap.killTweensOf(plane.position);
-        gsap.killTweensOf(plane.scale);
-        gsap.killTweensOf(plane.material);
-        
-        // Create a single timeline for all close animations to prevent conflicts
-        const closeTl = gsap.timeline();
-        
-        // Calculate correct timeline position and determine the image's original X for camera focus
-        let correctTimelineX = originalState.position.x; // Default fallback
-        let imageOriginalX = null; // Will store the original X position for camera focusing
-        
-        // Check if this is an additional timeline plane
-        const allTimelinePlanes = this.timelineScene.getTimelinePlanes();
-        const timelinePlaneIndex = allTimelinePlanes.indexOf(plane);
-        if (timelinePlaneIndex !== -1) {
-            // This is an additional timeline plane (years 2018-2019)
-            const originalX = ((timelinePlaneIndex + 8) * 1.5) - 5.25;
-            correctTimelineX = originalX - this.timelineOffset;
-            imageOriginalX = originalX; // Store for camera focusing
-        } else {
-            // Check if this is an initial scene image transitioned to timeline
-            if (window.app && window.app.imagePlanes) {
-                const initialImages = window.app.imagePlanes.getPlanes();
-                const initialImageIndex = initialImages.indexOf(plane);
-                if (initialImageIndex !== -1 && plane.userData.isTimelineTransitioned) {
-                    // This is an initial scene image in timeline (years 2010-2017)
-                    const originalX = (initialImageIndex * 1.5) - 5.25;
-                    correctTimelineX = originalX - this.timelineOffset;
-                    imageOriginalX = originalX; // Store for camera focusing
-                }
-            }
+        // Delegate to image manager
+        if (this.imageManager) {
+            this.imageManager.closeEnlargedImage();
         }
-        
-        // Animate position and scale together in one smooth animation with improved easing
-        closeTl.to(plane.position, {
-            x: correctTimelineX,
-            y: originalState.position.y,
-            z: originalState.position.z,
-            duration: 0.5,
-            ease: "power3.out"
-        }, 0);
-        
-        closeTl.to(plane.scale, {
-            x: originalState.scale.x,
-            y: originalState.scale.y,
-            z: originalState.scale.z,
-            duration: 0.5,
-            ease: "power3.out"
-        }, 0);
-        
-        // Fade in other timeline planes back to original opacity
-        allTimelinePlanes.forEach(otherPlane => {
-            if (otherPlane !== plane) {
-                closeTl.to(otherPlane.material, {
-                    opacity: 0.9,
-                    duration: 0.5,
-                    ease: "power2.out"
-                }, 0);
-            }
-        });
-        
-        // Fade in initial scene images that are part of timeline back to original opacity
-        if (window.app && window.app.imagePlanes) {
-            const initialImages = window.app.imagePlanes.getPlanes();
-            initialImages.forEach(otherImage => {
-                if (otherImage.userData.isTimelineTransitioned && otherImage !== plane) {
-                    closeTl.to(otherImage.material, {
-                        opacity: 0.9,
-                        duration: 0.5,
-                        ease: "power2.out"
-                    }, 0);
-                }
-            });
-        }
-        
-        // Restore the enlarged image opacity to original value
-        closeTl.to(plane.material, {
-            opacity: 0.9,
-            duration: 0.5,
-            ease: "power2.out"
-        }, 0);
-        
-        // Clear the enlarged flag to re-enable floating animation
-        plane.userData.isEnlarged = false;
-        
-        // Remove close button
-        this.removeCloseButton();
-        
-        // Simultaneously reposition camera while the image is closing
-        if (imageOriginalX !== null) {
-            // Calculate the new timeline offset needed to center this image
-            const targetTimelineOffset = imageOriginalX;
-            
-            // Start camera focus animation at the same time as the close animation
-            closeTl.to(this, {
-                timelineOffset: targetTimelineOffset,
-                duration: 0.6, // Same duration as close animation for synchronized movement
-                ease: "power2.out",
-                onUpdate: () => {
-                    // Update all timeline images positions
-                    this.moveTimelineImages(0); // Pass 0 delta to just update positions based on current offset
-                    
-                    // Update camera look-at to follow the closed image
-                    this.updateCameraLookAtForOriginalX(imageOriginalX);
-                    
-                    // Update year display and debug panel
-                    this.updateCurrentYear();
-                    this.syncDebugPanel();
-                },
-                onComplete: () => {
-                    console.log(`Camera focused on closed image at original X: ${imageOriginalX}`);
-                }
-            }, 0); // Start at time 0 (same time as close animation)
-        }
-        
-        // Reset state
-        this.enlargedImage = null;
-        this.originalImageState = null;
-        this.isImageEnlarged = false;
     }
+    
     
     addCloseButton() {
-        // Remove existing close button if any
-        this.removeCloseButton();
-        
-        // Create close button
-        this.closeButton = document.createElement('div');
-        this.closeButton.innerHTML = '✕';
-        this.closeButton.style.position = 'fixed';
-        this.closeButton.style.top = '20px';
-        this.closeButton.style.right = '20px';
-        this.closeButton.style.width = '50px';
-        this.closeButton.style.height = '50px';
-        this.closeButton.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-        this.closeButton.style.color = 'white';
-        this.closeButton.style.border = '2px solid white';
-        this.closeButton.style.borderRadius = '50%';
-        this.closeButton.style.display = 'flex';
-        this.closeButton.style.alignItems = 'center';
-        this.closeButton.style.justifyContent = 'center';
-        this.closeButton.style.fontSize = '24px';
-        this.closeButton.style.fontWeight = 'bold';
-        this.closeButton.style.cursor = 'pointer';
-        this.closeButton.style.zIndex = '1000';
-        this.closeButton.style.opacity = '0';
-        this.closeButton.style.transition = 'opacity 0.3s ease';
-        
-        // Add click event
-        this.closeButton.addEventListener('click', () => {
-            this.closeEnlargedImage();
-        });
-        
-        document.body.appendChild(this.closeButton);
-        
-        // Create scroll disabled indicator
-        this.scrollIndicator = document.createElement('div');
-        this.scrollIndicator.innerHTML = 'Scroll disabled';
-        this.scrollIndicator.style.position = 'fixed';
-        this.scrollIndicator.style.bottom = '20px';
-        this.scrollIndicator.style.left = '50%';
-        this.scrollIndicator.style.transform = 'translateX(-50%)';
-        this.scrollIndicator.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-        this.scrollIndicator.style.color = 'white';
-        this.scrollIndicator.style.padding = '8px 16px';
-        this.scrollIndicator.style.borderRadius = '20px';
-        this.scrollIndicator.style.fontSize = '14px';
-        this.scrollIndicator.style.fontWeight = 'bold';
-        this.scrollIndicator.style.zIndex = '1000';
-        this.scrollIndicator.style.opacity = '0';
-        this.scrollIndicator.style.transition = 'opacity 0.3s ease';
-        
-        document.body.appendChild(this.scrollIndicator);
-        
-        // Fade in both elements
-        setTimeout(() => {
-            this.closeButton.style.opacity = '1';
-            this.scrollIndicator.style.opacity = '1';
-        }, 100);
+        // Delegate to effects manager
+        if (this.effects) {
+            this.effects.addCloseButton();
+        }
     }
+    
     
     removeCloseButton() {
-        if (this.closeButton) {
-            this.closeButton.remove();
-            this.closeButton = null;
+        // Delegate to effects manager
+        if (this.effects) {
+            this.effects.removeCloseButton();
         }
-        if (this.scrollIndicator) {
-            this.scrollIndicator.remove();
-            this.scrollIndicator = null;
-        }
-        if (this.backgroundOverlay) {
-            this.backgroundOverlay.remove();
-            this.backgroundOverlay = null;
-        }
-
     }
     
+    
     addBackgroundOverlay() {
-        // Remove existing background overlay if any
-        if (this.backgroundOverlay) {
-            this.backgroundOverlay.remove();
+        // Delegate to effects manager
+        if (this.effects) {
+            this.effects.addBackgroundOverlay();
         }
-        
-        // Create background overlay
-        this.backgroundOverlay = document.createElement('div');
-        this.backgroundOverlay.style.position = 'fixed';
-        this.backgroundOverlay.style.top = '0';
-        this.backgroundOverlay.style.left = '0';
-        this.backgroundOverlay.style.width = '100%';
-        this.backgroundOverlay.style.height = '100%';
-        this.backgroundOverlay.style.backgroundColor = `rgba(0, 0, 0, ${this.getBackgroundOpacity()})`;
-        this.backgroundOverlay.style.zIndex = '999';
-        this.backgroundOverlay.style.opacity = '0';
-        this.backgroundOverlay.style.transition = 'opacity 0.3s ease';
-        this.backgroundOverlay.style.pointerEvents = 'none'; // Allow clicks to pass through to the image
-        
-        document.body.appendChild(this.backgroundOverlay);
-        
-        // Fade in
-        setTimeout(() => {
-            this.backgroundOverlay.style.opacity = '1';
-        }, 100);
-        
-
     }
+    
     
 
     
@@ -657,315 +223,42 @@ export class TimelineController {
     }
     
     onScroll(event) {
-        console.log('onScroll called, currentSceneIndex:', this.currentSceneIndex, 'isTransitioning:', this.isTransitioning);
-        
-        if (this.isTransitioning) return;
-        // Ignore wheel while dragging timeline or shortly after drag end to avoid interference
-        if (this.currentSceneIndex === 1) {
-            if (this.isDragging) {
-                console.log('Scroll ignored - isDragging is true');
-                return;
-            }
-            if (Date.now() < this.dragWheelCooldownUntil) {
-                console.log('Scroll ignored - within drag cooldown');
-                return;
-            }
-        }
-        
-        // Disable scrolling when an image is enlarged
-        if (this.isImageEnlarged) {
-            console.log('Scroll disabled - image is enlarged');
-            return;
-        }
-        
-        const delta = event.deltaY;
-        
-        // If we're in the timeline scene, handle smooth horizontal scrolling
-        if (this.currentSceneIndex === 1) {
-            // Safety mechanism: end any active pullback during scroll to prevent stuck camera
-            if (this.cameraController && this.cameraController.isHoldPullbackActive()) {
-                this.endHoldToPullback();
-            }
-            
-            // Prevent vertical scrolling from affecting timeline
-            event.preventDefault();
-            this.handleSmoothTimelineScroll(delta);
-        } else {
-            // In initial scene, handle scene transitions
-            if (delta > 0) {
-                this.nextScene();
-            } else if (delta < 0) {
-                this.previousScene();
-            }
+        // Delegate to event handler
+        if (this.eventHandler) {
+            this.eventHandler.onScroll(event);
         }
     }
     
+    
     onMouseDown(event) {
-        if (this.currentSceneIndex === 1) {
-            // Allow dragging when an image is enlarged by closing it first for smooth transition
-            if (this.isImageEnlarged) {
-                console.log('Image is enlarged - closing it to allow smooth dragging');
-                this.closeEnlargedImage();
-            }
-            
-            this.isDragging = true;
-            this.dragStartX = event.clientX;
-            this.dragStartY = event.clientY;
-            this.lastDragX = event.clientX;
-            this.dragVelocity = 0;
-            this.dragLastTime = performance.now();
-            this.dragAccumulatedOffset = 0;
-            this.firstDragDirection = null;
-            
-            // Reset physics state
-            this.dragHandler.dragPhysics.screenVelocity = 0;
-            this.dragHandler.dragPhysics.lastScreenDelta = 0;
-            this.dragHandler.dragPhysics.currentSensitivity = this.dragHandler.dragPhysics.baseSensitivity;
-            this.dragHandler.dragPhysics.magneticSnapOffset = 0;
-            document.body.style.cursor = 'grabbing';
-            this.dragWheelCooldownUntil = Date.now() + 250;
-            // Clear any pending external snap timeouts to prevent race conditions
-            if (this.snapTimeout) {
-                clearTimeout(this.snapTimeout);
-                this.snapTimeout = null;
-            }
-            
-            // Haptic feedback for drag start
-            this.triggerHapticFeedback('start');
-
-            // Stop any ongoing momentum
-            this.dragHandler.stopDragMomentum();
-
-            // Record nearest index at drag start for first-drag guard
-            if (this.currentSceneIndex === 1) {
-                this.dragStartOffset = this.timelineOffset ?? -5.25;
-                this.dragStartNearestIndex = this.getNearestSnapIndex(this.dragStartOffset);
-            }
-
-            // Start hold-to-pullback behavior (delayed)
-            this.startHoldToPullback();
-
-            // Prepare liquid effect but do NOT show on mouse-down
-            this.liquidDragStarted = false;
-            if (window.app && window.app.liquidDistortionEffect) {
-                const eff = window.app.liquidDistortionEffect;
-                eff.setControlMode('external');
-                eff.setExcludeRect(0.45, 0.45, 0.55, 0.55);
-                eff.setSideMask(0);
-                eff.setApplyRect(0.0, 0.0, 0.0, 0.0);
-            }
+        // Delegate to event handler
+        if (this.eventHandler) {
+            this.eventHandler.onMouseDown(event);
         }
     }
     
     onMouseEnter() {
-        if (this.currentSceneIndex === 1) {
-            document.body.style.cursor = 'grab';
+        // Delegate to event handler
+        if (this.eventHandler) {
+            this.eventHandler.onMouseEnter();
         }
     }
     
     onMouseMove(event) {
-        if (this.isDragging && this.currentSceneIndex === 1) {
-            // Allow dragging when an image is enlarged by closing it first for smooth transition
-            if (this.isImageEnlarged) {
-                console.log('Image is enlarged - closing it to allow smooth dragging');
-                this.closeEnlargedImage();
-            }
-            
-            const now = performance.now();
-            const deltaX = event.clientX - this.lastDragX;
-            const dt = Math.max(now - this.dragLastTime, 1);
-            
-            // Ignore micro-movements to prevent jitter
-            if (Math.abs(deltaX) < 0.5) {
-                return;
-            }
-            
-            // Calculate physics-based sensitivity
-            this.dragHandler.updateDragPhysics(deltaX, dt);
-            
-            // Calculate dynamic drag speed with physics-based sensitivity
-            const viewportWidth = window.innerWidth;
-            const baseDragSpeed = this.timelineWidth / viewportWidth * this.viewportDragScale;
-            const physicsAdjustedSpeed = baseDragSpeed * this.dragHandler.getSensitivity();
-            let instOffsetDelta = deltaX * physicsAdjustedSpeed;
-            
-            // Apply magnetic snap adjustment for slow drags
-            instOffsetDelta = this.applyMagneticSnap(instOffsetDelta);
-            
-            // Cancel hold-to-pullback if user starts dragging
-            this.cancelHoldToPullback();
-            
-            // Keep camera at X=0 and maintain proper Y position for timeline view
-            this.camera.position.x = 0;
-            
-            // Maintain camera Y position from timeline scene configuration; do not change Z or lookAt here
-            const currentConfig = this.sceneConfigs[1]; // Timeline scene config
-            this.camera.position.y = currentConfig.position.y;
-            
-            this.lastDragX = event.clientX;
-            
-            // Move timeline images horizontally based on drag
-            this.moveTimelineImages(instOffsetDelta);
-            this.dragAccumulatedOffset += instOffsetDelta;
-            // Update vignette after positions move
-            this.updateTimelineVignette();
-
-            // Detect first-drag direction when starting from first image
-            if (!this.hasDraggedOnTimeline && this.dragStartNearestIndex === 0 && this.firstDragDirection === null) {
-                if (deltaX > 0) this.firstDragDirection = 'right';
-                else if (deltaX < 0) this.firstDragDirection = 'left';
-            }
-
-            // Update smoothed velocity for momentum
-            // Use exponential moving average for stability; velocity measured in offset units
-            this.dragVelocity = this.dragVelocity * 0.7 + instOffsetDelta * 0.3;
-            this.dragLastTime = now;
-            
-            // Drive liquid effect velocity based on drag direction and magnitude
-            if (window.app && window.app.liquidDistortionEffect) {
-                // Map world center (x=0, y=targetY) to NDC/UV roughly at screen center
-                const uvX = 0.5;
-                const uvY = 0.5;
-                // Horizontal velocity influences shader swirl: sign mirrors drag direction
-                const velX = -instOffsetDelta * 2.5; // scale for visible effect
-                const velY = 0;
-                // Activate effect only after actual movement starts
-                if (!this.liquidDragStarted) {
-                    // Small threshold to avoid showing on micro-movements
-                    if (Math.abs(deltaX) >= 0.5) {
-                        if (!window.app.liquidDistortionEffect.isActive) {
-                            window.app.liquidDistortionEffect.activate();
-                        }
-                        this.liquidDragStarted = true;
-                        window.app.liquidDistortionEffect.fadeInEffect(0.6);
-                    } else {
-                        // Still not dragging enough; keep effect hidden
-                        window.app.liquidDistortionEffect.setApplyRect(0.0, 0.0, 0.0, 0.0);
-                        return;
-                    }
-                }
-                // Force directional-only mode for precise pull
-                window.app.liquidDistortionEffect.setDirectionalOnly(true);
-                window.app.liquidDistortionEffect.setExternalCenterAndVelocity(uvX, uvY, velX, velY);
-                // Apply only to the side opposite the center depending on drag direction
-                const side = instOffsetDelta > 0 ? -1 : (instOffsetDelta < 0 ? 1 : 0);
-                window.app.liquidDistortionEffect.setSideMask(side);
-
-                // Limit effect to the neighbor image rect in UV space
-                // Use approximate UV bounds for left/right thirds of the screen to keep it subtle and precise
-                if (side === -1) {
-                    // Dragging rightwards -> effect on left side image
-                    window.app.liquidDistortionEffect.setApplyRect(0.0, 0.2, 0.45, 0.8);
-                } else if (side === 1) {
-                    // Dragging leftwards -> effect on right side image
-                    window.app.liquidDistortionEffect.setApplyRect(0.55, 0.2, 1.0, 0.8);
-                } else {
-                    // No movement
-                    window.app.liquidDistortionEffect.setApplyRect(0.0, 0.0, 0.0, 0.0);
-                }
-                // Keep the exclude rect tight to center so focused image never distorts
-                window.app.liquidDistortionEffect.setExcludeRect(0.48, 0.40, 0.52, 0.60);
-                // Increase/decrease effect organically based on instantaneous speed
-                const speedMag = Math.min(1.0, Math.abs(instOffsetDelta) * 120.0);
-                window.app.liquidDistortionEffect.fadeInEffect(0.4 + 0.4 * speedMag);
-            }
-            
-            // Avoid heavy visibility checks every mousemove; handled on release or on-demand
-            
-            // Add haptic feedback during drag
-            this.triggerHapticFeedback();
-            
-            // Update year display and sync debug panel
-            this.updateCurrentYear();
-            this.syncDebugPanel();
+        // Delegate to event handler
+        if (this.eventHandler) {
+            this.eventHandler.onMouseMove(event);
         }
     }
     
+    
     onMouseUp(event) {
-        if (this.isDragging) {
-            this.isDragging = false;
-            document.body.style.cursor = 'grab';
-            
-            // End hold-to-pullback behavior
-            this.endHoldToPullback();
-            this.dragWheelCooldownUntil = Date.now() + 300;
-            
-            // Haptic feedback for drag end
-            this.triggerHapticFeedback('end');
-
-            // Intercept first rightward drag from first image: deterministically go to second image
-            if (!this.hasDraggedOnTimeline && this.dragStartNearestIndex === 0 && this.firstDragDirection === 'right') {
-                const targetOffset = -3.75; // center second image
-                this.dragHandler.stopDragMomentum();
-                gsap.to(this, {
-                    timelineOffset: targetOffset,
-                    duration: 0.6,
-                    ease: "power2.out",
-                    onUpdate: () => {
-                        // Update additional timeline images
-                        if (this.timelineScene && this.timelineScene.getTimelinePlanes) {
-                            const planes = this.timelineScene.getTimelinePlanes();
-                            planes.forEach((plane, index) => {
-                                const originalX = ((index + 8) * 1.5) - 5.25;
-                                plane.position.x = originalX - this.timelineOffset;
-                            });
-                        }
-                        // Update initial scene images
-                        if (window.app && window.app.imagePlanes) {
-                            const initialImages = window.app.imagePlanes.getPlanes();
-                            initialImages.forEach((image, index) => {
-                                if (image.userData.isTimelineTransitioned) {
-                                    const originalX = (index * 1.5) - 5.25;
-                                    image.position.x = originalX - this.timelineOffset;
-                                }
-                            });
-                        }
-                        this.updateCurrentYear();
-                        this.syncDebugPanel();
-                        this.updateCameraLookAtForOriginalX(targetOffset);
-                    },
-                    onComplete: () => {
-                        this.triggerHapticFeedback('snap');
-                        this.hasDraggedOnTimeline = true;
-                        this.currentSnapIndex = 1;
-                    }
-                });
-            } else {
-                // Stop any momentum
-                this.dragHandler.stopDragMomentum();
-                // If release is quick/recent, keep the exact position (no snap)
-                const isRecent = (performance.now() - this.dragLastTime) < this.releaseNoSnapRecentMs;
-                const isFast = Math.abs(this.dragVelocity) > this.releaseNoSnapVelocityThreshold;
-                if (isRecent || isFast) {
-                    // Commit current state without snapping
-                    this.hasDraggedOnTimeline = true;
-                    this.updateCurrentYear();
-                    this.syncDebugPanel();
-                    this.updateTimelineVignette();
-                } else {
-                    // Otherwise, snap to the nearest image
-                    this.snapAfterDrag();
-                }
-            }
-            
-            // Add a small delay to prevent click event from firing after drag
-            setTimeout(() => {
-                this.isDragging = false;
-            }, 100);
-
-            // Turn off liquid effect immediately after release
-            if (window.app && window.app.liquidDistortionEffect) {
-                // Smoothly fade out and then deactivate when fully faded
-                window.app.liquidDistortionEffect.fadeOutEffect();
-                setTimeout(() => {
-                    if (window.app && window.app.liquidDistortionEffect) {
-                        window.app.liquidDistortionEffect.deactivate();
-                    }
-                }, 120); // short fade window
-                this.liquidDragStarted = false;
-            }
+        // Delegate to event handler
+        if (this.eventHandler) {
+            this.eventHandler.onMouseUp(event);
         }
     }
+    
 
 
     startHoldToPullback() {
@@ -1149,48 +442,12 @@ export class TimelineController {
 
     // Dim side images based on distance from viewport center
     updateTimelineVignette() {
-        const strength = this.timelineVignetteStrength; // max dim at far edges
-        const width = Math.max(0.1, this.timelineVignetteWidth);
-        const invWidth = 1 / width;
-
-        const applyOpacityFalloff = (object, worldX) => {
-            // Distance from center line x=0 in world space
-            const dist = Math.abs(worldX);
-            // Smoothstep-like falloff: 0 at center, approaching 1 at distance >= width
-            let t = Math.min(1, dist * invWidth);
-            // Ease curve for smoother center weighting
-            t = t * t * (3 - 2 * t);
-            const dim = strength * t;
-            const base = 0.9; // base opacity used across app
-            const targetOpacity = Math.max(0.15, base * (1 - dim));
-            if (object.material && typeof object.material.opacity === 'number') {
-                object.material.opacity = targetOpacity;
-            }
-        };
-
-        // Additional timeline planes (2015-2019)
-        if (this.timelineScene && this.timelineScene.getTimelinePlanes) {
-            const planes = this.timelineScene.getTimelinePlanes();
-            planes.forEach((plane, index) => {
-                const originalX = ((index + 8) * 1.5) - 5.25; // 6..14
-                const worldX = originalX - (this.timelineOffset ?? -5.25);
-                // Skip if currently enlarged
-                if (!plane.userData.isEnlarged) applyOpacityFalloff(plane, worldX);
-            });
-        }
-
-        // Initial scene images that are part of the timeline (2010-2014)
-        if (window.app && window.app.imagePlanes) {
-            const initialImages = window.app.imagePlanes.getPlanes();
-            initialImages.forEach((image, index) => {
-                if (image.userData.isTimelineTransitioned) {
-                    const originalX = (index * 1.5) - 5.25; // -4..4
-                    const worldX = originalX - (this.timelineOffset ?? -5.25);
-                    if (!image.userData.isEnlarged) applyOpacityFalloff(image, worldX);
-                }
-            });
+        // Delegate to effects manager
+        if (this.effects) {
+            this.effects.updateTimelineVignette();
         }
     }
+    
     
     snapToNearestImage() {
         if (this.timelineOffset === undefined || this.timelineOffset === null) return;
@@ -1285,80 +542,12 @@ export class TimelineController {
     }
     
     triggerHapticFeedback(type = 'drag') {
-        // Debug logging
-        console.log(`Haptic feedback triggered: ${type}`);
-        
-        // Show visual feedback indicator
-        this.showHapticIndicator(type);
-        
-        // Check device capabilities
-        this.checkDeviceCapabilities();
-        
-        // Throttle haptic feedback to avoid overwhelming the device
-        if (!this.lastHapticTime) this.lastHapticTime = 0;
-        const now = Date.now();
-        
-        // Different throttling based on feedback type
-        let throttleTime = 100; // Default for drag
-        if (type === 'start' || type === 'end') {
-            throttleTime = 0; // No throttle for start/end
-        }
-        
-        if (now - this.lastHapticTime > throttleTime) {
-            this.lastHapticTime = now;
-            
-            // Different vibration patterns based on type
-            let vibrationPattern = 10; // Default short vibration
-            if (type === 'start') {
-                vibrationPattern = 20; // Slightly longer for start
-            } else if (type === 'end') {
-                vibrationPattern = 15; // Medium for end
-            } else if (type === 'boundary') {
-                vibrationPattern = [10, 50, 10]; // Pattern for boundaries
-            } else if (type === 'snap') {
-                vibrationPattern = [5, 20, 5]; // Quick double tap for snap
-            }
-            
-            // Try multiple haptic feedback methods
-            let hapticTriggered = false;
-            
-            // Method 1: Standard vibration API
-            if (navigator.vibrate) {
-                try {
-                    console.log(`Attempting vibration with pattern:`, vibrationPattern);
-                    const result = navigator.vibrate(vibrationPattern);
-                    console.log(`Vibration API result: ${result}`);
-                    hapticTriggered = result;
-                    
-                    // If vibration returns false, try a longer pattern
-                    if (!result && type === 'start') {
-                        console.log('Trying longer vibration pattern...');
-                        navigator.vibrate(100);
-                    }
-                } catch (e) {
-                    console.log('Vibration API failed:', e);
-                }
-            } else {
-                console.log('Vibration API not available');
-            }
-            
-            // Method 2: iOS specific haptic feedback
-            if (window.navigator && window.navigator.userAgent.includes('iPhone')) {
-                this.triggerIOSHaptic(type);
-                hapticTriggered = true;
-            }
-            
-            // Method 3: Try alternative vibration methods
-            if (!hapticTriggered) {
-                this.tryAlternativeHaptic(type);
-            }
-            
-            // Method 4: Audio feedback as fallback
-            if (!hapticTriggered) {
-                this.triggerAudioFeedback(type);
-            }
+        // Delegate to effects manager
+        if (this.effects) {
+            this.effects.triggerHapticFeedback(type);
         }
     }
+    
     
     triggerIOSHaptic(type = 'drag') {
         console.log('Attempting iOS haptic feedback');
@@ -1579,32 +768,12 @@ export class TimelineController {
     }
     
     transitionToScene(targetIndex) {
-        if (this.isTransitioning || targetIndex === this.currentSceneIndex) return;
-        
-        this.isTransitioning = true;
-        this.transitionProgress = 0;
-        this.transitionStartTime = Date.now();
-        
-        const startConfig = this.sceneConfigs[this.currentSceneIndex];
-        const endConfig = this.sceneConfigs[targetIndex];
-        
-        // If transitioning to timeline scene, use the new camera transition system
-        if (targetIndex === 1 && this.timelineScene) {
-            this.timelineScene.startSceneTransition(this.camera, () => {
-                // Camera transition complete, now activate timeline scene
-                this.activateTimelineScene();
-            });
-        } else {
-            // Use original transition for other scenes
-            this.performOriginalTransition(targetIndex, startConfig, endConfig);
+        // Delegate to scene controller
+        if (this.sceneController) {
+            this.sceneController.transitionToScene(targetIndex);
         }
-        
-        // Update current scene index
-        this.currentSceneIndex = targetIndex;
-        
-        // Trigger scene change event
-        this.onSceneChange(targetIndex);
     }
+    
     
     performOriginalTransition(targetIndex, startConfig, endConfig) {
         // Delegate to camera controller
@@ -1672,44 +841,12 @@ export class TimelineController {
     }
     
     update() {
-        if (!this.isTransitioning) return;
-        
-        // Check if timeline scene is handling the transition
-        if (this.currentSceneIndex === 1 && this.timelineScene && this.timelineScene.isTransitioning()) {
-            // Timeline scene is handling the camera transition, mark this transition as complete
-            this.isTransitioning = false;
-            this.transitionProgress = 1;
-            console.log('TimelineController: Transition complete, scene taking over');
-            return;
-        }
-        
-        // Use original transition logic for other scenes
-        const elapsed = (Date.now() - this.transitionStartTime) / 1000;
-        this.transitionProgress = Math.min(elapsed / this.transitionDuration, 1);
-        
-        // Use easing function for smooth animation
-        const easedProgress = this.easeInOutCubic(this.transitionProgress);
-        
-        // Interpolate camera position
-        this.camera.position.lerpVectors(this.startPosition, this.endPosition, easedProgress);
-        
-        // Interpolate camera target (look-at point)
-        const currentTarget = new THREE.Vector3();
-        currentTarget.lerpVectors(this.startTarget, this.endTarget, easedProgress);
-        
-        // Interpolate FOV
-        this.camera.fov = THREE.MathUtils.lerp(this.startFov, this.endFov, easedProgress);
-        this.camera.updateProjectionMatrix();
-        
-        // Look at the interpolated target
-        this.camera.lookAt(currentTarget);
-        
-        // Check if transition is complete
-        if (this.transitionProgress >= 1) {
-            this.isTransitioning = false;
-            this.onTransitionComplete();
+        // Delegate to scene controller
+        if (this.sceneController) {
+            this.sceneController.update();
         }
     }
+    
     
     easeInOutCubic(t) {
         return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;

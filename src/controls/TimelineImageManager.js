@@ -243,12 +243,10 @@ export class TimelineImageManager {
         // Fade out other images
         this.dimOtherImages(tl, plane);
         
-        // Add UI overlays
-        if (typeof this.controller.addBackgroundOverlay === 'function') {
-            this.controller.addBackgroundOverlay();
-        }
-        if (typeof this.controller.addCloseButton === 'function') {
-            this.controller.addCloseButton();
+        // Add UI overlays via effects manager
+        if (this.controller.effects) {
+            this.controller.effects.addBackgroundOverlay();
+            this.controller.effects.addCloseButton();
         }
     }
     
@@ -326,12 +324,10 @@ export class TimelineImageManager {
         // Restore other images to normal opacity
         this.restoreOtherImages();
         
-        // Remove overlays
-        if (typeof this.controller.removeBackgroundOverlay === 'function') {
-            this.controller.removeBackgroundOverlay();
-        }
-        if (typeof this.controller.removeCloseButton === 'function') {
-            this.controller.removeCloseButton();
+        // Remove overlays via effects manager
+        if (this.controller.effects) {
+            this.controller.effects.removeBackgroundOverlay();
+            this.controller.effects.removeCloseButton();
         }
         
         // Reset state
