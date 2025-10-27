@@ -3,6 +3,7 @@ import { gsap } from 'gsap';
 import { TimelineDragHandler } from './TimelineDragHandler.js';
 import { TimelineSnapHandler } from './TimelineSnapHandler.js';
 import { TimelineCameraController } from './TimelineCameraController.js';
+import { TimelineImageManager } from './TimelineImageManager.js';
 
 export class TimelineController {
     constructor(camera, sceneManager, timelineScene, backgroundBlurEffect = null) {
@@ -99,6 +100,7 @@ export class TimelineController {
         this.dragHandler = null; // Initialize drag handler after construction
         this.snapHandler = null; // Initialize snap handler after construction
         this.cameraController = null; // Initialize camera controller after construction
+        this.imageManager = null; // Initialize image manager after construction
         
         this.init();
     }
@@ -113,6 +115,9 @@ export class TimelineController {
         
         // Initialize camera controller
         this.cameraController = new TimelineCameraController(this);
+        
+        // Initialize image manager
+        this.imageManager = new TimelineImageManager(this);
         
         // Update drag scale via handler
         this.viewportDragScale = this.dragHandler.viewportDragScale;
