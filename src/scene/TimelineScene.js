@@ -1,14 +1,30 @@
 import * as THREE from 'three';
 import { gsap } from 'gsap';
+import { FogExp2Effect } from '../effects/FogExp2Effect.js';
 
 export class TimelineScene {
-    constructor(scene) {
+    constructor(scene, renderer, camera) {
         this.scene = scene;
+        this.renderer = renderer;
+        this.camera = camera;
         this.timelinePlanes = [];
         this.timelineGroup = new THREE.Group();
         this.isActive = false;
         this.animationProgress = 0;
         this.textureLoader = new THREE.TextureLoader();
+        
+        // Initialize enhanced fog effect with depth buffer support
+        this.fogEffect = new FogExp2Effect(scene, renderer, camera, {
+            color: new THREE.Color(0x808080), // Subtle grey color
+            density: 0.02, // Subtle density for atmospheric effect
+            enabled: true,
+            depthBufferEnabled: true,
+            volumetricDensity: 0.015,
+            lightScattering: 0.3,
+            cloudOpacity: 0.4,
+            windSpeed: 0.001,
+            turbulence: 0.02
+        });
         
         // Camera transition properties
         this.cameraTransitionState = 'idle'; // 'idle', 'transitioning', 'zooming-in'
@@ -100,6 +116,15 @@ export class TimelineScene {
         this.timelineGroup.visible = true;
         this.animationProgress = 0;
         
+        // Activate fog effect
+        this.fogEffect.activate();
+        
+        // Enhance lighting for fog interaction
+        if (window.app && window.app.lighting) {
+            window.app.lighting.enhanceForFog();
+            window.app.lighting.updateFogLighting(this.fogEffect);
+        }
+        
         // DEBUG: Force show all timeline images immediately for debugging
         console.log('TimelineScene: Activated - DEBUG MODE: Showing all timeline images immediately');
         this.timelinePlanes.forEach((plane, index) => {
@@ -133,6 +158,14 @@ export class TimelineScene {
     deactivate() {
         this.isActive = false;
         this.timelineGroup.visible = false;
+        
+        // Deactivate fog effect
+        this.fogEffect.deactivate();
+        
+        // Reset lighting for normal scenes
+        if (window.app && window.app.lighting) {
+            window.app.lighting.resetForNormal();
+        }
         
         // Reset flags
         this.isImageLayoutTransitioning = false;
@@ -252,6 +285,9 @@ export class TimelineScene {
     update(time, camera) {
         if (!this.isActive) return;
         
+        // Update fog effect
+        this.fogEffect.update(time);
+        
         // Skip floating animation during transitions
         if (this.cameraTransitionState !== 'idle' || this.isImageLayoutTransitioning) {
             return;
@@ -326,6 +362,10 @@ export class TimelineScene {
     
     getTimelinePlanes() {
         return this.timelinePlanes;
+    }
+    
+    getFogEffect() {
+        return this.fogEffect;
     }
     
     emitTimelineImagesLoaded() {

@@ -80,7 +80,7 @@ export class App {
         // Initialize all other components
         this.lighting = new Lighting(scene);
         this.imagePlanes = new ImagePlanes(scene, camera);
-        this.timelineScene = new TimelineScene(scene);
+        this.timelineScene = new TimelineScene(scene, this.sceneManager.getRenderer(), camera);
         
         // Connect initial scene images to timeline scene for transitions
         this.timelineScene.setInitialSceneImages(this.imagePlanes.getPlanes());

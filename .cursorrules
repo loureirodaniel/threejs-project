@@ -15,6 +15,7 @@ For detailed information about this project, consult these documentation files l
 - **docs/COMMENT_SYSTEM_README.md** - Comprehensive guide to the comment system implementation
 - **docs/ENHANCED_RULES_README.md** - Explanation of enhanced rules and guidelines
 - **docs/TECHNIQUES_REFERENCE.md** - Advanced techniques from premium web experiences (Getty, Hatom, Igloo)
+- **docs/DESIGN_TECHNIQUE_ANALYSIS.md** - Detailed technical analysis of design techniques from reference sites
 
 ### Development & Integration
 - **docs/INTEGRATION_COMPLETE.md** - Integration status and implementation details
@@ -23,6 +24,77 @@ For detailed information about this project, consult these documentation files l
 - **docs/VERIFICATION_REPORT.md** - Current status of rule implementation
 
 **Note:** When working with specific features (camera, timeline, comments, etc.), refer to the relevant documentation files for deeper context, architecture patterns, and implementation details.
+
+## Design Inspiration & Reference Examples
+
+### Premium Web Experiences
+These websites represent the gold standard for Three.js timeline experiences and should be used as reference for design patterns:
+
+#### Getty Provenance Index: Tracing Art
+- **URL:** https://www.getty.edu/tracingart/
+- **Key Features:**
+  - Smooth horizontal timeline navigation through art history
+  - Scroll-driven camera animations following timeline progression
+  - Elegant transitions between historical periods
+  - Image-based content with progressive loading
+  - Cinematic camera movements that tell a visual story
+  - Beautiful use of images as content carriers in 3D space
+
+**When to reference:**
+- Implementing scroll-driven timeline navigation
+- Camera animation patterns for historical timelines
+- Image-based timeline content presentation
+- Smooth scene transitions between periods
+
+#### Hatom
+- **URL:** https://www.hatom.com/en/
+- **Key Features:**
+  - Sophisticated 3D scene composition
+  - Advanced camera control and smooth movements
+  - Premium visual effects and lighting
+  - Professional timeline presentation
+  - Clean, modern UI with excellent performance
+
+**When to reference:**
+- Camera control and movement patterns
+- Scene composition and staging
+- Visual effects implementation
+- Performance optimization techniques
+
+#### Igloo
+- **URL:** https://www.igloo.inc/
+- **Key Features:**
+  - Interactive 3D experiences
+  - Smooth animations and transitions
+  - Immersive user experiences
+  - Professional-grade visual quality
+  - Innovative interaction patterns
+
+**When to reference:**
+- User interaction patterns
+- Animation choreography
+- Immersive experience design
+- Innovative interface concepts
+
+### Design Principles from Reference Sites
+
+#### Camera Animation Standards
+- **Smooth Easing:** All camera movements should use easeInOutCubic or similar smooth easing functions
+- **Duration:** Transition animations should be between 1.5-2.5 seconds for perceived smoothness
+- **Predictability:** Camera movements should feel natural and avoid jarring jumps
+- **Context Preservation:** Camera should maintain spatial awareness and relationship to timeline
+
+#### Timeline Presentation
+- **Progressive Disclosure:** Show information gradually as user scrolls through timeline
+- **Visual Hierarchy:** Use depth, scale, and positioning to create clear information hierarchy
+- **Temporal Clarity:** Make it clear where users are in the timeline at all times
+- **Navigation Feedback:** Provide clear visual feedback for timeline position and available content
+
+#### Performance Standards
+- **Frame Rate:** Target 60 FPS on desktop, minimum 30 FPS on mobile
+- **Responsiveness:** UI should respond to interactions within 16ms (60fps threshold)
+- **Resource Management:** Use lazy loading, progressive loading, and efficient memory management
+- **Visual Polish:** Performance optimizations should never compromise visual quality when possible
 
 ## Three.js Human Language Mappings
 

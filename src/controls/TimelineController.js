@@ -7,6 +7,8 @@ import { TimelineImageManager } from './TimelineImageManager.js';
 import { TimelineEffects } from './TimelineEffects.js';
 import { TimelineEventHandler } from './TimelineEventHandler.js';
 import { TimelineSceneController } from './TimelineSceneController.js';
+import { TimelineScrollController } from './TimelineScrollController.js';
+import { TimelineAnimationController } from './TimelineAnimationController.js';
 
 export class TimelineController {
     constructor(camera, sceneManager, timelineScene, backgroundBlurEffect = null) {
@@ -29,12 +31,7 @@ export class TimelineController {
         // Snap functionality
         this.snapTimeout = null;
         
-        // Smooth scrolling properties (balanced for smooth, controlled scrolling)
-        this.smoothScrollSensitivity = 0.50;
-        this.smoothScrollFriction = 0.92;
-        this.smoothScrollVelocity = 0;
-        this.lastScrollTime = 0;
-        this.momentumTimeout = null;
+        // Smooth scrolling properties - managed by TimelineScrollController
 
         // Drag physics
         this.dragSpeed = 0.008; // base drag speed
@@ -107,6 +104,8 @@ export class TimelineController {
         this.effects = null;
         this.eventHandler = null;
         this.sceneController = null;
+        this.scrollController = null;
+        this.animationController = null;
         
         this.init();
     }
@@ -134,6 +133,13 @@ export class TimelineController {
         // Initialize scene controller
         this.sceneController = new TimelineSceneController(this);
         
+        // Initialize scroll controller
+        this.scrollController = new TimelineScrollController(this);
+        this.scrollController.initSmoothScrolling();
+        
+        // Initialize animation controller
+        this.animationController = new TimelineAnimationController(this);
+        
         // Update drag scale via handler
         this.viewportDragScale = this.dragHandler.viewportDragScale;
         
@@ -142,9 +148,6 @@ export class TimelineController {
         
         // Initialize event handler (handles all events including touch)
         this.eventHandler.init();
-        
-        // Initialize smooth scrolling
-        this.initSmoothScrolling();
     }
 
     // Compute world-space X of a timeline image given its original X and current offset,
@@ -305,7 +308,9 @@ export class TimelineController {
         this.camera.position.y = currentConfig.position.y;
         
         // Apply smooth scrolling with subtle friction
-        this.applySmoothScroll(delta);
+        if (this.scrollController) {
+            this.scrollController.applySmoothScroll(delta);
+        }
         // Update vignette after scroll movement
         this.updateTimelineVignette();
         
@@ -346,98 +351,18 @@ export class TimelineController {
     }
     
     getCurrentYear() {
-        // Calculate year based on timeline image positions
-        // Since camera stays at X=0, we need to track timeline offset
-        if (this.timelineOffset === undefined || this.timelineOffset === null) this.timelineOffset = -5.25;
-        
-        const yearRange = 2019 - 2010; // 9 years (2010-2019)
-        const xRange = 13.5; // -5.25 to 8.25 (images are at -5.25, -3.75, -2.25, -0.75, 0.75, 2.25, 3.75, 5.25, 6.75, 8.25)
-        
-        // Map timeline offset to year (offset=-5.25 is 2010, offset=8.25 is 2019)
-        const normalizedX = Math.max(0, Math.min(1, (this.timelineOffset + 5.25) / xRange)); // 0 to 1
-        const year = Math.round(2010 + (normalizedX * yearRange));
-        
-        return Math.max(2010, Math.min(2019, year));
+        // Delegate to image manager
+        if (this.imageManager) {
+            return this.imageManager.getCurrentYear();
+        }
+        return 2010; // Default
     }
     
     moveTimelineImages(deltaX) {
-        // Allow limited timeline movement when an image is enlarged but close it first
-        if (this.isImageEnlarged) {
-            console.log('Image is enlarged - closing it to allow smooth timeline movement');
-            this.closeEnlargedImage();
+        // Delegate to image manager
+        if (this.imageManager) {
+            this.imageManager.moveTimelineImages(deltaX);
         }
-        
-        // Track timeline offset for year calculation
-        if (this.timelineOffset === undefined || this.timelineOffset === null) this.timelineOffset = 0;
-        const previousOffset = this.timelineOffset;
-        this.timelineOffset += deltaX;
-        
-        // Clamp timeline offset (new range: -5.25 to 8.25)
-        this.timelineOffset = Math.max(-5.25, Math.min(8.25, this.timelineOffset));
-
-        // Remove in-drag clamping to prevent oscillation between -4 and -2
-        
-        // Check if we hit a boundary and trigger haptic feedback
-        if (this.timelineOffset === -5.25 && previousOffset > -5.25) {
-            // Hit start boundary (2010)
-            this.triggerHapticFeedback('boundary');
-        } else if (this.timelineOffset === 8.25 && previousOffset < 8.25) {
-            // Hit end boundary (2019)
-            this.triggerHapticFeedback('boundary');
-        }
-        
-        // Move additional timeline images horizontally (positions 6, 8, 10, 12, 14)
-        if (this.timelineScene && this.timelineScene.getTimelinePlanes) {
-            const planes = this.timelineScene.getTimelinePlanes();
-            planes.forEach((plane, index) => {
-                const originalX = ((index + 8) * 1.5) - 5.25; // Positions 6, 8, 10, 12, 14
-                plane.position.x = originalX - this.timelineOffset;
-                
-                // Ensure images remain visible
-                plane.visible = true;
-                plane.position.y = 0; // Keep at horizontal alignment
-            });
-        }
-        
-        // Move initial scene images that have been transitioned to timeline
-        if (window.app && window.app.imagePlanes) {
-            const initialImages = window.app.imagePlanes.getPlanes();
-            initialImages.forEach((image, index) => {
-                if (image.userData.isTimelineTransitioned) {
-                    const originalX = (index * 1.5) - 5.25; // Positions -4, -2, 0, 2, 4
-                    image.position.x = originalX - this.timelineOffset;
-                    
-                    // Ensure images remain visible
-                    image.visible = true;
-                    image.position.y = 0; // Keep at horizontal alignment
-                }
-            });
-        }
-
-        // Smoothly pan camera look-at toward the nearest image based on current offset
-        // Use a single driver value to avoid stacking tweens and jitter
-        const snapPositions = [-5.25, -3.75, -2.25, -0.75, 0.75, 2.25, 3.75, 5.25, 6.75, 8.25];
-        let nearestX = snapPositions[0];
-        let minDist = Infinity;
-        for (const x of snapPositions) {
-            const dist = Math.abs(x - this.timelineOffset);
-            if (dist < minDist) {
-                minDist = dist;
-                nearestX = x;
-            }
-        }
-        const timelineConfig = this.sceneConfigs[1];
-        const targetY = timelineConfig ? timelineConfig.target.y : 0;
-        const targetLookAtX = nearestX - this.timelineOffset;
-        gsap.killTweensOf(this, { lookAtX: true });
-        gsap.to(this, {
-            lookAtX: targetLookAtX,
-            duration: 0.2,
-            ease: 'power2.out',
-            onUpdate: () => {
-                this.camera.lookAt(new THREE.Vector3(this.lookAtX, targetY, 0));
-            }
-        });
     }
 
     // Dim side images based on distance from viewport center
@@ -546,200 +471,6 @@ export class TimelineController {
         if (this.effects) {
             this.effects.triggerHapticFeedback(type);
         }
-    }
-    
-    
-    triggerIOSHaptic(type = 'drag') {
-        console.log('Attempting iOS haptic feedback');
-        // iOS haptic feedback using WebKit
-        if (window.webkit && window.webkit.messageHandlers) {
-            // Try to trigger haptic feedback through iOS WebKit
-            try {
-                let style = 'light';
-                if (type === 'start' || type === 'end') {
-                    style = 'medium';
-                } else if (type === 'boundary') {
-                    style = 'heavy';
-                } else if (type === 'snap') {
-                    style = 'light';
-                }
-                
-                window.webkit.messageHandlers.hapticFeedback.postMessage({
-                    type: 'impact',
-                    style: style
-                });
-                console.log('iOS haptic feedback sent');
-            } catch (e) {
-                console.log('iOS haptic feedback failed:', e);
-                // Fallback to vibration if haptic feedback fails
-                if (navigator.vibrate) {
-                    let vibrationPattern = 15;
-                    if (type === 'start') vibrationPattern = 20;
-                    else if (type === 'end') vibrationPattern = 15;
-                    else if (type === 'boundary') vibrationPattern = [10, 50, 10];
-                    navigator.vibrate(vibrationPattern);
-                }
-            }
-        } else {
-            console.log('iOS WebKit not available');
-        }
-    }
-    
-    tryAlternativeHaptic(type = 'drag') {
-        console.log('Trying alternative haptic methods');
-        
-        // Try different vibration patterns
-        try {
-            if (navigator.vibrate) {
-                let pattern = 10;
-                if (type === 'start') pattern = 30;
-                else if (type === 'end') pattern = 20;
-                else if (type === 'boundary') pattern = 50;
-                else if (type === 'snap') pattern = [5, 20, 5];
-                
-                navigator.vibrate(pattern);
-                console.log('Alternative vibration triggered');
-            }
-        } catch (e) {
-            console.log('Alternative vibration failed:', e);
-        }
-    }
-    
-    triggerAudioFeedback(type = 'drag') {
-        console.log('Triggering audio feedback');
-        
-        // Create audio context for feedback
-        if (!this.audioContext) {
-            try {
-                this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            } catch (e) {
-                console.log('Audio context not available:', e);
-                return;
-            }
-        }
-        
-        try {
-            // Create oscillator for audio feedback
-            const oscillator = this.audioContext.createOscillator();
-            const gainNode = this.audioContext.createGain();
-            
-            // Different frequencies based on type
-            let frequency = 200; // Default
-            if (type === 'start') frequency = 300;
-            else if (type === 'end') frequency = 250;
-            else if (type === 'boundary') frequency = 400;
-            else if (type === 'snap') frequency = 150;
-            
-            oscillator.frequency.setValueAtTime(frequency, this.audioContext.currentTime);
-            oscillator.type = 'sine';
-            
-            // Very short duration
-            gainNode.gain.setValueAtTime(0.1, this.audioContext.currentTime);
-            gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.05);
-            
-            oscillator.connect(gainNode);
-            gainNode.connect(this.audioContext.destination);
-            
-            oscillator.start(this.audioContext.currentTime);
-            oscillator.stop(this.audioContext.currentTime + 0.05);
-            
-            console.log('Audio feedback triggered');
-        } catch (e) {
-            console.log('Audio feedback failed:', e);
-        }
-    }
-    
-    checkDeviceCapabilities() {
-        // Only check once
-        if (this.capabilitiesChecked) return;
-        this.capabilitiesChecked = true;
-        
-        console.log('=== DEVICE CAPABILITIES CHECK ===');
-        console.log('User Agent:', navigator.userAgent);
-        console.log('Platform:', navigator.platform);
-        console.log('Vendor:', navigator.vendor);
-        
-        // Check vibration support
-        if (navigator.vibrate) {
-            console.log('✅ Vibration API supported');
-            // Test vibration
-            try {
-                const result = navigator.vibrate(10);
-                console.log('Vibration test result:', result);
-            } catch (e) {
-                console.log('❌ Vibration test failed:', e);
-            }
-        } else {
-            console.log('❌ Vibration API not supported');
-        }
-        
-        // Check iOS WebKit
-        if (window.webkit && window.webkit.messageHandlers) {
-            console.log('✅ iOS WebKit detected');
-        } else {
-            console.log('❌ iOS WebKit not available');
-        }
-        
-        // Check audio context
-        if (window.AudioContext || window.webkitAudioContext) {
-            console.log('✅ Audio Context supported');
-        } else {
-            console.log('❌ Audio Context not supported');
-        }
-        
-        // Check if on mobile
-        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        console.log('Mobile device:', isMobile);
-        
-        // Check permissions
-        if (navigator.permissions) {
-            navigator.permissions.query({ name: 'notifications' }).then(result => {
-                console.log('Notification permission:', result.state);
-            });
-        }
-        
-        console.log('=== END CAPABILITIES CHECK ===');
-    }
-    
-    showHapticIndicator(type = 'drag') {
-        // Create or get haptic indicator element
-        if (!this.hapticIndicator) {
-            this.hapticIndicator = document.createElement('div');
-            this.hapticIndicator.style.position = 'fixed';
-            this.hapticIndicator.style.top = '50%';
-            this.hapticIndicator.style.left = '50%';
-            this.hapticIndicator.style.transform = 'translate(-50%, -50%)';
-            this.hapticIndicator.style.width = '100px';
-            this.hapticIndicator.style.height = '100px';
-            this.hapticIndicator.style.borderRadius = '50%';
-            this.hapticIndicator.style.backgroundColor = 'rgba(255, 255, 255, 0.3)';
-            this.hapticIndicator.style.border = '3px solid white';
-            this.hapticIndicator.style.zIndex = '9999';
-            this.hapticIndicator.style.pointerEvents = 'none';
-            this.hapticIndicator.style.transition = 'all 0.1s ease-out';
-            this.hapticIndicator.style.opacity = '0';
-            this.hapticIndicator.style.scale = '0';
-            document.body.appendChild(this.hapticIndicator);
-        }
-        
-        // Different colors based on type
-        let color = '#ffffff';
-        if (type === 'start') color = '#4CAF50';
-        else if (type === 'end') color = '#FF9800';
-        else if (type === 'boundary') color = '#F44336';
-        else if (type === 'snap') color = '#2196F3';
-        
-        // Animate the indicator
-        this.hapticIndicator.style.backgroundColor = color;
-        this.hapticIndicator.style.borderColor = color;
-        this.hapticIndicator.style.opacity = '1';
-        this.hapticIndicator.style.scale = '1';
-        
-        // Hide after animation
-        setTimeout(() => {
-            this.hapticIndicator.style.opacity = '0';
-            this.hapticIndicator.style.scale = '0';
-        }, 100);
     }
     
     updateCurrentYear() {
@@ -918,168 +649,48 @@ export class TimelineController {
     }
     
     animateToYear(year, targetOffset) {
-        // Allow timeline movement when an image is enlarged by closing it first
-        if (this.isImageEnlarged) {
-            console.log('Image is enlarged - closing it to allow smooth timeline animation');
-            this.closeEnlargedImage();
+        // Delegate to animation controller
+        if (this.animationController) {
+            this.animationController.animateToYear(year, targetOffset);
         }
-        
-        console.log(`Animating to year ${year} with offset ${targetOffset}`);
-        
-        // Clear any existing snap timeout
-        if (this.snapTimeout) {
-            clearTimeout(this.snapTimeout);
-            this.snapTimeout = null;
-        }
-        
-        // Initialize timeline offset if not set
-        if (this.timelineOffset === undefined || this.timelineOffset === null) this.timelineOffset = 0;
-        
-        // Ensure we're not already at the target
-        if (Math.abs(this.timelineOffset - targetOffset) < 0.1) {
-            console.log('Already at target position, skipping animation');
-            return;
-        }
-        
-        // Animate to the target offset with smooth easing
-        gsap.to(this, {
-            timelineOffset: targetOffset,
-            duration: 1.2, // Slightly longer for smoother feel
-            ease: "power2.inOut", // Smoother easing
-            onUpdate: () => {
-                // Update additional timeline images during animation (positions 6, 8, 10, 12, 14)
-                if (this.timelineScene && this.timelineScene.getTimelinePlanes) {
-                    const planes = this.timelineScene.getTimelinePlanes();
-                    planes.forEach((plane, index) => {
-                        const originalX = ((index + 8) * 1.5) - 5.25; // Positions 6, 8, 10, 12, 14
-                        plane.position.x = originalX - this.timelineOffset;
-                        
-                        // Ensure images remain visible
-                        plane.visible = true;
-                        plane.position.y = 0; // Keep horizontal alignment
-                    });
-                }
-                
-                // Update initial scene images that have been transitioned to timeline
-                if (window.app && window.app.imagePlanes) {
-                    const initialImages = window.app.imagePlanes.getPlanes();
-                    initialImages.forEach((image, index) => {
-                        if (image.userData.isTimelineTransitioned) {
-                            const originalX = (index * 1.5) - 5.25; // Positions -4, -2, 0, 2, 4
-                            image.position.x = originalX - this.timelineOffset;
-                            
-                            // Ensure images remain visible
-                            image.visible = true;
-                            image.position.y = 0; // Keep horizontal alignment
-                        }
-                    });
-                }
-                
-                // Update year display and sync debug panel
-                this.updateCurrentYear();
-                this.syncDebugPanel();
-                
-                // Ensure images remain visible and properly positioned
-                this.ensureTimelineImagesVisible();
-
-                // During the year animation, pan camera look-at to the target image
-                // Compute the original X for the requested year
-                const yearIndex = year - 2010; // 0..9
-                const originalX = (yearIndex * 1.5) - 5.25; // -5.25..8.25
-                this.updateCameraLookAtForOriginalX(originalX);
-            },
-            onComplete: () => {
-                // Trigger haptic feedback when animation completes
-                this.triggerHapticFeedback('snap');
-                
-                // Dispatch year change event
-                this.updateCurrentYear();
-                
-                // Final check to ensure all images are properly positioned
-                this.ensureTimelineImagesVisible();
-                
-                console.log(`Animation complete: Now at year ${this.getCurrentYear()}, offset ${this.timelineOffset}`);
-            }
-        });
     }
     
-    // Clean smooth scrolling implementation
+    // Smooth scrolling methods - delegated to scroll controller
     initSmoothScrolling() {
-        // Initialize smooth scrolling with optimal values (balanced for smooth control)
-        this.smoothScrollSensitivity = 0.50;
-        this.smoothScrollFriction = 0.92;
-        this.smoothScrollVelocity = 0;
-        this.lastScrollTime = 0;
+        if (this.scrollController) {
+            this.scrollController.initSmoothScrolling();
+        }
     }
     
     applySmoothScroll(delta) {
-        const currentTime = Date.now();
-        const timeDelta = Math.max(currentTime - this.lastScrollTime, 1);
-        
-        // Calculate scroll velocity with subtle friction
-        const scrollVelocity = (delta / timeDelta) * this.smoothScrollSensitivity;
-        
-        // Apply velocity with friction
-        this.smoothScrollVelocity = this.smoothScrollVelocity * this.smoothScrollFriction + scrollVelocity;
-        
-        // Clamp velocity to prevent excessive speed (balanced for smooth scrolling)
-        this.smoothScrollVelocity = Math.max(-0.9, Math.min(0.9, this.smoothScrollVelocity));
-        
-        // Move timeline images based on velocity
-        this.moveTimelineImages(-this.smoothScrollVelocity);
-        
-        this.lastScrollTime = currentTime;
-        
-        // Clear existing momentum timeout
-        if (this.momentumTimeout) {
-            clearTimeout(this.momentumTimeout);
+        if (this.scrollController) {
+            this.scrollController.applySmoothScroll(delta);
         }
-        
-        // Apply momentum deceleration
-        this.momentumTimeout = setTimeout(() => {
-            this.applyMomentumDeceleration();
-        }, 16);
     }
     
     applyMomentumDeceleration() {
-        if (Math.abs(this.smoothScrollVelocity) > 0.005) {
-            // Apply friction to slow down
-            this.smoothScrollVelocity *= this.smoothScrollFriction;
-            
-            // Apply remaining velocity
-            this.moveTimelineImages(-this.smoothScrollVelocity);
-            
-            // Continue deceleration
-            this.momentumTimeout = setTimeout(() => {
-                this.applyMomentumDeceleration();
-            }, 16);
-        } else {
-            // Stop scrolling
-            this.smoothScrollVelocity = 0;
+        if (this.scrollController) {
+            this.scrollController.applyMomentumDeceleration();
         }
     }
     
-    smoothSnapToNearestImage() {
-        // Delegate to snap handler
-        if (this.snapHandler) {
-            this.snapHandler.smoothSnapToNearestImage();
-        }
-    }
-    
-    // Smooth scrolling control methods
     setSmoothScrollSensitivity(value) {
-        this.smoothScrollSensitivity = Math.max(0.1, Math.min(1.0, value));
+        if (this.scrollController) {
+            this.scrollController.setSensitivity(value);
+        }
     }
     
     setSmoothScrollFriction(value) {
-        this.smoothScrollFriction = Math.max(0.7, Math.min(0.95, value));
+        if (this.scrollController) {
+            this.scrollController.setFriction(value);
+        }
     }
     
     getSmoothScrollSettings() {
-        return {
-            sensitivity: this.smoothScrollSensitivity,
-            friction: this.smoothScrollFriction
-        };
+        if (this.scrollController) {
+            return this.scrollController.getSettings();
+        }
+        return { sensitivity: 0.50, friction: 0.92 };
     }
     
     ensureTimelineImagesVisible() {
