@@ -162,54 +162,6 @@ export class AppEventHandlers {
             this.updateLiquidDistortion();
         });
         
-        // Fog effect controls
-        controls.fogEnabled.addEventListener('change', (e) => {
-            this.updateFogEffect();
-        });
-        
-        controls.depthBufferEnabled.addEventListener('change', (e) => {
-            this.updateFogEffect();
-        });
-        
-        controls.fogDensitySlider.addEventListener('input', (e) => {
-            this.updateFogEffect();
-        });
-        
-        controls.volumetricDensitySlider.addEventListener('input', (e) => {
-            this.updateFogEffect();
-        });
-        
-        controls.lightScatteringSlider.addEventListener('input', (e) => {
-            this.updateFogEffect();
-        });
-        
-        controls.cloudOpacitySlider.addEventListener('input', (e) => {
-            this.updateFogEffect();
-        });
-        
-        controls.windSpeedSlider.addEventListener('input', (e) => {
-            this.updateFogEffect();
-        });
-        
-        controls.turbulenceSlider.addEventListener('input', (e) => {
-            this.updateFogEffect();
-        });
-        
-        controls.fogColorRSlider.addEventListener('input', (e) => {
-            this.updateFogEffect();
-        });
-        
-        controls.fogColorGSlider.addEventListener('input', (e) => {
-            this.updateFogEffect();
-        });
-        
-        controls.fogColorBSlider.addEventListener('input', (e) => {
-            this.updateFogEffect();
-        });
-        
-        controls.fogResetBtn.addEventListener('click', () => {
-            this.resetFogEffect();
-        });
     }
 
     /**
@@ -436,126 +388,6 @@ export class AppEventHandlers {
         }
     }
 
-    /**
-     * Update fog effect settings
-     */
-    updateFogEffect() {
-        const controls = this.app.debugPanel.getControls();
-        
-        const enabled = controls.fogEnabled.checked;
-        const depthBufferEnabled = controls.depthBufferEnabled.checked;
-        const density = parseFloat(controls.fogDensitySlider.value);
-        const volumetricDensity = parseFloat(controls.volumetricDensitySlider.value);
-        const lightScattering = parseFloat(controls.lightScatteringSlider.value);
-        const cloudOpacity = parseFloat(controls.cloudOpacitySlider.value);
-        const windSpeed = parseFloat(controls.windSpeedSlider.value);
-        const turbulence = parseFloat(controls.turbulenceSlider.value);
-        const colorR = parseFloat(controls.fogColorRSlider.value);
-        const colorG = parseFloat(controls.fogColorGSlider.value);
-        const colorB = parseFloat(controls.fogColorBSlider.value);
-        
-        // Convert normalized values (1-10) to actual values
-        const actualDensity = this.normalizeFogDensity(density);
-        const actualVolumetricDensity = this.normalizeFogDensity(volumetricDensity);
-        const actualLightScattering = this.normalizeColorValue(lightScattering);
-        const actualCloudOpacity = this.normalizeColorValue(cloudOpacity);
-        const actualWindSpeed = this.normalizeWindSpeed(windSpeed);
-        const actualTurbulence = this.normalizeTurbulence(turbulence);
-        const actualColorR = this.normalizeColorValue(colorR);
-        const actualColorG = this.normalizeColorValue(colorG);
-        const actualColorB = this.normalizeColorValue(colorB);
-        
-        // Update state
-        this.stateManager.updateEffect('fog', {
-            enabled,
-            depthBufferEnabled,
-            density: actualDensity,
-            volumetricDensity: actualVolumetricDensity,
-            lightScattering: actualLightScattering,
-            cloudOpacity: actualCloudOpacity,
-            windSpeed: actualWindSpeed,
-            turbulence: actualTurbulence,
-            color: { r: actualColorR, g: actualColorG, b: actualColorB }
-        });
-        
-        // Update displays
-        controls.fogDensityDisplay.textContent = density.toFixed(1);
-        controls.volumetricDensityDisplay.textContent = volumetricDensity.toFixed(1);
-        controls.lightScatteringDisplay.textContent = lightScattering.toFixed(1);
-        controls.cloudOpacityDisplay.textContent = cloudOpacity.toFixed(1);
-        controls.windSpeedDisplay.textContent = windSpeed.toFixed(1);
-        controls.turbulenceDisplay.textContent = turbulence.toFixed(1);
-        controls.fogColorRDisplay.textContent = colorR.toFixed(1);
-        controls.fogColorGDisplay.textContent = colorG.toFixed(1);
-        controls.fogColorBDisplay.textContent = colorB.toFixed(1);
-        
-        // Update fog effect
-        if (this.app.timelineScene && this.app.timelineScene.getFogEffect()) {
-            const fogEffect = this.app.timelineScene.getFogEffect();
-            fogEffect.updateConfig({
-                enabled,
-                depthBufferEnabled,
-                density: actualDensity,
-                volumetricDensity: actualVolumetricDensity,
-                lightScattering: actualLightScattering,
-                cloudOpacity: actualCloudOpacity,
-                windSpeed: actualWindSpeed,
-                turbulence: actualTurbulence,
-                color: new THREE.Color(actualColorR, actualColorG, actualColorB)
-            });
-        }
-    }
-
-    /**
-     * Reset fog effect to defaults
-     */
-    resetFogEffect() {
-        const controls = this.app.debugPanel.getControls();
-        
-        // Reset to default values
-        controls.fogEnabled.checked = true;
-        controls.depthBufferEnabled.checked = true;
-        controls.fogDensitySlider.value = 5;
-        controls.volumetricDensitySlider.value = 5;
-        controls.lightScatteringSlider.value = 5;
-        controls.cloudOpacitySlider.value = 5;
-        controls.windSpeedSlider.value = 5;
-        controls.turbulenceSlider.value = 5;
-        controls.fogColorRSlider.value = 5;
-        controls.fogColorGSlider.value = 5;
-        controls.fogColorBSlider.value = 5;
-        
-        // Update the effect
-        this.updateFogEffect();
-    }
-
-    /**
-     * Normalize fog density from 1-10 range to actual density range
-     */
-    normalizeFogDensity(normalizedValue) {
-        return 0.001 + ((normalizedValue - 1) / 9) * (0.1 - 0.001);
-    }
-
-    /**
-     * Normalize color value from 1-10 range to 0-1 range
-     */
-    normalizeColorValue(normalizedValue) {
-        return (normalizedValue - 1) / 9;
-    }
-
-    /**
-     * Normalize wind speed from 1-10 range to actual wind speed range
-     */
-    normalizeWindSpeed(normalizedValue) {
-        return ((normalizedValue - 1) / 9) * 0.01;
-    }
-
-    /**
-     * Normalize turbulence from 1-10 range to actual turbulence range
-     */
-    normalizeTurbulence(normalizedValue) {
-        return ((normalizedValue - 1) / 9) * 0.1;
-    }
 
     /**
      * Update timeline camera settings
@@ -653,7 +485,5 @@ export class AppEventHandlers {
         controls.noiseStrengthSlider.value = state.effects.liquid.noiseStrength;
         this.updateLiquidDistortion();
         
-        // Reset fog effect
-        this.resetFogEffect();
     }
 }

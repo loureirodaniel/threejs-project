@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { gsap } from 'gsap';
-import { FogExp2Effect } from '../effects/FogExp2Effect.js';
 
 export class TimelineScene {
     constructor(scene, renderer, camera) {
@@ -12,19 +11,6 @@ export class TimelineScene {
         this.isActive = false;
         this.animationProgress = 0;
         this.textureLoader = new THREE.TextureLoader();
-        
-        // Initialize enhanced fog effect with depth buffer support
-        this.fogEffect = new FogExp2Effect(scene, renderer, camera, {
-            color: new THREE.Color(0x808080), // Subtle grey color
-            density: 0.02, // Subtle density for atmospheric effect
-            enabled: true,
-            depthBufferEnabled: true,
-            volumetricDensity: 0.015,
-            lightScattering: 0.3,
-            cloudOpacity: 0.4,
-            windSpeed: 0.001,
-            turbulence: 0.02
-        });
         
         // Camera transition properties
         this.cameraTransitionState = 'idle'; // 'idle', 'transitioning', 'zooming-in'
@@ -123,29 +109,32 @@ export class TimelineScene {
         this.timelineGroup.visible = true;
         this.animationProgress = 0;
         
-        // Activate fog effect
-        this.fogEffect.activate();
-        
-        // Enhance lighting for fog interaction
-        if (window.app && window.app.lighting) {
-            window.app.lighting.enhanceForFog();
-            window.app.lighting.updateFogLighting(this.fogEffect);
-        }
-        
-        // DON'T immediately position images here - let the transition animation handle it
-        // Only set up additional timeline images to be ready for animation
-        console.log('TimelineScene: Activated - Images will animate into position');
+        // DEBUG: Force show all timeline images immediately for debugging
+        console.log('TimelineScene: Activated - DEBUG MODE: Showing all timeline images immediately');
         this.timelinePlanes.forEach((plane, index) => {
-            // Keep images hidden/invisible until animation starts
-            plane.visible = false;
-            plane.material.opacity = 0;
-            plane.scale.setScalar(0);
-            console.log(`TimelineScene: Additional image ${index} ready for animation`);
+            const x = ((index + 8) * 1.5) - 5.25; // Positions 6.75, 8.25 (years 2018-2019)
+            plane.visible = true;
+            plane.position.set(x, 0, 0);
+            plane.scale.setScalar(0.75);
+            plane.rotation.set(0, 0, 0);
+            plane.material.opacity = 0.9;
+            console.log(`TimelineScene: DEBUG - Forced additional image ${index} visible at (${x}, 0, 0)`);
         });
         
-        // Don't force initial images to timeline positions - let the transition handle it
+        // Also force initial images to their timeline positions for debugging
         const initialImages = this.getInitialSceneImages();
-        console.log(`TimelineScene: Found ${initialImages.length} initial images - will animate to timeline`);
+        console.log(`TimelineScene: DEBUG - Found ${initialImages.length} initial images`);
+        initialImages.forEach((image, index) => {
+            if (index < 8) {
+                const x = (index * 1.5) - 5.25;
+                image.visible = true;
+                image.position.set(x, 0, 0);
+                image.scale.setScalar(0.75);
+                image.rotation.set(0, 0, 0);
+                image.userData.isTimelineTransitioned = true;
+                console.log(`TimelineScene: DEBUG - Forced initial image ${index} to timeline position (${x}, 0, 0)`);
+            }
+        });
         
         console.log(`TimelineScene: Created ${this.timelinePlanes.length} additional timeline images`);
     }
@@ -153,14 +142,6 @@ export class TimelineScene {
     deactivate() {
         this.isActive = false;
         this.timelineGroup.visible = false;
-        
-        // Deactivate fog effect
-        this.fogEffect.deactivate();
-        
-        // Reset lighting for normal scenes
-        if (window.app && window.app.lighting) {
-            window.app.lighting.resetForNormal();
-        }
         
         // Reset flags
         this.isImageLayoutTransitioning = false;
@@ -280,9 +261,6 @@ export class TimelineScene {
     update(time, camera) {
         if (!this.isActive) return;
         
-        // Update fog effect
-        this.fogEffect.update(time);
-        
         // Skip floating animation during transitions
         if (this.cameraTransitionState !== 'idle' || this.isImageLayoutTransitioning) {
             return;
@@ -367,9 +345,6 @@ export class TimelineScene {
         return this.timelinePlanes;
     }
     
-    getFogEffect() {
-        return this.fogEffect;
-    }
     
     emitTimelineImagesLoaded() {
         // Dispatch custom event when timeline images are fully loaded and animated
@@ -745,10 +720,9 @@ export class TimelineScene {
     
     prePositionImagesForTransition(initialImages) {
         // Pre-position images to prevent glitches during transition
-        // IMPORTANT: Don't change positions here - just ensure they're stable and ready for animation
         initialImages.forEach((image, index) => {
             if (index < 8) {
-                // Ensure images are visible
+                // Ensure images are visible and at a stable position before transition
                 image.visible = true;
                 
                 // If image doesn't have original position stored, store it now
@@ -757,17 +731,8 @@ export class TimelineScene {
                     image.userData.originalScale = image.scale.clone();
                 }
                 
-                // Mark as transitioning to prevent floating animation conflicts
-                image.userData.isTransitioning = true;
-                
-                // Kill any existing animations to prevent conflicts
-                gsap.killTweensOf(image.position);
-                gsap.killTweensOf(image.scale);
-                gsap.killTweensOf(image.rotation);
-                
-                // Ensure image is at its CURRENT position (don't move it yet)
-                // The animation will handle moving it to the timeline position
-                // Just ensure rotation is stable (no floating animation interference)
+                // Ensure image is at a stable position (no floating animation)
+                image.position.y = image.userData.originalPosition.y;
                 image.rotation.x = 0;
                 image.rotation.z = 0;
             }

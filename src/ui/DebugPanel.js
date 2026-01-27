@@ -12,7 +12,6 @@ export class DebugPanel {
             enlargement: false,
             smoothScroll: false,
             liquidDistortion: false,
-            fog: false
         };
         
         this.init();
@@ -223,66 +222,6 @@ export class DebugPanel {
                 </div>
             </div>
             
-            <!-- Fog Effect Section -->
-            <div class="debug-section" style="margin-bottom: 15px;">
-                <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; padding: 8px 0; border-bottom: 1px solid #333;">
-                    <h4 style="margin: 0; color: #00ff88;">Fog Effect</h4>
-                    <button class="section-toggle" data-section="fog" style="background: #333; color: white; border: 1px solid #555; padding: 2px 6px; border-radius: 3px; cursor: pointer; font-family: inherit; font-size: 10px;">+</button>
-                </div>
-                <div class="section-content" id="fog-content" style="display: none; padding-top: 10px;">
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: flex; align-items: center; margin-bottom: 5px;">
-                            <input type="checkbox" id="fogEnabled" checked style="margin-right: 8px;">
-                            Fog Enabled
-                        </label>
-                    </div>
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: flex; align-items: center; margin-bottom: 5px;">
-                            <input type="checkbox" id="depthBufferEnabled" checked style="margin-right: 8px;">
-                            Depth Buffer Fog
-                        </label>
-                    </div>
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px;">Fog Density: <span id="fogDensityDisplay">5.0</span></label>
-                        <input type="range" id="fogDensitySlider" min="1" max="10" step="0.1" value="5" style="width: 100%;">
-                    </div>
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px;">Volumetric Density: <span id="volumetricDensityDisplay">5.0</span></label>
-                        <input type="range" id="volumetricDensitySlider" min="1" max="10" step="0.1" value="5" style="width: 100%;">
-                    </div>
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px;">Light Scattering: <span id="lightScatteringDisplay">5.0</span></label>
-                        <input type="range" id="lightScatteringSlider" min="1" max="10" step="0.1" value="5" style="width: 100%;">
-                    </div>
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px;">Cloud Opacity: <span id="cloudOpacityDisplay">5.0</span></label>
-                        <input type="range" id="cloudOpacitySlider" min="1" max="10" step="0.1" value="5" style="width: 100%;">
-                    </div>
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px;">Wind Speed: <span id="windSpeedDisplay">5.0</span></label>
-                        <input type="range" id="windSpeedSlider" min="1" max="10" step="0.1" value="5" style="width: 100%;">
-                    </div>
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px;">Turbulence: <span id="turbulenceDisplay">5.0</span></label>
-                        <input type="range" id="turbulenceSlider" min="1" max="10" step="0.1" value="5" style="width: 100%;">
-                    </div>
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px;">Fog Color Red: <span id="fogColorRDisplay">5.0</span></label>
-                        <input type="range" id="fogColorRSlider" min="1" max="10" step="0.1" value="5" style="width: 100%;">
-                    </div>
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px;">Fog Color Green: <span id="fogColorGDisplay">5.0</span></label>
-                        <input type="range" id="fogColorGSlider" min="1" max="10" step="0.1" value="5" style="width: 100%;">
-                    </div>
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px;">Fog Color Blue: <span id="fogColorBDisplay">5.0</span></label>
-                        <input type="range" id="fogColorBSlider" min="1" max="10" step="0.1" value="5" style="width: 100%;">
-                    </div>
-                    <div style="margin-bottom: 10px;">
-                        <button id="fogResetBtn" style="background: #ff9800; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-family: inherit; width: 100%;">Reset Fog</button>
-                    </div>
-                </div>
-            </div>
             
             <button id="resetBtn" style="background: #00ff88; color: black; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-family: inherit;">Reset to Default</button>
             </div>
@@ -379,27 +318,6 @@ export class DebugPanel {
         this.controls.noiseStrengthDisplay = document.getElementById('noiseStrengthDisplay');
         
         // Fog effect controls
-        this.controls.fogEnabled = document.getElementById('fogEnabled');
-        this.controls.depthBufferEnabled = document.getElementById('depthBufferEnabled');
-        this.controls.fogDensitySlider = document.getElementById('fogDensitySlider');
-        this.controls.volumetricDensitySlider = document.getElementById('volumetricDensitySlider');
-        this.controls.lightScatteringSlider = document.getElementById('lightScatteringSlider');
-        this.controls.cloudOpacitySlider = document.getElementById('cloudOpacitySlider');
-        this.controls.windSpeedSlider = document.getElementById('windSpeedSlider');
-        this.controls.turbulenceSlider = document.getElementById('turbulenceSlider');
-        this.controls.fogColorRSlider = document.getElementById('fogColorRSlider');
-        this.controls.fogColorGSlider = document.getElementById('fogColorGSlider');
-        this.controls.fogColorBSlider = document.getElementById('fogColorBSlider');
-        this.controls.fogResetBtn = document.getElementById('fogResetBtn');
-        this.controls.fogDensityDisplay = document.getElementById('fogDensityDisplay');
-        this.controls.volumetricDensityDisplay = document.getElementById('volumetricDensityDisplay');
-        this.controls.lightScatteringDisplay = document.getElementById('lightScatteringDisplay');
-        this.controls.cloudOpacityDisplay = document.getElementById('cloudOpacityDisplay');
-        this.controls.windSpeedDisplay = document.getElementById('windSpeedDisplay');
-        this.controls.turbulenceDisplay = document.getElementById('turbulenceDisplay');
-        this.controls.fogColorRDisplay = document.getElementById('fogColorRDisplay');
-        this.controls.fogColorGDisplay = document.getElementById('fogColorGDisplay');
-        this.controls.fogColorBDisplay = document.getElementById('fogColorBDisplay');
         
         // Debug liquid distortion controls
         console.log('DebugPanel: Toggle button found:', !!this.controls.toggleLiquidDistortionBtn);
