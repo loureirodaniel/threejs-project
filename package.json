@@ -1,7 +1,7 @@
 {
-  "name": "3d-timeline",
+  "name": "timeline-venezuela-2025",
   "version": "1.0.0",
-  "description": "A 3D timeline project with Three.js",
+  "description": "Timeline Venezuela 2025 – a 3D Three.js timeline experience",
   "main": "index.js",
   "scripts": {
     "dev": "vite",

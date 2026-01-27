@@ -48,10 +48,14 @@ export class FogExp2Effect {
     
     init() {
         this.createNoiseTexture();
-        this.createFog();
-        this.createVolumetricFog();
+        // Create fog but don't activate it immediately
+        // Fog will be activated when timeline scene is activated via activate() method
+        if (this.config.enabled) {
+            this.createFog();
+            this.createVolumetricFog();
+        }
         this.generateDebugControls();
-        console.debug('FogExp2Effect: Initialized with enhanced cloud-like fog');
+        console.debug('FogExp2Effect: Initialized with enhanced cloud-like fog (not activated yet)');
     }
     
     createNoiseTexture() {
@@ -144,8 +148,8 @@ export class FogExp2Effect {
         // Create enhanced FogExp2 with depth buffer support
         this.fog = new THREE.FogExp2(this.config.color, this.config.density);
         
-        // Apply fog to scene
-        this.scene.fog = this.fog;
+        // Don't apply fog to scene immediately - it will be activated when needed
+        // This prevents the grey background transition on page load
         
         console.debug('FogExp2Effect: Created enhanced fog with color:', this.config.color.getHexString(), 'density:', this.config.density);
     }
@@ -283,6 +287,7 @@ export class FogExp2Effect {
         // Create volumetric fog mesh
         this.volumetricFog = new THREE.Mesh(geometry, this.fogMaterial);
         this.volumetricFog.position.set(0, 25, 0); // Position above the scene
+        this.volumetricFog.visible = false; // Hide initially - will be shown when activated
         this.scene.add(this.volumetricFog);
         
         console.debug('FogExp2Effect: Created volumetric fog with depth buffer');

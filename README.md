@@ -1,6 +1,6 @@
-# Three.js Project
+# Timeline Venezuela 2025
 
-A modern Three.js project with Vite for fast development and building.
+Timeline Venezuela 2025 is a modern Three.js experience built with Vite for fast development and building.
 
 ## Features
 
@@ -26,7 +26,7 @@ A modern Three.js project with Vite for fast development and building.
 1. Clone the repository:
 ```bash
 git clone <your-repo-url>
-cd threejs-project
+cd timeline-venezuela-2025
 ```
 
 2. Install dependencies:
@@ -50,7 +50,7 @@ npm run dev
 ## Project Structure
 
 ```
-threejs-project/
+timeline-venezuela-2025/
 ├── src/
 │   └── main.js          # Main Three.js application
 ├── index.html           # HTML entry point

@@ -157,7 +157,7 @@ The comment system is now accessible through natural language commands in Cursor
 ## File Structure
 
 ```
-threejs-project/
+timeline-venezuela-2025/
 ├── .cursorrules                    ✅ Updated with comment system
 ├── architecture.md                 ✅ Updated with comment system
 ├── PRD.md                         ✅ Updated with comment system

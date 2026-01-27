@@ -1,12 +1,12 @@
-# Three.js Timeline Project Architecture
+# Timeline Venezuela 2025 Architecture
 
 ## Overview
-This document describes the architecture of the Three.js-based interactive timeline project, including folder structure, data management, camera responsibilities, and integration points with Cursor agents.
+This document describes the architecture of Timeline Venezuela 2025, the Three.js-based interactive timeline experience, including folder structure, data management, camera responsibilities, and integration points with Cursor agents.
 
 ## Project Structure
 
 ```
-threejs-project/
+timeline-venezuela-2025/
 ├── src/
 │   ├── core/                    # Core application logic
 │   │   ├── AppStateManager.js   # Central state management

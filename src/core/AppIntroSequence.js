@@ -123,20 +123,10 @@ export class AppIntroSequence {
             onUpdate: () => camera.updateProjectionMatrix()
         }, '<');
 
-        // Tiny 0.2s crossfade while re-enabling controls
+        // Re-enable controls and cleanup input blocker
         tl.add(() => {
             if (controls) controls.enabled = true;
-        }, '>-0.2');
-        
-        tl.fromTo(this.inputBlocker, {
-            backgroundColor: 'rgba(0,0,0,0.08)'
-        }, {
-            backgroundColor: 'rgba(0,0,0,0) ',
-            duration: 0.2,
-            ease: 'power1.out',
-            onComplete: () => {
-                this.cleanupInputBlocker();
-            }
+            this.cleanupInputBlocker();
         }, '>-0.2');
     }
 

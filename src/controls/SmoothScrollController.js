@@ -153,6 +153,19 @@ export class SmoothScrollController {
     performSmoothSceneTransition(targetIndex) {
         if (this.timelineController.isInTransition()) return;
         
+        // If transitioning to timeline scene, use the proper transition method that handles image animations
+        if (targetIndex === 1 && this.timelineController.timelineScene) {
+            // Use the scene controller's transition method which handles image animations properly
+            if (this.timelineController.sceneController) {
+                this.timelineController.sceneController.transitionToScene(targetIndex);
+            } else {
+                // Fallback to direct transition
+                this.timelineController.transitionToScene(targetIndex);
+            }
+            return;
+        }
+        
+        // For other transitions, use simple camera animation
         const startConfig = this.timelineController.sceneConfigs[this.timelineController.getCurrentSceneIndex()];
         const endConfig = this.timelineController.sceneConfigs[targetIndex];
         

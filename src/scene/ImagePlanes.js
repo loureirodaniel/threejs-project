@@ -110,11 +110,17 @@ export class ImagePlanes {
             map: texture,
             side: THREE.DoubleSide,
             transparent: true,
-            opacity: 0.9
+            opacity: 0.9,
+            depthTest: true,
+            depthWrite: true
         });
         const plane = new THREE.Mesh(geometry, material);
         plane.position.set(x, y, z);
         plane.rotation.set(0, 0, 0);
+        
+        // Set renderOrder based on index to prevent z-index fighting
+        // Higher renderOrder renders on top, so we use index to ensure consistent ordering
+        plane.renderOrder = index;
         
         // Set initial scale to 0 for animation
         plane.scale.set(0, 0, 0);
@@ -123,7 +129,8 @@ export class ImagePlanes {
         plane.userData = {
             animationStartTime: this.startTime + (index * this.animationDelay),
             animationDuration: this.animationDuration,
-            targetScale: 1.0
+            targetScale: 1.0,
+            isTransitioning: false // Flag to prevent floating animation conflicts
         };
         
         this.planes.push(plane);

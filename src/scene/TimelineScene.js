@@ -89,11 +89,17 @@ export class TimelineScene {
             map: texture,
             side: THREE.DoubleSide,
             transparent: true,
-            opacity: 0.9
+            opacity: 0.9,
+            depthTest: true,
+            depthWrite: true
         });
         const plane = new THREE.Mesh(geometry, material);
         plane.position.set(x, y, z);
         plane.rotation.set(0, 0, 0);
+        
+        // Set renderOrder based on timeline index (8 + index) to prevent z-index fighting
+        // Images further right (higher index) render on top
+        plane.renderOrder = 8 + index;
         
         // Set initial scale to 0 for animation
         plane.scale.set(0, 0, 0);
@@ -104,7 +110,8 @@ export class TimelineScene {
             animationDuration: 1000,
             targetScale: 1.0,
             year: year,
-            originalPosition: new THREE.Vector3(x, y, z)
+            originalPosition: new THREE.Vector3(x, y, z),
+            isTransitioning: false // Flag to prevent floating animation conflicts
         };
         
         this.timelinePlanes.push(plane);
@@ -125,32 +132,20 @@ export class TimelineScene {
             window.app.lighting.updateFogLighting(this.fogEffect);
         }
         
-        // DEBUG: Force show all timeline images immediately for debugging
-        console.log('TimelineScene: Activated - DEBUG MODE: Showing all timeline images immediately');
+        // DON'T immediately position images here - let the transition animation handle it
+        // Only set up additional timeline images to be ready for animation
+        console.log('TimelineScene: Activated - Images will animate into position');
         this.timelinePlanes.forEach((plane, index) => {
-            const x = ((index + 8) * 1.5) - 5.25; // Positions 6.75, 8.25 (years 2018-2019)
-            plane.visible = true;
-            plane.position.set(x, 0, 0);
-            plane.scale.setScalar(0.75);
-            plane.rotation.set(0, 0, 0);
-            plane.material.opacity = 0.9;
-            console.log(`TimelineScene: DEBUG - Forced additional image ${index} visible at (${x}, 0, 0)`);
+            // Keep images hidden/invisible until animation starts
+            plane.visible = false;
+            plane.material.opacity = 0;
+            plane.scale.setScalar(0);
+            console.log(`TimelineScene: Additional image ${index} ready for animation`);
         });
         
-        // Also force initial images to their timeline positions for debugging
+        // Don't force initial images to timeline positions - let the transition handle it
         const initialImages = this.getInitialSceneImages();
-        console.log(`TimelineScene: DEBUG - Found ${initialImages.length} initial images`);
-        initialImages.forEach((image, index) => {
-            if (index < 8) {
-                const x = (index * 1.5) - 5.25;
-                image.visible = true;
-                image.position.set(x, 0, 0);
-                image.scale.setScalar(0.75);
-                image.rotation.set(0, 0, 0);
-                image.userData.isTimelineTransitioned = true;
-                console.log(`TimelineScene: DEBUG - Forced initial image ${index} to timeline position (${x}, 0, 0)`);
-            }
-        });
+        console.log(`TimelineScene: Found ${initialImages.length} initial images - will animate to timeline`);
         
         console.log(`TimelineScene: Created ${this.timelinePlanes.length} additional timeline images`);
     }
@@ -295,35 +290,38 @@ export class TimelineScene {
         
         // Animate additional timeline planes with subtle floating motion
         this.timelinePlanes.forEach((plane, index) => {
-            // Skip floating animation if this plane is currently enlarged
-            if (plane.userData.isEnlarged) {
+            // Skip floating animation if this plane is currently transitioning or enlarged
+            if (plane.userData.isTransitioning || plane.userData.isEnlarged) {
                 // Only apply billboard effect to enlarged image, no floating
-                const direction = new THREE.Vector3();
-                direction.subVectors(camera.position, plane.position);
-                direction.y = 0; // Keep Y component at 0 to maintain upright orientation
-                
-                if (direction.length() > 0.001) {
-                    direction.normalize();
-                    const angle = Math.atan2(direction.x, direction.z);
-                    plane.rotation.y = angle;
+                if (plane.userData.isEnlarged) {
+                    const direction = new THREE.Vector3();
+                    direction.subVectors(camera.position, plane.position);
+                    direction.y = 0; // Keep Y component at 0 to maintain upright orientation
+                    
+                    if (direction.length() > 0.001) {
+                        direction.normalize();
+                        const angle = Math.atan2(direction.x, direction.z);
+                        plane.rotation.y = angle;
+                    }
                 }
-            } else {
-                // Subtle floating animation for non-enlarged planes - maintain horizontal alignment
-                plane.position.y = Math.sin(time * 0.001 + index) * 0.02; // Reduced floating amplitude
-                
-                // Billboard effect: only rotate around Y-axis to face camera
-                const direction = new THREE.Vector3();
-                direction.subVectors(camera.position, plane.position);
-                direction.y = 0; // Keep Y component at 0 to maintain upright orientation
-                
-                if (direction.length() > 0.001) {
-                    direction.normalize();
-                    const angle = Math.atan2(direction.x, direction.z);
-                    plane.rotation.y = angle;
-                    // Keep X and Z rotation at 0 for proper alignment
-                    plane.rotation.x = 0;
-                    plane.rotation.z = 0;
-                }
+                return;
+            }
+            
+            // Subtle floating animation for non-enlarged planes - maintain horizontal alignment
+            plane.position.y = Math.sin(time * 0.001 + index) * 0.02; // Reduced floating amplitude
+            
+            // Billboard effect: only rotate around Y-axis to face camera
+            const direction = new THREE.Vector3();
+            direction.subVectors(camera.position, plane.position);
+            direction.y = 0; // Keep Y component at 0 to maintain upright orientation
+            
+            if (direction.length() > 0.001) {
+                direction.normalize();
+                const angle = Math.atan2(direction.x, direction.z);
+                plane.rotation.y = angle;
+                // Keep X and Z rotation at 0 for proper alignment
+                plane.rotation.x = 0;
+                plane.rotation.z = 0;
             }
         });
         
@@ -331,6 +329,11 @@ export class TimelineScene {
         const initialImages = this.getInitialSceneImages();
         initialImages.forEach((image, index) => {
             if (image.userData.isTimelineTransitioned && !image.userData.isEnlarged) {
+                // Skip floating animation if image is currently transitioning
+                if (image.userData.isTransitioning) {
+                    return;
+                }
+                
                 // Apply subtle floating animation to transitioned initial images
                 // Keep them at Y=0 for horizontal alignment, only add minimal floating
                 image.position.y = Math.sin(time * 0.001 + index) * 0.02; // Reduced floating amplitude
@@ -513,18 +516,34 @@ export class TimelineScene {
                     image.userData.originalScale = image.scale.clone();
                 }
 
-
+                // Mark as transitioning to prevent floating animation conflicts
+                image.userData.isTransitioning = true;
+                
+                // Set renderOrder based on timeline index to prevent z-index fighting
+                // Images further right (higher index) render on top
+                image.renderOrder = index;
+                
+                // Ensure material has proper depth settings
+                if (image.material) {
+                    image.material.depthTest = true;
+                    image.material.depthWrite = true;
+                }
                 
                 // Calculate individual start time with stagger
-                const imageStartTime = startTime + (index * 0.1);
+                const imageStartTime = startTime + (index * 0.08); // Reduced stagger for smoother flow
                 
-                // Animate position
+                // Kill any existing animations on this image to prevent conflicts
+                gsap.killTweensOf(image.position);
+                gsap.killTweensOf(image.scale);
+                gsap.killTweensOf(image.rotation);
+                
+                // Animate position with smooth easing
                 masterTl.to(image.position, {
                     x: targetPos.x,
                     y: targetPos.y,
                     z: targetPos.z,
-                    duration: 1.2,
-                    ease: "power2.out"
+                    duration: 1.4, // Slightly longer for smoother animation
+                    ease: "power3.out" // Smoother easing
                 }, imageStartTime);
                 
                 // Animate scale
@@ -532,8 +551,8 @@ export class TimelineScene {
                     x: 0.75,
                     y: 0.75,
                     z: 0.75,
-                    duration: 1.2,
-                    ease: "power2.out"
+                    duration: 1.4,
+                    ease: "power3.out"
                 }, imageStartTime);
                 
                 // Animate rotation
@@ -541,11 +560,14 @@ export class TimelineScene {
                     x: 0,
                     y: 0,
                     z: 0,
-                    duration: 1.2,
-                    ease: "power2.out"
+                    duration: 1.4,
+                    ease: "power3.out"
                 }, imageStartTime);
-
-
+                
+                // Mark transition complete after animation
+                masterTl.call(() => {
+                    image.userData.isTransitioning = false;
+                }, [], imageStartTime + 1.4);
                 
                 // Restore original material just after landing
                 masterTl.call(() => {
@@ -553,7 +575,7 @@ export class TimelineScene {
                         image.material = image.userData._originalMaterial;
                         delete image.userData._originalMaterial;
                     }
-                }, [], imageStartTime + 1.25);
+                }, [], imageStartTime + 1.45);
                 
                 // Mark this image as part of the timeline transition
                 image.userData.isTimelineTransitioned = true;
@@ -572,6 +594,19 @@ export class TimelineScene {
             plane.material.opacity = 0;
             plane.scale.setScalar(0); // Start from scale 0
             
+            // Set renderOrder based on timeline index (8 + index) to prevent z-index fighting
+            // Images further right (higher index) render on top
+            plane.renderOrder = 8 + index;
+            
+            // Ensure material has proper depth settings
+            if (plane.material) {
+                plane.material.depthTest = true;
+                plane.material.depthWrite = true;
+            }
+            
+            // Mark as transitioning to prevent floating animation conflicts
+            plane.userData.isTransitioning = true;
+            
             // Ensure proper horizontal alignment and position
             const x = ((index + 8) * 1.5) - 5.25; // Positions 6.75, 8.25 (years 2018-2019)
             plane.position.set(x, 0, 0); // All images at Y=0 for perfect horizontal alignment
@@ -580,23 +615,32 @@ export class TimelineScene {
             console.log(`TimelineScene: Setting up additional image ${index} (year ${2018 + index}) at position (${x}, 0, 0)`);
             
             // Calculate individual start time with stagger
-            const planeStartTime = startTime + (index * 0.15);
+            const planeStartTime = startTime + (index * 0.12); // Reduced stagger for smoother flow
             
-            // Animate scale
+            // Kill any existing animations to prevent conflicts
+            gsap.killTweensOf(plane.scale);
+            gsap.killTweensOf(plane.material);
+            
+            // Animate scale with smoother easing
             masterTl.to(plane.scale, {
                 x: 0.75,
                 y: 0.75,
                 z: 0.75,
-                duration: 1.0,
-                ease: "back.out(1.7)"
+                duration: 1.2, // Slightly longer for smoother animation
+                ease: "power3.out" // Smoother easing
             }, planeStartTime);
             
             // Animate opacity
             masterTl.to(plane.material, {
                 opacity: 0.9,
-                duration: 1.0,
-                ease: "power2.out"
+                duration: 1.2,
+                ease: "power3.out"
             }, planeStartTime);
+            
+            // Mark transition complete after animation
+            masterTl.call(() => {
+                plane.userData.isTransitioning = false;
+            }, [], planeStartTime + 1.2);
         });
         
         // Emit event when all additional images are loaded
@@ -701,9 +745,10 @@ export class TimelineScene {
     
     prePositionImagesForTransition(initialImages) {
         // Pre-position images to prevent glitches during transition
+        // IMPORTANT: Don't change positions here - just ensure they're stable and ready for animation
         initialImages.forEach((image, index) => {
             if (index < 8) {
-                // Ensure images are visible and at a stable position before transition
+                // Ensure images are visible
                 image.visible = true;
                 
                 // If image doesn't have original position stored, store it now
@@ -712,8 +757,17 @@ export class TimelineScene {
                     image.userData.originalScale = image.scale.clone();
                 }
                 
-                // Ensure image is at a stable position (no floating animation)
-                image.position.y = image.userData.originalPosition.y;
+                // Mark as transitioning to prevent floating animation conflicts
+                image.userData.isTransitioning = true;
+                
+                // Kill any existing animations to prevent conflicts
+                gsap.killTweensOf(image.position);
+                gsap.killTweensOf(image.scale);
+                gsap.killTweensOf(image.rotation);
+                
+                // Ensure image is at its CURRENT position (don't move it yet)
+                // The animation will handle moving it to the timeline position
+                // Just ensure rotation is stable (no floating animation interference)
                 image.rotation.x = 0;
                 image.rotation.z = 0;
             }

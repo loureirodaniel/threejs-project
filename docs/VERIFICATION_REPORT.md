@@ -9,7 +9,7 @@ All the rules we created are properly configured and available for Cursor to use
 ## Detailed Verification
 
 ### 1. ✅ Cursor Rules File (.cursorrules)
-**Location:** `/Users/danielloureiro/Desktop/threejs-project/.cursorrules`
+**Location:** `/Users/danielloureiro/Desktop/timeline-venezuela-2025/.cursorrules`
 **Size:** 19,747 bytes (197 KB)
 **Status:** ✅ ACTIVE
 

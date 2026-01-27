@@ -7,7 +7,7 @@ Cursor automatically reads `.cursorrules` files in your project root. Here's how
 ## ✅ Verification Methods
 
 ### 1. **Auto-Detection** (Already Active)
-- ✅ `.cursorrules` file exists in project root: `/Users/danielloureiro/Desktop/threejs-project/.cursorrules`
+- ✅ `.cursorrules` file exists in project root: `/Users/danielloureiro/Desktop/timeline-venezuela-2025/.cursorrules`
 - ✅ File is 19,747 bytes (197 KB)
 - ✅ Cursor automatically reads this file when you open the project
 

@@ -1,4 +1,4 @@
-# Comment System for Three.js Timeline Project
+# Comment System for Timeline Venezuela 2025
 
 This document describes the comprehensive comment system that has been integrated into the Three.js timeline project, allowing users to add comments to specific timeline events.
 
