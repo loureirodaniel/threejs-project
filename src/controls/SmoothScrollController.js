@@ -26,6 +26,17 @@ export class SmoothScrollController {
         this.indicatorTimeout = null;
         this.smoothScrollBound = null;
         
+        // Scroll-length behavior: short/medium → next image, long → increase speed (no jump to end)
+        this.accumulatedScroll = 0;
+        this.scrollLengthThresholds = {
+            shortMedium: 3000,  // px total → move smoothly to next/previous image
+            long: 10000         // px total or more → increase scroll speed by 1.5x during gesture
+        };
+        this.snapDurations = {
+            nextImage: 0.8,     // smooth duration for one image
+            towardsEnd: 0.5    // quicker duration for long scroll
+        };
+        
         this.init();
     }
     
@@ -101,33 +112,118 @@ export class SmoothScrollController {
     }
     
     handleTimelineSmoothScroll(delta) {
-        const scrollSpeed = 0.1 * this.scrollSensitivity; // Even smaller base speed for smoother feel
-        const targetDelta = delta > 0 ? -scrollSpeed : scrollSpeed;
+        // Accumulate scroll for gesture length (used on scroll end to pick target)
+        this.accumulatedScroll += delta;
         
-        // Kill existing smooth scroll animation
+        // Immediate feedback: non-linear curve so short scrolls move less, long scrolls move more
+        const absDelta = Math.abs(delta);
+        const curveScale = Math.min(1, 0.003 * Math.sqrt(absDelta) + 0.0008 * absDelta);
+        let maxPerStep = 0.12;
+        // Long scroll (≥10000px): increase speed during scroll (no jump to end on release)
+        const isLongScroll = Math.abs(this.accumulatedScroll) >= this.scrollLengthThresholds.long;
+        if (isLongScroll) {
+            maxPerStep *= 1.5; // 1.5x speed when doing a long scroll
+        }
+        const targetDelta = (delta > 0 ? -1 : 1) * Math.min(this.scrollSensitivity * curveScale * Math.min(absDelta, 120), maxPerStep);
+        
+        // Kill any ongoing GSAP scroll-to-target so user stays in control
         if (this.smoothScrollTween) {
             this.smoothScrollTween.kill();
+            this.smoothScrollTween = null;
         }
         
-        // Instead of animating timelineOffset directly, use the existing moveTimelineImages method
-        // but with a smoother approach
         this.timelineController.moveTimelineImages(targetDelta);
-        
-        // Update the current year display
         this.timelineController.updateCurrentYear();
-        
-        // Sync debug panel with current camera position
         this.timelineController.syncDebugPanel();
         
-        // Clear any existing snap timeout from the timeline controller
+        // Clear snap timeout; scroll end will run our scroll-to-target logic
         if (this.timelineController.snapTimeout) {
             clearTimeout(this.timelineController.snapTimeout);
+            this.timelineController.snapTimeout = null;
         }
         
-        // Set a timeout to snap after scrolling stops
         this.timelineController.snapTimeout = setTimeout(() => {
-            this.smoothSnapToNearest();
-        }, 500); // Longer delay for smoother feel
+            this.timelineController.snapTimeout = null;
+            this.scrollToTargetFromAccumulated();
+        }, 380);
+    }
+    
+    /**
+     * Sync plane/image positions with current timelineOffset (e.g. during GSAP tween).
+     */
+    updateTimelineImages() {
+        if (this.timelineController && this.timelineController.moveTimelineImages) {
+            this.timelineController.moveTimelineImages(0);
+        }
+        if (this.timelineController && this.timelineController.updateTimelineVignette) {
+            this.timelineController.updateTimelineVignette();
+        }
+    }
+    
+    /**
+     * Choose target from accumulated scroll: short/medium → next image, long → snap to nearest.
+     * Long scroll increases speed during gesture (no jump to end); on release, snap to wherever we are.
+     */
+    scrollToTargetFromAccumulated() {
+        const tc = this.timelineController;
+        if (!tc || tc.getCurrentSceneIndex() !== 1) return;
+        
+        const total = this.accumulatedScroll;
+        this.accumulatedScroll = 0;
+        
+        const snapHandler = tc.snapHandler;
+        if (!snapHandler || !snapHandler.getSnapPositions) return;
+        
+        const positions = snapHandler.getSnapPositions();
+        const currentIndex = snapHandler.getNearestSnapIndex(tc.timelineOffset);
+        const direction = Math.sign(total);
+        
+        let targetOffset;
+        let duration;
+        const ease = 'power2.out';
+        
+        if (Math.abs(total) < this.scrollLengthThresholds.shortMedium) {
+            // Short/medium (< 3000px): snap smoothly to next/previous image plane
+            const nextIndex = Math.max(0, Math.min(positions.length - 1, currentIndex - direction));
+            targetOffset = positions[nextIndex];
+            duration = this.snapDurations.nextImage;
+        } else {
+            // Long (≥ 3000px): snap to nearest; speed was 1.5x during scroll if ≥ 10000px
+            const nearestIndex = snapHandler.getNearestSnapIndex(tc.timelineOffset);
+            targetOffset = positions[nearestIndex];
+            duration = this.snapDurations.nextImage;
+        }
+        
+        const startOffset = tc.timelineOffset;
+        if (Math.abs(startOffset - targetOffset) < 0.05) {
+            if (tc.updateCurrentYear) tc.updateCurrentYear();
+            if (tc.syncDebugPanel) tc.syncDebugPanel();
+            if (tc.triggerHapticFeedback) tc.triggerHapticFeedback('snap');
+            return;
+        }
+        
+        if (this.smoothScrollTween) this.smoothScrollTween.kill();
+        
+        this.smoothScrollTween = gsap.to(tc, {
+            timelineOffset: targetOffset,
+            duration,
+            ease,
+            onUpdate: () => {
+                this.updateTimelineImages();
+                if (tc.updateCameraLookAtForOriginalX) {
+                    tc.updateCameraLookAtForOriginalX(targetOffset);
+                }
+                if (tc.updateCurrentYear) tc.updateCurrentYear();
+                if (tc.syncDebugPanel) tc.syncDebugPanel();
+            },
+            onComplete: () => {
+                this.smoothScrollTween = null;
+                if (tc.updateCurrentYear) tc.updateCurrentYear();
+                if (tc.syncDebugPanel) tc.syncDebugPanel();
+                if (tc.updateTimelineVignette) tc.updateTimelineVignette();
+                if (tc.triggerHapticFeedback) tc.triggerHapticFeedback('snap');
+            }
+        });
     }
     
     handleSceneSmoothScroll(delta) {
@@ -152,60 +248,7 @@ export class SmoothScrollController {
     
     performSmoothSceneTransition(targetIndex) {
         if (this.timelineController.isInTransition()) return;
-        
-        const startConfig = this.timelineController.sceneConfigs[this.timelineController.getCurrentSceneIndex()];
-        const endConfig = this.timelineController.sceneConfigs[targetIndex];
-        
-        // Create smooth camera transition
-        const camera = this.timelineController.camera;
-        
-        // Kill any existing camera animations
-        gsap.killTweensOf(camera.position);
-        gsap.killTweensOf(camera);
-        
-        // Create smooth camera transition
-        const tl = gsap.timeline({
-            onStart: () => {
-                this.timelineController.isTransitioning = true;
-                this.timelineController.onSceneChange(targetIndex);
-            },
-            onComplete: () => {
-                this.timelineController.isTransitioning = false;
-                this.timelineController.currentSceneIndex = targetIndex;
-                this.timelineController.onTransitionComplete();
-            }
-        });
-        
-        // Animate camera position
-        tl.to(camera.position, {
-            x: endConfig.position.x,
-            y: endConfig.position.y,
-            z: endConfig.position.z,
-            duration: 1.5,
-            ease: "power2.inOut"
-        }, 0);
-        
-        // Animate camera FOV
-        tl.to(camera, {
-            fov: endConfig.fov,
-            duration: 1.5,
-            ease: "power2.inOut",
-            onUpdate: () => {
-                camera.updateProjectionMatrix();
-            }
-        }, 0);
-        
-        // Animate camera look-at target
-        tl.to({}, {
-            duration: 1.5,
-            ease: "power2.inOut",
-            onUpdate: () => {
-                const progress = tl.progress();
-                const currentTarget = new THREE.Vector3();
-                currentTarget.lerpVectors(startConfig.target, endConfig.target, progress);
-                camera.lookAt(currentTarget);
-            }
-        }, 0);
+        this.timelineController.transitionToScene(targetIndex);
     }
     
 
@@ -230,9 +273,8 @@ export class SmoothScrollController {
             this.currentVelocity = 0;
             this.isScrolling = false;
             
-            // Snap to nearest position if in timeline with smooth animation
-            if (this.timelineController.getCurrentSceneIndex() === 1) {
-                // Use a smoother snap animation
+            // Timeline scroll end is handled by scrollToTargetFromAccumulated (timeout set in handleTimelineSmoothScroll)
+            if (this.timelineController.getCurrentSceneIndex() !== 1) {
                 this.smoothSnapToNearest();
             }
         }

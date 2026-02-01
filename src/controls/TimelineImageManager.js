@@ -126,13 +126,12 @@ export class TimelineImageManager {
     }
     
     /**
-     * Update camera look-at based on nearest snap position
+     * Update camera look-at based on nearest snap position (instant, no movement).
      */
     updateCameraLookAt() {
         const snapPositions = [-5.25, -3.75, -2.25, -0.75, 0.75, 2.25, 3.75, 5.25, 6.75, 8.25];
         let nearestX = snapPositions[0];
         let minDist = Infinity;
-        
         for (const x of snapPositions) {
             const dist = Math.abs(x - this.controller.timelineOffset);
             if (dist < minDist) {
@@ -140,20 +139,11 @@ export class TimelineImageManager {
                 nearestX = x;
             }
         }
-        
         const timelineConfig = this.controller.sceneConfigs[1];
         const targetY = timelineConfig ? timelineConfig.target.y : 0;
         const targetLookAtX = nearestX - this.controller.timelineOffset;
-        
-        gsap.killTweensOf(this.controller, { lookAtX: true });
-        gsap.to(this.controller, {
-            lookAtX: targetLookAtX,
-            duration: 0.2,
-            ease: 'power2.out',
-            onUpdate: () => {
-                this.controller.camera.lookAt(new THREE.Vector3(this.controller.lookAtX, targetY, 0));
-            }
-        });
+        this.controller.lookAtX = targetLookAtX;
+        this.controller.camera.lookAt(new THREE.Vector3(targetLookAtX, targetY, 0));
     }
     
     /**

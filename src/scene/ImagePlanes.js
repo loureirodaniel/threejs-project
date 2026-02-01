@@ -115,7 +115,9 @@ export class ImagePlanes {
             depthWrite: true
         });
         const plane = new THREE.Mesh(geometry, material);
-        plane.position.set(x, y, z);
+        // Start slightly above final position for smooth animate-in
+        const startYOffset = 0.5;
+        plane.position.set(x, y + startYOffset, z);
         plane.rotation.set(0, 0, 0);
         
         // Set renderOrder based on index to prevent z-index fighting
@@ -130,6 +132,8 @@ export class ImagePlanes {
             animationStartTime: this.startTime + (index * this.animationDelay),
             animationDuration: this.animationDuration,
             targetScale: 1.0,
+            targetPosition: { x, y, z },
+            startPosition: { x, y: y + startYOffset, z },
             isTransitioning: false // Flag to prevent floating animation conflicts
         };
         
@@ -150,6 +154,15 @@ export class ImagePlanes {
                 const scale = easedProgress * userData.targetScale;
                 
                 plane.scale.set(scale, scale, scale);
+                
+                // Smoothly animate position into place (from startOffset to target)
+                if (userData.targetPosition && userData.startPosition) {
+                    const t = userData.targetPosition;
+                    const s = userData.startPosition;
+                    plane.position.x = s.x + (t.x - s.x) * easedProgress;
+                    plane.position.y = s.y + (t.y - s.y) * easedProgress;
+                    plane.position.z = s.z + (t.z - s.z) * easedProgress;
+                }
             }
         });
     }

@@ -31,44 +31,32 @@ export class TimelineSceneController {
         const startConfig = this.controller.sceneConfigs[this.controller.currentSceneIndex];
         const endConfig = this.controller.sceneConfigs[targetIndex];
         
-        // If transitioning to timeline scene, use the new camera transition system
         if (targetIndex === 1 && this.controller.timelineScene) {
-            this.controller.timelineScene.startSceneTransition(this.camera, () => {
-                // Camera transition complete, now activate timeline scene
+            this.controller.currentSceneIndex = 1;
+            this.onSceneChange(1);
+            this.controller.timelineScene.animateToTimeline(this.camera, () => {
                 this.activateTimelineScene();
             });
         } else {
-            // Use original transition for other scenes
+            this.controller.currentSceneIndex = targetIndex;
+            this.onSceneChange(targetIndex);
             this.performOriginalTransition(targetIndex, startConfig, endConfig);
         }
-        
-        // Update current scene index
-        this.controller.currentSceneIndex = targetIndex;
-        
-        // Trigger scene change event
-        this.onSceneChange(targetIndex);
     }
     
     /**
-     * Perform original transition (not timeline-specific)
+     * Perform original transition (not timeline-specific). Camera snaps to target – no movement.
      */
     performOriginalTransition(targetIndex, startConfig, endConfig) {
-        // Delegate to camera controller
-        if (this.controller.cameraController) {
-            this.controller.cameraController.setupTransition(targetIndex, startConfig, endConfig);
-        }
-        
-        // Also store locally for update() method
-        this.startPosition = this.camera.position.clone();
-        this.startTarget = new THREE.Vector3();
-        this.camera.getWorldDirection(this.startTarget);
-        this.startTarget.multiplyScalar(5).add(this.camera.position);
-        this.startFov = this.camera.fov;
-        
-        // Store target camera state
-        this.endPosition = endConfig.position.clone();
-        this.endTarget = endConfig.target.clone();
-        this.endFov = endConfig.fov;
+        const c = this.camera;
+        c.position.copy(endConfig.position);
+        c.fov = endConfig.fov;
+        c.updateProjectionMatrix();
+        c.lookAt(endConfig.target);
+        this.controller.isTransitioning = false;
+        this.controller.transitionProgress = 1;
+        this.controller.transitionStartTime = 0;
+        this.onTransitionComplete();
     }
     
     /**
@@ -139,12 +127,9 @@ export class TimelineSceneController {
     update() {
         if (!this.controller.isTransitioning) return;
         
-        // Check if timeline scene is handling the transition
+        // If timeline scene is running its animateToTimeline, keep isTransitioning true
+        // so scroll events stay blocked. The animation callback will clear it.
         if (this.controller.currentSceneIndex === 1 && this.controller.timelineScene && this.controller.timelineScene.isTransitioning()) {
-            // Timeline scene is handling the camera transition, mark this transition as complete
-            this.controller.isTransitioning = false;
-            this.controller.transitionProgress = 1;
-            console.log('TimelineController: Transition complete, scene taking over');
             return;
         }
         

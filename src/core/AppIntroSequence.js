@@ -1,9 +1,6 @@
 /**
- * AppIntroSequence - Handles the application intro animation
- * Separates intro logic from the main App class
+ * AppIntroSequence - Handles the application intro (no camera movement)
  */
-import { gsap } from 'gsap';
-
 export class AppIntroSequence {
     constructor(app) {
         this.app = app;
@@ -59,75 +56,11 @@ export class AppIntroSequence {
     }
 
     /**
-     * Create the intro animation timeline
-     * @param {THREE.Camera} camera - Three.js camera
-     * @param {OrbitControls} controls - Orbit controls
+     * Create the intro timeline (no camera movement – instant ready)
      */
     createIntroTimeline(camera, controls) {
-        // Subtle dolly-in with a small arc, then settle, to lead into the composition
-        const startY = camera.position.y;
-        const arcDriver = { t: 0 };
-        
-        const tl = gsap.timeline({
-            onComplete: () => {
-                this.cleanupInputBlocker();
-            }
-        });
-        
-        // Phase A: ease into a slightly closer, offset vantage (x/z only)
-        tl.to(camera.position, {
-            x: -0.25,
-            z: 4.6,
-            duration: 1.4,
-            ease: 'power2.inOut'
-        }, 0);
-        
-        tl.to(camera, {
-            fov: 68,
-            duration: 1.4,
-            ease: 'power2.inOut',
-            onUpdate: () => camera.updateProjectionMatrix()
-        }, 0);
-        
-        tl.to(arcDriver, {
-            t: 1,
-            duration: 1.4,
-            ease: 'sine.inOut',
-            onUpdate: () => {
-                const peak = 0.08; // arc height (reduced for smoothness)
-                const yOffset = peak * 4 * arcDriver.t * (1 - arcDriver.t);
-                const prev = camera.userData._introArcOffsetY || 0;
-                camera.position.y += (yOffset - prev);
-                camera.userData._introArcOffsetY = yOffset;
-            },
-            onComplete: () => {
-                // clear arc offset bookkeeping
-                const prev = camera.userData._introArcOffsetY || 0;
-                camera.position.y -= prev;
-                camera.userData._introArcOffsetY = 0;
-            }
-        }, 0);
-        
-        // Phase B: settle back to canonical starting pose
-        tl.to(camera.position, {
-            x: 0,
-            z: 5.0,
-            duration: 0.9,
-            ease: 'power2.out'
-        }, '>-0.05');
-        
-        tl.to(camera, {
-            fov: 75,
-            duration: 0.9,
-            ease: 'power2.out',
-            onUpdate: () => camera.updateProjectionMatrix()
-        }, '<');
-
-        // Re-enable controls and cleanup input blocker
-        tl.add(() => {
-            if (controls) controls.enabled = true;
-            this.cleanupInputBlocker();
-        }, '>-0.2');
+        if (controls) controls.enabled = true;
+        this.cleanupInputBlocker();
     }
 
     /**
