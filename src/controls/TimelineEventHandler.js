@@ -151,6 +151,12 @@ export class TimelineEventHandler {
         }
         
         const delta = event.deltaY;
+
+        // If Lenis + ScrollTrigger handles timeline scroll, skip direct handling
+        if (this.controller.currentSceneIndex === 1 && this.controller.smoothScrollController?.isActive) {
+            event.preventDefault();
+            return;
+        }
         
         // If we're in the timeline scene, handle smooth horizontal scrolling
         if (this.controller.currentSceneIndex === 1) {

@@ -90,14 +90,12 @@ export class TimelineSceneController {
         
         this.onTransitionComplete();
         
-        // Dispatch scene change event to update UI
-        const event = new CustomEvent('sceneChange', {
-            detail: {
-                sceneIndex: this.controller.currentSceneIndex,
-                sceneName: this.controller.sceneConfigs[this.controller.currentSceneIndex].name
-            }
-        });
-        window.dispatchEvent(event);
+        const detail = {
+            sceneIndex: this.controller.currentSceneIndex,
+            sceneName: this.controller.sceneConfigs[this.controller.currentSceneIndex].name
+        };
+        window.dispatchEvent(new CustomEvent('sceneChange', { detail }));
+        window.dispatchEvent(new CustomEvent('sceneTransitionComplete', { detail }));
         
         console.log('TimelineController: Transition state cleared, scrolling should work now');
 

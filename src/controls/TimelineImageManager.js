@@ -24,6 +24,18 @@ export class TimelineImageManager {
             dimmedOpacity: 0.25,
             animationDuration: 0.5
         };
+
+        // Focused image scale animation (center image becomes larger)
+        this.focusScaleConfig = {
+            baseScale: 0.75,   // match TimelineScene default
+            focusedScale: 1.08,
+            duration: 0.35,
+            ease: 'power2.out',
+            staggerDelay: 0.07,  // delay between scale axes for focused plane
+            staggerDuration: 0.28 // duration per axis for staggered feel
+        };
+        this.lastFocusedSlot = -1;
+        this.focusScaleTweens = new Map();
     }
     
     /**
@@ -87,6 +99,9 @@ export class TimelineImageManager {
         
         // Smoothly pan camera look-at toward the nearest image
         this.updateCameraLookAt();
+
+        // Animate focused (centered) image plane to larger scale
+        this.updateFocusedImageScale();
     }
     
     /**
@@ -125,6 +140,101 @@ export class TimelineImageManager {
         });
     }
     
+    /**
+     * Get the current focused slot index (0-9) from timeline offset.
+     */
+    getFocusedSlotIndex() {
+        const snapPositions = [-5.25, -3.75, -2.25, -0.75, 0.75, 2.25, 3.75, 5.25, 6.75, 8.25];
+        const offset = this.controller.timelineOffset ?? -5.25;
+        let best = 0;
+        let minDist = Infinity;
+        snapPositions.forEach((p, i) => {
+            const d = Math.abs(p - offset);
+            if (d < minDist) {
+                minDist = d;
+                best = i;
+            }
+        });
+        return best;
+    }
+
+    /**
+     * Animate the focused (centered) image plane to a larger scale; others to base scale.
+     */
+    updateFocusedImageScale() {
+        if (this.controller.getCurrentSceneIndex?.() !== 1) return;
+        if (this.isImageEnlarged) return;
+
+        const focusedSlot = this.getFocusedSlotIndex();
+        if (focusedSlot === this.lastFocusedSlot) return;
+        this.lastFocusedSlot = focusedSlot;
+
+        const { baseScale, focusedScale, duration, ease, staggerDelay, staggerDuration } = this.focusScaleConfig;
+
+        const applyScale = (obj, targetScale, key, isFocused) => {
+            if (this.focusScaleTweens.has(key)) {
+                const prev = this.focusScaleTweens.get(key);
+                if (prev.kill) prev.kill(); else if (prev.length) prev.kill();
+                this.focusScaleTweens.delete(key);
+            }
+            if (isFocused && targetScale === focusedScale) {
+                const tl = gsap.timeline({ overwrite: true });
+                tl.to(obj.scale, {
+                    x: targetScale,
+                    duration: staggerDuration,
+                    ease
+                }).to(obj.scale, {
+                    y: targetScale,
+                    z: targetScale,
+                    duration: staggerDuration,
+                    ease
+                }, staggerDelay);
+                this.focusScaleTweens.set(key, tl);
+            } else {
+                const tween = gsap.to(obj.scale, {
+                    x: targetScale,
+                    y: targetScale,
+                    z: targetScale,
+                    duration,
+                    ease,
+                    overwrite: true
+                });
+                this.focusScaleTweens.set(key, tween);
+            }
+        };
+
+        // Timeline planes: indices 0,1 map to slots 8,9
+        if (this.controller.timelineScene?.getTimelinePlanes) {
+            const planes = this.controller.timelineScene.getTimelinePlanes();
+            planes.forEach((plane, i) => {
+                const slot = 8 + i;
+                const isFocused = slot === focusedSlot;
+                const targetScale = isFocused ? focusedScale : baseScale;
+                applyScale(plane, targetScale, `timeline-${i}`, isFocused);
+            });
+        }
+
+        // Initial scene images (slots 0-7) that are transitioned to timeline
+        if (window.app?.imagePlanes) {
+            const initialImages = window.app.imagePlanes.getPlanes();
+            initialImages.forEach((image, i) => {
+                if (!image.userData.isTimelineTransitioned) return;
+                const slot = i;
+                const isFocused = slot === focusedSlot;
+                const targetScale = isFocused ? focusedScale : baseScale;
+                applyScale(image, targetScale, `initial-${i}`, isFocused);
+            });
+        }
+
+        // Clear finished tweens from map to avoid leak (optional; GSAP overwrite handles reuse)
+        const maxDuration = duration + (staggerDelay != null ? staggerDelay + staggerDuration : 0);
+        setTimeout(() => {
+            this.focusScaleTweens.forEach((t, k) => {
+                if (t && !t.isActive?.()) this.focusScaleTweens.delete(k);
+            });
+        }, maxDuration * 1000 + 50);
+    }
+
     /**
      * Update camera look-at based on nearest snap position (instant, no movement).
      */
@@ -166,34 +276,38 @@ export class TimelineImageManager {
             material: plane.material.clone()
         };
         
-        // Calculate 100% of viewport size for fullscreen effect
-        const viewportHeight = 2 * Math.tan((this.camera.fov * Math.PI / 180) / 2) * Math.abs(this.camera.position.z);
-        const viewportWidth = viewportHeight * this.camera.aspect;
-        
-        const targetWidth = viewportWidth * this.imageConfig.targetViewportScale;
-        const targetHeight = viewportHeight * this.imageConfig.targetViewportScale;
-        
-        console.log('Viewport dimensions:', { viewportWidth, viewportHeight });
-        console.log('Target dimensions (100% viewport):', { targetWidth, targetHeight });
-        
-        // Calculate scale factor
-        const scaleX = targetWidth / this.imageConfig.originalWidth;
-        const scaleY = targetHeight / this.imageConfig.originalHeight;
-        const scale = Math.max(scaleX, scaleY);
-        
-        // Calculate target position
+        // Calculate target position first (plane placed between camera and timeline)
         const currentConfig = this.controller.sceneConfigs[1];
         const cameraLookAtTarget = new THREE.Vector3(
-            this.controller.lookAtX || 0, 
-            currentConfig?.target?.y || 0, 
+            this.controller.lookAtX || 0,
+            currentConfig?.target?.y || 0,
             0
         );
-        
+        const planeZ = Math.abs(this.camera.position.z) * 0.85;
         const targetPosition = new THREE.Vector3(
             cameraLookAtTarget.x,
             cameraLookAtTarget.y,
-            Math.abs(this.camera.position.z) * 0.85
+            planeZ
         );
+
+        // Viewport size must be computed at the plane's distance from camera so the image fills 100% of the viewport
+        const distanceFromCamera = this.camera.position.distanceTo(targetPosition);
+        const halfFovRad = (this.camera.fov * Math.PI / 180) / 2;
+        const viewportHeightAtPlane = 2 * Math.tan(halfFovRad) * distanceFromCamera;
+        const viewportWidthAtPlane = viewportHeightAtPlane * this.camera.aspect;
+
+        const targetWidth = viewportWidthAtPlane * this.imageConfig.targetViewportScale;
+        const targetHeight = viewportHeightAtPlane * this.imageConfig.targetViewportScale;
+
+        // Use plane's actual geometry size so any image plane fills the viewport correctly
+        const geomParams = plane.geometry?.parameters || {};
+        const planeWidth = geomParams.width ?? this.imageConfig.originalWidth;
+        const planeHeight = geomParams.height ?? this.imageConfig.originalHeight;
+
+        // Scale so the plane covers 100% of the viewport (cover: use max to fill and possibly extend)
+        const scaleX = targetWidth / planeWidth;
+        const scaleY = targetHeight / planeHeight;
+        const scale = Math.max(scaleX, scaleY);
         
         // Mark plane as enlarged
         plane.userData.isEnlarged = true;

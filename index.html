@@ -72,6 +72,10 @@
     </style>
 </head>
 <body>
+    <!-- Lenis scroll container for timeline year-by-year scroll (hidden, behind canvas) -->
+    <div id="lenis-wrapper" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; overflow-y: scroll; overflow-x: hidden; z-index: -2; -webkit-overflow-scrolling: auto;">
+        <div id="lenis-content" style="height: 1px;"></div>
+    </div>
     <div class="smooth-scroll-indicator" id="smoothScrollIndicator">
         Smooth Scrolling Active
     </div>

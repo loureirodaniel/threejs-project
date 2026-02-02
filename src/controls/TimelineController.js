@@ -9,6 +9,7 @@ import { TimelineEventHandler } from './TimelineEventHandler.js';
 import { TimelineSceneController } from './TimelineSceneController.js';
 import { TimelineScrollController } from './TimelineScrollController.js';
 import { TimelineAnimationController } from './TimelineAnimationController.js';
+import { SmoothScrollController } from './SmoothScrollController.js';
 
 export class TimelineController {
     constructor(camera, sceneManager, timelineScene, backgroundBlurEffect = null) {
@@ -91,8 +92,8 @@ export class TimelineController {
             },
             {
                 name: 'timeline',
-                position: new THREE.Vector3(-5.25, 0, 8), // Start at 2010 (first image position)
-                target: new THREE.Vector3(-5.25, 0, 0), // Look at first image
+                position: new THREE.Vector3(0, 0, 8),   // Camera at origin X; first image at world (0,0,0) when offset=-5.25
+                target: new THREE.Vector3(0, 0, 0),    // Look at first image
                 fov: 30
             }
         ];
@@ -106,7 +107,8 @@ export class TimelineController {
         this.sceneController = null;
         this.scrollController = null;
         this.animationController = null;
-        
+        this.smoothScrollController = null;
+
         this.init();
     }
     
@@ -136,7 +138,10 @@ export class TimelineController {
         // Initialize scroll controller
         this.scrollController = new TimelineScrollController(this);
         this.scrollController.initSmoothScrolling();
-        
+
+        // Initialize Lenis + ScrollTrigger for year-by-year smooth scroll (activates when entering timeline)
+        this.smoothScrollController = new SmoothScrollController(this);
+
         // Initialize animation controller
         this.animationController = new TimelineAnimationController(this);
         
@@ -575,6 +580,10 @@ export class TimelineController {
         // Delegate to scene controller
         if (this.sceneController) {
             this.sceneController.update();
+        }
+        // Lenis RAF for smooth scroll (when active in timeline)
+        if (this.smoothScrollController) {
+            this.smoothScrollController.raf(performance.now());
         }
     }
     

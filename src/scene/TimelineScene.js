@@ -337,12 +337,11 @@ export class TimelineScene {
             onComplete: () => {
                 clearPlaneFlags();
                 if (!hasInitial) {
-                    const cfg = (window.app?.timelineController?.sceneConfigs)?.[1];
-                    if (cfg && camera) {
-                        camera.position.copy(cfg.position);
-                        camera.fov = cfg.fov;
+                    if (camera) {
+                        camera.position.set(0, 0, 8);
+                        camera.fov = 30;
                         camera.updateProjectionMatrix();
-                        camera.lookAt(cfg.target);
+                        camera.lookAt(0, 0, 0);
                     }
                     finishTransition();
                 }
@@ -380,17 +379,23 @@ export class TimelineScene {
      * Dolly zoom: smoothly move camera toward the first timeline image (at 0,0,0)
      * and land on it. Look-at stays fixed on the first image throughout.
      * Runs when the first image has landed; keeps transition blocked until zoom completes.
+     * Lands at (0, 0, 8) to match timeline scene config so the first image is framed.
      */
     runZoomInOntoFirstImage(camera, onComplete) {
         if (!camera) { if (onComplete) onComplete(); return; }
         const firstImageCenter = new THREE.Vector3(0, 0, 0);
         const zoomDuration = 1.2;
         const zoomEase = 'power2.out';
-        const targetFov = 28;
-        const endDistance = 5;
+        const targetFov = 30;
+        const endDistance = 8;
         const startPos = camera.position.clone();
-        const dir = new THREE.Vector3().subVectors(firstImageCenter, startPos).normalize();
+        const dir = new THREE.Vector3().subVectors(firstImageCenter, startPos);
+        if (dir.lengthSq() < 1e-6) dir.set(0, 0, -1);
+        dir.normalize();
         const targetPos = new THREE.Vector3().copy(firstImageCenter).addScaledVector(dir, -endDistance);
+        targetPos.x = 0;
+        targetPos.y = 0;
+        targetPos.z = 8;
         gsap.killTweensOf([camera.position, camera]);
         gsap.to(camera.position, {
             x: targetPos.x,
@@ -406,7 +411,9 @@ export class TimelineScene {
             ease: zoomEase,
             onUpdate: () => camera.updateProjectionMatrix(),
             onComplete: () => {
+                camera.position.set(0, 0, 8);
                 camera.lookAt(firstImageCenter);
+                camera.updateProjectionMatrix();
                 if (onComplete) onComplete();
             }
         });
