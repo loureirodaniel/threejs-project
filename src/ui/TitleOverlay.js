@@ -11,6 +11,7 @@ export class TitleOverlay {
         this.time = 0;
         this.animationId = null;
         this.scrambleAnimationActive = false;
+        this.onTextAnimationComplete = null;
         
         this.init();
     }
@@ -73,6 +74,14 @@ export class TitleOverlay {
     
     getSubtitle() {
         return this.subtitle;
+    }
+    
+    /**
+     * Set callback to run when the initial text (scramble) animation has fully completed
+     * @param {function} callback
+     */
+    setOnTextAnimationComplete(callback) {
+        this.onTextAnimationComplete = callback;
     }
     
     setTitle(text) {
@@ -442,12 +451,16 @@ export class TitleOverlay {
                         gsap.to(this.titleDiv, {
                             scale: 1,
                             duration: 0.8,
-                            ease: "back.out(1.7)"
+                            ease: "back.out(1.7)",
+                            onComplete: () => {
+                                this.scrambleAnimationActive = false;
+                                if (typeof this.onTextAnimationComplete === 'function') {
+                                    this.onTextAnimationComplete();
+                                }
+                            }
                         });
                     }
                 });
-                
-                this.scrambleAnimationActive = false;
             }
         };
         

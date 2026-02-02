@@ -114,6 +114,9 @@ export class App {
         this.mouseController = new MouseController(camera);
         this.timelineController = new TimelineController(camera, this.sceneManager, this.timelineScene, this.backgroundBlurEffect);
 
+        // Wire title animation completion so scrolling is enabled only after text animation
+        this.titleOverlay.setOnTextAnimationComplete(() => this.introSequence.onTextAnimationComplete());
+
         // Initialize comment system
         this.commentStorage = new CommentStorage();
         this.commentModeration = new CommentModeration();
@@ -128,11 +131,7 @@ export class App {
         
         // Start animation loop
         this.animate();
-        
-        // Show initial scroll hint after a delay
-        setTimeout(() => {
-            this.introSequence.showScrollHint();
-        }, 2000);
+        // Scroll hint is shown when intro text animation completes (see introSequence.onTextAnimationComplete)
     }
     
     

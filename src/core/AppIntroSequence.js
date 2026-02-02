@@ -56,11 +56,24 @@ export class AppIntroSequence {
     }
 
     /**
-     * Create the intro timeline (no camera movement – instant ready)
+     * Create the intro timeline (no camera movement – instant ready).
+     * Input blocker is kept until text animation completes; see onTextAnimationComplete().
      */
     createIntroTimeline(camera, controls) {
         if (controls) controls.enabled = true;
+        // Blocker stays until TitleOverlay text animation finishes and calls onTextAnimationComplete()
+    }
+
+    /**
+     * Called when the initial title text (scramble) animation has fully completed.
+     * Enables scrolling down and shows the scroll hint.
+     */
+    onTextAnimationComplete() {
+        if (this.app.timelineController) {
+            this.app.timelineController.setIntroComplete(true);
+        }
         this.cleanupInputBlocker();
+        this.showScrollHint();
     }
 
     /**

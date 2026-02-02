@@ -173,8 +173,12 @@ export class TimelineEventHandler {
                 this.controller.handleSmoothTimelineScroll(delta);
             }
         } else {
-            // In initial scene, handle scene transitions
+            // In initial scene, allow scroll down only after text animation has completed
             if (delta > 0) {
+                if (!this.controller.isIntroComplete()) {
+                    event.preventDefault();
+                    return;
+                }
                 if (this.controller.nextScene) {
                     this.controller.nextScene();
                 }

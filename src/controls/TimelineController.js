@@ -19,6 +19,7 @@ export class TimelineController {
         this.backgroundBlurEffect = backgroundBlurEffect;
         this.scenes = [];
         this.currentSceneIndex = 0;
+        this.introComplete = false;
         this.isTransitioning = false;
         this.transitionProgress = 0;
         this.transitionDuration = 1.5; // seconds
@@ -632,6 +633,14 @@ export class TimelineController {
     
     getCurrentSceneIndex() {
         return this.currentSceneIndex;
+    }
+
+    setIntroComplete(value) {
+        this.introComplete = !!value;
+    }
+
+    isIntroComplete() {
+        return this.introComplete;
     }
     
     getCurrentSceneName() {
