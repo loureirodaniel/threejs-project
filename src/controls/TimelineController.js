@@ -10,6 +10,7 @@ import { TimelineSceneController } from './TimelineSceneController.js';
 import { TimelineScrollController } from './TimelineScrollController.js';
 import { TimelineAnimationController } from './TimelineAnimationController.js';
 import { SmoothScrollController } from './SmoothScrollController.js';
+import { DetailView } from '../features/detail/DetailView.js';
 
 export class TimelineController {
     constructor(camera, sceneManager, timelineScene, backgroundBlurEffect = null) {
@@ -74,6 +75,9 @@ export class TimelineController {
         // Wheel cooldown to prevent trackpad scroll interference during/after drag
         this.dragWheelCooldownUntil = 0;
 
+        // Ignore scroll-driven timeline moves for a short period after closing enlarged image (prevents landing on adjacent image)
+        this.lastEnlargedCloseTime = 0;
+
         // Track accumulated offset moved during a drag (in offset units)
         this.dragAccumulatedOffset = 0;
         this.firstDragDirection = null;
@@ -109,6 +113,7 @@ export class TimelineController {
         this.scrollController = null;
         this.animationController = null;
         this.smoothScrollController = null;
+        this.detailView = null;
 
         this.init();
     }
@@ -145,6 +150,9 @@ export class TimelineController {
 
         // Initialize animation controller
         this.animationController = new TimelineAnimationController(this);
+
+        // Initialize detail view
+        this.detailView = new DetailView(this);
         
         // Update drag scale via handler
         this.viewportDragScale = this.dragHandler.viewportDragScale;
@@ -189,9 +197,27 @@ export class TimelineController {
     
     
     closeEnlargedImage() {
+        // Set immediately so any scroll in this tick or the next frames is ignored (prevents jump to adjacent image)
+        this.lastEnlargedCloseTime = Date.now();
+        
+        // Close detail view if open
+        if (this.detailView && this.detailView.isDetailViewOpen()) {
+            this.detailView.close();
+        }
+        
         // Delegate to image manager
         if (this.imageManager) {
             this.imageManager.closeEnlargedImage();
+        }
+    }
+
+    /**
+     * Open detail view for an enlarged plane
+     * @param {THREE.Mesh} plane - The enlarged plane
+     */
+    openDetailView(plane) {
+        if (this.detailView) {
+            this.detailView.open(plane);
         }
     }
     
@@ -295,10 +321,14 @@ export class TimelineController {
     }
     
     handleSmoothTimelineScroll(delta) {
-        // Allow scrolling when an image is enlarged by closing it first for smooth transition
+        // When image is enlarged, close it but do not apply this scroll delta so we stay on the same image
         if (this.isImageEnlarged) {
-            console.log('Image is enlarged - closing it to allow smooth scrolling');
             this.closeEnlargedImage();
+            return;
+        }
+        // Ignore scroll for a short period after closing enlarged image so we don't jump to adjacent
+        if (this.lastEnlargedCloseTime && (Date.now() - this.lastEnlargedCloseTime) < 900) {
+            return;
         }
         
         // Safety mechanism: end any active pullback during scroll to prevent stuck camera
@@ -465,6 +495,63 @@ export class TimelineController {
 
     getNearestSnapIndex(offset) {
         return this.snapHandler.getNearestSnapIndex(offset);
+    }
+
+    /**
+     * Get the snap index (0-based timeline position) for a plane.
+     * Used to know which image is "focused" when clicking.
+     * @param {THREE.Mesh} plane - Clicked plane (initial scene image or timeline plane)
+     * @returns {number|null} Snap index 0..n or null if unknown
+     */
+    getSnapIndexForPlane(plane) {
+        if (plane.userData.timelineIndex !== undefined && plane.userData.timelineIndex !== null) {
+            return plane.userData.timelineIndex; // Initial scene images: 0..4
+        }
+        if (this.timelineScene && this.timelineScene.getTimelinePlanes) {
+            const timelinePlanes = this.timelineScene.getTimelinePlanes();
+            const i = timelinePlanes.indexOf(plane);
+            if (i >= 0) return i + 8; // Timeline planes: first at 6.75 = snap index 8
+        }
+        return null;
+    }
+
+    /**
+     * Animate camera/timeline to a specific snap index, then optionally run a callback.
+     * @param {number} targetIndex - Snap index (0..n)
+     * @param {function} [onComplete] - Called when the snap animation finishes
+     */
+    snapToIndex(targetIndex, onComplete) {
+        if (this.timelineOffset === undefined || this.timelineOffset === null) {
+            if (typeof onComplete === 'function') onComplete();
+            return;
+        }
+        const snapPositions = this.snapHandler.getSnapPositions();
+        if (targetIndex < 0 || targetIndex >= snapPositions.length) {
+            if (typeof onComplete === 'function') onComplete();
+            return;
+        }
+        const targetPosition = this.snapHandler.getSnapPosition(targetIndex);
+        const duration = 0.5;
+        const ease = 'power2.out';
+        gsap.to(this, {
+            timelineOffset: targetPosition,
+            duration,
+            ease,
+            onUpdate: () => {
+                this.snapHandler.updateImagesDuringSnap(this, targetPosition);
+                this.updateCurrentYear();
+                this.syncDebugPanel();
+                if (typeof this.updateCameraLookAtForOriginalX === 'function') {
+                    this.updateCameraLookAtForOriginalX(targetPosition);
+                }
+            },
+            onComplete: () => {
+                this.triggerHapticFeedback('snap');
+                this.currentSnapIndex = targetIndex;
+                this.hasDraggedOnTimeline = true;
+                if (typeof onComplete === 'function') onComplete();
+            }
+        });
     }
 
     // Snap after a drag ends - delegated to handler

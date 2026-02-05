@@ -347,11 +347,12 @@ export class TimelineImageManager {
         // Fade out other images
         this.dimOtherImages(tl, plane);
         
-        // Add UI overlays via effects manager
-        if (this.controller.effects) {
-            this.controller.effects.addBackgroundOverlay();
-            this.controller.effects.addCloseButton();
-        }
+        // Open detail view after animation completes (no grey overlay - expanded image stays clear at full opacity)
+        tl.call(() => {
+            if (this.controller.openDetailView) {
+                this.controller.openDetailView(plane);
+            }
+        }, [], this.imageConfig.animationDuration);
     }
     
     /**
@@ -398,7 +399,70 @@ export class TimelineImageManager {
         const plane = this.enlargedImage;
         const originalState = this.originalImageState;
         
-        console.log('Closing enlarged image - restoring original state');
+        // Capture which image we're closing so we return to it when exiting
+        const returnSnapIndex = typeof this.controller.getSnapIndexForPlane === 'function'
+            ? (this.controller.getSnapIndexForPlane(plane) ?? this.controller.currentSnapIndex ?? 0)
+            : (this.controller.currentSnapIndex ?? 0);
+        
+        const snapPositions = this.controller.getSnapPositions?.() ?? [-5.25, -3.75, -2.25, -0.75, 0.75, 2.25, 3.75, 5.25, 6.75, 8.25];
+        const clampedIndex = Math.max(0, Math.min(returnSnapIndex, snapPositions.length - 1));
+        const snapX = snapPositions[clampedIndex];
+        
+        // Block scroll from moving timeline to adjacent image for a short period after close
+        this.controller.lastEnlargedCloseTime = Date.now();
+        if (this.controller.smoothScrollController?.resetScrollAccumulator) {
+            this.controller.smoothScrollController.resetScrollAccumulator();
+        }
+        
+        console.log('Closing enlarged image - restoring original state, return to index', clampedIndex);
+        
+        // Move camera and timeline to the last clicked image immediately to avoid jump when animation ends
+        this.controller.timelineOffset = snapX;
+        this.controller.currentSnapIndex = clampedIndex;
+        if (typeof this.controller.updateCameraLookAtForOriginalX === 'function') {
+            this.controller.updateCameraLookAtForOriginalX(snapX);
+        }
+        if (typeof this.controller.updateTimelineVignette === 'function') {
+            this.controller.updateTimelineVignette();
+        }
+        if (typeof this.controller.updateCurrentYear === 'function') {
+            this.controller.updateCurrentYear();
+        }
+        if (typeof this.controller.syncDebugPanel === 'function') {
+            this.controller.syncDebugPanel();
+        }
+        const smooth = this.controller.smoothScrollController;
+        if (smooth?.isActive && typeof smooth.setScrollProgress === 'function') {
+            const yearCount = smooth.yearCount ?? 10;
+            const progress = yearCount > 1 ? clampedIndex / (yearCount - 1) : 0;
+            smooth.setScrollProgress(progress);
+        }
+        
+        // Re-apply position on next frame so we win any race with scroll/Lenis and stay on the correct year
+        const snapXFinal = snapX;
+        const clampedIndexFinal = clampedIndex;
+        requestAnimationFrame(() => {
+            this.controller.timelineOffset = snapXFinal;
+            this.controller.currentSnapIndex = clampedIndexFinal;
+            if (typeof this.controller.updateCameraLookAtForOriginalX === 'function') {
+                this.controller.updateCameraLookAtForOriginalX(snapXFinal);
+            }
+            if (smooth?.isActive && typeof smooth.setScrollProgress === 'function') {
+                const yearCount = smooth.yearCount ?? 10;
+                const progress = yearCount > 1 ? clampedIndexFinal / (yearCount - 1) : 0;
+                smooth.setScrollProgress(progress);
+            }
+        });
+        
+        // Reposition all other planes (not the closing one) so they match the new offset immediately
+        this.updatePositionsExcludingPlane(plane);
+        
+        // Target position for the closing plane: centered (0) since we snapped to its index
+        const targetX = 0;
+        const targetY = originalState.position.y;
+        const targetZ = originalState.position.z;
+        // Keep the focused (slightly larger) scale when returning, not base scale
+        const focusedScale = this.focusScaleConfig?.focusedScale ?? 1.08;
         
         // Mark plane as no longer enlarged
         plane.userData.isEnlarged = false;
@@ -408,21 +472,33 @@ export class TimelineImageManager {
         gsap.killTweensOf(plane.scale);
         gsap.killTweensOf(plane.material);
         
-        // Animate back to original state
+        const duration = this.imageConfig.animationDuration;
+        const onCloseComplete = () => {
+            if (typeof this.controller.moveTimelineImages === 'function') {
+                this.controller.moveTimelineImages(0);
+            }
+            // Force focused scale update so the returned-to image keeps its slightly larger size
+            this.lastFocusedSlot = -1;
+            this.updateFocusedImageScale();
+        };
+        
+        // Animate closing plane back to its timeline slot (already at target offset)
         gsap.to(plane.position, {
-            x: originalState.position.x,
-            y: originalState.position.y,
-            z: originalState.position.z,
-            duration: this.imageConfig.animationDuration,
+            x: targetX,
+            y: targetY,
+            z: targetZ,
+            duration,
             ease: "power3.out"
         });
         
+        // Animate to focused scale so the returned image keeps the slightly increased size
         gsap.to(plane.scale, {
-            x: originalState.scale.x,
-            y: originalState.scale.y,
-            z: originalState.scale.z,
-            duration: this.imageConfig.animationDuration,
-            ease: "power3.out"
+            x: focusedScale,
+            y: focusedScale,
+            z: focusedScale,
+            duration,
+            ease: "power3.out",
+            onComplete: onCloseComplete
         });
         
         // Restore other images to normal opacity
@@ -434,10 +510,37 @@ export class TimelineImageManager {
             this.controller.effects.removeCloseButton();
         }
         
-        // Reset state
+        // Reset state so scroll/drag are enabled immediately
         this.enlargedImage = null;
         this.originalImageState = null;
         this.isImageEnlarged = false;
+    }
+    
+    /**
+     * Update timeline and initial image positions for the current offset, excluding one plane (e.g. the one being animated closed).
+     * @param {THREE.Mesh} excludePlane - Plane to leave unchanged
+     */
+    updatePositionsExcludingPlane(excludePlane) {
+        const offset = this.controller.timelineOffset ?? -5.25;
+        if (this.controller.timelineScene && this.controller.timelineScene.getTimelinePlanes) {
+            const planes = this.controller.timelineScene.getTimelinePlanes();
+            planes.forEach((p, index) => {
+                if (p === excludePlane) return;
+                const originalX = ((index + 8) * 1.5) - 5.25;
+                p.position.x = originalX - offset;
+                p.position.y = 0;
+            });
+        }
+        if (window.app && window.app.imagePlanes) {
+            const initialImages = window.app.imagePlanes.getPlanes();
+            initialImages.forEach((img, index) => {
+                if (img === excludePlane) return;
+                if (!img.userData.isTimelineTransitioned) return;
+                const originalX = (index * 1.5) - 5.25;
+                img.position.x = originalX - offset;
+                img.position.y = 0;
+            });
+        }
     }
     
     /**

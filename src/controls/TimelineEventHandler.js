@@ -105,9 +105,24 @@ export class TimelineEventHandler {
         
         if (intersects.length > 0) {
             const clickedPlane = intersects[0].object;
-            console.log('Enlarging image:', clickedPlane);
-            if (this.controller.enlargeImage) {
-                this.controller.enlargeImage(clickedPlane);
+            const clickedSnapIndex = this.controller.getSnapIndexForPlane
+                ? this.controller.getSnapIndexForPlane(clickedPlane)
+                : null;
+            const isFocused = clickedSnapIndex !== null &&
+                this.controller.currentSnapIndex === clickedSnapIndex;
+
+            const doEnlarge = () => {
+                if (this.controller.enlargeImage) {
+                    this.controller.enlargeImage(clickedPlane);
+                }
+            };
+
+            if (!isFocused && clickedSnapIndex !== null && this.controller.snapToIndex) {
+                // Move camera to the clicked image first, then expand
+                console.log('Moving to image at index', clickedSnapIndex, 'then enlarging');
+                this.controller.snapToIndex(clickedSnapIndex, doEnlarge);
+            } else {
+                doEnlarge();
             }
         }
     }

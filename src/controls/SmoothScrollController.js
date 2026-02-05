@@ -28,6 +28,8 @@ export class SmoothScrollController {
         this.scrollAccumulatorReset = null;
         this.longScrollThreshold = 550;   // px accumulated → start accelerating
         this.longScrollMultiplier = 1.85; // multiplier when very long scroll
+        /** Ignore scroll input for this long (ms) after closing enlarged image to prevent jump to adjacent */
+        this.enlargedCloseGraceMs = 900;
 
         this.init();
     }
@@ -121,6 +123,13 @@ export class SmoothScrollController {
         this.lenis.on('scroll', () => ScrollTrigger.update());
         this.rafBound = (time) => {
             this.lenis?.raf(time);
+            // Every frame during grace period, re-pin scroll to the closed image so we never drift to adjacent
+            const tc = this.timelineController;
+            if (tc?.lastEnlargedCloseTime && (Date.now() - tc.lastEnlargedCloseTime) < this.enlargedCloseGraceMs) {
+                const idx = tc.currentSnapIndex ?? 0;
+                const lockedProgress = this.yearCount > 1 ? idx / (this.yearCount - 1) : 0;
+                this.setScrollProgress(lockedProgress);
+            }
         };
 
         // Sync initial scroll to current timeline position
@@ -160,6 +169,14 @@ export class SmoothScrollController {
         const tc = this.timelineController;
         if (!tc || tc.getCurrentSceneIndex() !== 1) return;
 
+        // Ignore scroll-driven moves for a short period after closing enlarged image so we stay on the closed image
+        if (tc.lastEnlargedCloseTime && (Date.now() - tc.lastEnlargedCloseTime) < this.enlargedCloseGraceMs) {
+            const idx = tc.currentSnapIndex ?? 0;
+            const lockedProgress = this.yearCount > 1 ? idx / (this.yearCount - 1) : 0;
+            this.setScrollProgress(lockedProgress);
+            return;
+        }
+
         const index = Math.round(progress * (this.yearCount - 1));
         const clampedIndex = Math.max(0, Math.min(index, this.yearCount - 1));
         const targetOffset = this.snapPositions[clampedIndex];
@@ -183,6 +200,15 @@ export class SmoothScrollController {
         if (this.rafBound) this.rafBound(time);
     }
 
+    /** Reset scroll accumulator so the gesture that closed the enlarged image doesn’t affect next scroll. */
+    resetScrollAccumulator() {
+        this.scrollAccumulator = 0;
+        if (this.scrollAccumulatorReset) {
+            clearTimeout(this.scrollAccumulatorReset);
+            this.scrollAccumulatorReset = null;
+        }
+    }
+
     onResize() {
         ScrollTrigger.refresh();
     }
@@ -193,6 +219,11 @@ export class SmoothScrollController {
      */
     handleVirtualScroll(data, wheelMult, touchMult) {
         if (!this.lenis) return true;
+        const tc = this.timelineController;
+        // Block all scroll input during grace period after closing enlarged image (avoids sensitivity/length moving timeline)
+        if (tc?.lastEnlargedCloseTime && (Date.now() - tc.lastEnlargedCloseTime) < this.enlargedCloseGraceMs) {
+            return false;
+        }
         const { deltaY, event } = data;
         const isTouch = event.type.includes('touch');
         const mult = isTouch ? touchMult : wheelMult;
