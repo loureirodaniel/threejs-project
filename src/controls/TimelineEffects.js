@@ -1,6 +1,7 @@
 /**
  * TimelineEffects - Manages haptic feedback, audio, vignette, and UI overlays for timeline
  */
+import { gsap } from 'gsap';
 import { TIMELINE_FIRST_POSITION, getTimelinePlaneX, getTimelineAdditionalPlaneX } from '../config/timelineLayout.js';
 
 export class TimelineEffects {
@@ -308,50 +309,105 @@ export class TimelineEffects {
     }
     
     /**
-     * Update timeline vignette (center emphasis)
+     * Update timeline vignette (center emphasis: opacity + scale)
+     * Opacity applied immediately; scale animated with GSAP (focus: back.out, unfocus: staggered).
      */
     updateTimelineVignette() {
-        const strength = this.vignetteStrength; // max dim at far edges
-        const width = Math.max(0.1, this.vignetteWidth);
-        const invWidth = 1 / width;
+        if (this.controller.getCurrentSceneIndex() !== 1) {
+            return;
+        }
 
-        const applyOpacityFalloff = (object, worldX) => {
-            // Distance from center line x=0 in world space
-            const dist = Math.abs(worldX);
-            // Smoothstep-like falloff: 0 at center, approaching 1 at distance >= width
-            let t = Math.min(1, dist * invWidth);
-            // Ease curve for smoother center weighting
-            t = t * t * (3 - 2 * t);
-            const dim = strength * t;
-            const base = 0.9; // base opacity used across app
-            const targetOpacity = Math.max(0.15, base * (1 - dim));
-            if (object.material && typeof object.material.opacity === 'number') {
-                object.material.opacity = targetOpacity;
+        console.log('🎨 Updating timeline vignette, timelineOffset:', this.controller.timelineOffset);
+
+        const timelinePlanes = this.controller.timelineScene?.getTimelinePlanes() || [];
+        const initialPlanes = window.app?.imagePlanes?.getPlanes() || [];
+        const allTimelineImages = [
+            ...timelinePlanes.filter(p => !p.userData.isEnlarged),
+            ...initialPlanes.filter(plane => plane.userData.isTimelineTransitioned && !plane.userData.isEnlarged)
+        ];
+
+        if (allTimelineImages.length === 0) return;
+
+        const centerX = 0;
+        const focusWidth = 2.0;
+        const falloffWidth = 4.0;
+        const minOpacity = 0.3;
+        const focusScale = 0.85;
+        const normalScale = 0.75;
+
+        const imagesToFocus = [];
+        const imagesToUnfocus = [];
+
+        allTimelineImages.forEach((plane, index) => {
+            if (!plane || !plane.visible) return;
+
+            const distance = Math.abs(plane.position.x - centerX);
+
+            let opacity;
+            if (distance < focusWidth) {
+                opacity = 1.0;
+            } else {
+                const fadeDistance = distance - focusWidth;
+                const fadeFactor = Math.min(1.0, fadeDistance / falloffWidth);
+                opacity = 1.0 - fadeFactor * (1.0 - minOpacity);
             }
-        };
 
-        // Additional timeline planes (2015-2019)
-        if (this.controller.timelineScene && this.controller.timelineScene.getTimelinePlanes) {
-            const planes = this.controller.timelineScene.getTimelinePlanes();
-            planes.forEach((plane, index) => {
-                const originalX = getTimelineAdditionalPlaneX(index);
-                const worldX = originalX - (this.controller.timelineOffset ?? TIMELINE_FIRST_POSITION);
-                // Skip if currently enlarged
-                if (!plane.userData.isEnlarged) applyOpacityFalloff(plane, worldX);
+            const isFocused = distance < 1.0;
+            const targetScale = isFocused ? focusScale : normalScale;
+
+            if (plane.material) {
+                plane.material.opacity = opacity;
+                plane.material.transparent = true;
+                plane.material.needsUpdate = true;
+            }
+
+            const currentScale = plane.scale.x;
+            const needsScaleChange = Math.abs(currentScale - targetScale) > 0.01;
+
+            if (needsScaleChange) {
+                gsap.killTweensOf(plane.scale);
+                if (isFocused) {
+                    imagesToFocus.push({ plane, targetScale, index });
+                } else {
+                    imagesToUnfocus.push({ plane, targetScale, index });
+                }
+            }
+        });
+
+        if (imagesToFocus.length > 0) {
+            console.log(`🎨 Focusing ${imagesToFocus.length} image(s)`);
+            imagesToFocus.forEach(({ plane, targetScale, index }) => {
+                gsap.to(plane.scale, {
+                    x: targetScale,
+                    y: targetScale,
+                    z: targetScale,
+                    duration: 0.4,
+                    ease: 'back.out(1.2)',
+                    onStart: () => {
+                        console.log(`  📍 Focusing image ${index} to scale ${targetScale}`);
+                    }
+                });
             });
         }
 
-        // Initial scene images that are part of the timeline (2010-2014)
-        if (window.app && window.app.imagePlanes) {
-            const initialImages = window.app.imagePlanes.getPlanes();
-            initialImages.forEach((image, index) => {
-                if (image.userData.isTimelineTransitioned) {
-                    const originalX = getTimelinePlaneX(index);
-                    const worldX = originalX - (this.controller.timelineOffset ?? TIMELINE_FIRST_POSITION);
-                    if (!image.userData.isEnlarged) applyOpacityFalloff(image, worldX);
+        if (imagesToUnfocus.length > 0) {
+            console.log(`🎨 Unfocusing ${imagesToUnfocus.length} image(s)`);
+            const unfocusScales = imagesToUnfocus.map(i => i.plane.scale);
+            gsap.to(unfocusScales, {
+                x: normalScale,
+                y: normalScale,
+                z: normalScale,
+                duration: 0.3,
+                ease: 'power2.out',
+                stagger: {
+                    amount: 0.1,
+                    from: 'center',
+                    ease: 'power1.inOut'
                 }
             });
         }
+
+        console.log('✅ Vignette update complete');
     }
     
     /**

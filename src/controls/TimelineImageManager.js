@@ -263,10 +263,19 @@ export class TimelineImageManager {
         
         console.log('Starting image enlargement - bringing to front and reducing other images to 25% opacity');
         
+        // Set the flag and references on the controller IMMEDIATELY so ESC and other handlers see it
+        this.controller.isImageEnlarged = true;
+        this.controller.originalImageState = {
+            position: plane.position.clone(),
+            scale: plane.scale.clone(),
+            rotation: plane.rotation.clone()
+        };
+        this.controller.enlargedImage = plane;
+        
         this.enlargedImage = plane;
         this.isImageEnlarged = true;
         
-        // Store original state
+        // Store original state (manager copy includes material for restore)
         this.originalImageState = {
             position: plane.position.clone(),
             scale: plane.scale.clone(),
@@ -392,7 +401,17 @@ export class TimelineImageManager {
      * Close enlarged image and restore to original state
      */
     closeEnlargedImage() {
-        if (!this.isImageEnlarged || !this.enlargedImage || !this.originalImageState) return;
+        console.log('Closing enlarged image - restoring original state, return to index', this.controller.currentSnapIndex);
+        
+        if (!this.controller.isImageEnlarged) {
+            console.log('No image is enlarged, skipping close');
+            return;
+        }
+        
+        // Reset controller flag IMMEDIATELY so ESC/scroll don't double-close
+        this.controller.isImageEnlarged = false;
+        
+        if (!this.enlargedImage || !this.originalImageState) return;
         
         const plane = this.enlargedImage;
         const originalState = this.originalImageState;
@@ -411,8 +430,6 @@ export class TimelineImageManager {
         if (this.controller.smoothScrollController?.resetScrollAccumulator) {
             this.controller.smoothScrollController.resetScrollAccumulator();
         }
-        
-        console.log('Closing enlarged image - restoring original state, return to index', clampedIndex);
         
         // Move camera and timeline to the last clicked image immediately to avoid jump when animation ends
         this.controller.timelineOffset = snapX;
@@ -520,6 +537,10 @@ export class TimelineImageManager {
         this.enlargedImage = null;
         this.originalImageState = null;
         this.isImageEnlarged = false;
+        
+        // Clear controller references
+        this.controller.enlargedImage = null;
+        this.controller.originalImageState = null;
     }
     
     /**

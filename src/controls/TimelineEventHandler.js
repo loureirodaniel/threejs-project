@@ -25,12 +25,17 @@ export class TimelineEventHandler {
      * Initialize event listeners
      */
     init() {
+        console.log('🔧 TimelineEventHandler init() - onKeyDown exists?', typeof this.onKeyDown);
+
         window.addEventListener('click', this.onClick);
-        window.addEventListener('keydown', this.onKeyDown);
+        // Use document for keydown so it fires when focus is on document/body (e.g. canvas)
+        document.addEventListener('keydown', this.onKeyDown);
         window.addEventListener('wheel', this.onScroll, { passive: false });
         window.addEventListener('mousedown', this.onMouseDown);
         window.addEventListener('mousemove', this.onMouseMove);
         window.addEventListener('mouseup', this.onMouseUp);
+
+        console.log('✅ TimelineEventHandler: keydown listener attached to document');
     }
     
     /**
@@ -132,10 +137,167 @@ export class TimelineEventHandler {
      * Handle keyboard events
      */
     onKeyDown(event) {
-        // Close enlarged image with Escape key
-        if (event.key === 'Escape' && this.controller.isImageEnlarged) {
-            if (this.controller.closeEnlargedImage) {
+        console.log('🔑 Key pressed:', event.key, 'keyCode:', event.keyCode);
+        console.log('🔑 Image enlarged?', this.controller.isImageCurrentlyEnlarged?.() ?? '(no method)');
+
+        // ESC to close enlarged image
+        if (event.key === 'Escape' || event.keyCode === 27) {
+            console.log('🔑 ESC key detected!');
+
+            if (this.controller.isImageCurrentlyEnlarged?.()) {
+                console.log('🔑 Closing enlarged image...');
+                event.preventDefault();
+                event.stopPropagation();
                 this.controller.closeEnlargedImage();
+                return;
+            }
+        }
+
+        // ONLY handle arrow keys on timeline scene
+        if (this.controller.getCurrentSceneIndex() !== 1) {
+            return;
+        }
+
+        // Don't handle arrows if image is enlarged
+        if (this.controller.isImageCurrentlyEnlarged?.()) {
+            return;
+        }
+
+        // Arrow Left - Previous year
+        if (event.key === 'ArrowLeft' || event.keyCode === 37) {
+            console.log('🔑 Arrow Left pressed');
+            event.preventDefault();
+
+            const currentYear = this.controller.getCurrentYear();
+            console.log('🔑 Current year:', currentYear);
+
+            if (currentYear > 2010) {
+                const targetYear = currentYear - 1;
+                const targetIndex = targetYear - 2010;
+
+                console.log('🔑 Navigating to year:', targetYear, 'index:', targetIndex);
+
+                if (typeof this.controller.animateToYear === 'function') {
+                    console.log('🔑 Using animateToYear()');
+                    this.controller.animateToYear(targetYear, this.controller.getSnapPositions()[targetIndex]);
+                } else if (typeof this.controller.snapToIndex === 'function') {
+                    console.log('🔑 Using snapToIndex()');
+                    this.controller.snapToIndex(targetIndex);
+                } else {
+                    console.log('🔑 Using direct snap');
+                    const snapPositions = this.controller.getSnapPositions();
+                    const targetOffset = snapPositions[targetIndex];
+
+                    gsap.to(this.controller, {
+                        timelineOffset: targetOffset,
+                        duration: 0.5,
+                        ease: 'power2.out',
+                        onUpdate: () => {
+                            if (this.controller.snapHandler && typeof this.controller.snapHandler.updateImagesDuringSnap === 'function') {
+                                this.controller.snapHandler.updateImagesDuringSnap(this.controller, targetOffset);
+                            } else if (this.controller.moveTimelineImages) {
+                                this.controller.moveTimelineImages(0);
+                            }
+                            if (this.controller.updateCurrentYear) this.controller.updateCurrentYear();
+                            if (this.controller.syncDebugPanel) this.controller.syncDebugPanel();
+                            if (this.controller.updateCameraLookAtForOriginalX) this.controller.updateCameraLookAtForOriginalX(targetOffset);
+                            if (typeof this.controller.updateTimelineVignette === 'function') {
+                                this.controller.updateTimelineVignette();
+                            } else if (this.controller.effects && typeof this.controller.effects.updateTimelineVignette === 'function') {
+                                this.controller.effects.updateTimelineVignette();
+                            }
+                        },
+                        onComplete: () => {
+                            console.log('🎯 Arrow navigation complete');
+                            this.controller.currentSnapIndex = targetIndex;
+                            if (typeof this.controller.updateTimelineVignette === 'function') {
+                                this.controller.updateTimelineVignette();
+                            } else if (this.controller.effects && typeof this.controller.effects.updateTimelineVignette === 'function') {
+                                this.controller.effects.updateTimelineVignette();
+                            } else {
+                                console.error('❌ updateTimelineVignette not found on controller');
+                            }
+                            this.controller.triggerHapticFeedback('snap');
+                            if (this.controller.updateCurrentYear) this.controller.updateCurrentYear();
+                            if (this.controller.syncDebugPanel) this.controller.syncDebugPanel();
+                        }
+                    });
+                }
+
+                window.dispatchEvent(new CustomEvent('timelineNavigation', {
+                    detail: { year: targetYear }
+                }));
+            } else {
+                console.log('🔑 Already at first year (2010)');
+            }
+        }
+
+        // Arrow Right - Next year
+        if (event.key === 'ArrowRight' || event.keyCode === 39) {
+            console.log('🔑 Arrow Right pressed');
+            event.preventDefault();
+
+            const currentYear = this.controller.getCurrentYear();
+            console.log('🔑 Current year:', currentYear);
+
+            if (currentYear < 2019) {
+                const targetYear = currentYear + 1;
+                const targetIndex = targetYear - 2010;
+
+                console.log('🔑 Navigating to year:', targetYear, 'index:', targetIndex);
+
+                if (typeof this.controller.animateToYear === 'function') {
+                    console.log('🔑 Using animateToYear()');
+                    this.controller.animateToYear(targetYear, this.controller.getSnapPositions()[targetIndex]);
+                } else if (typeof this.controller.snapToIndex === 'function') {
+                    console.log('🔑 Using snapToIndex()');
+                    this.controller.snapToIndex(targetIndex);
+                } else {
+                    console.log('🔑 Using direct snap');
+                    const snapPositions = this.controller.getSnapPositions();
+                    const targetOffset = snapPositions[targetIndex];
+
+                    gsap.to(this.controller, {
+                        timelineOffset: targetOffset,
+                        duration: 0.5,
+                        ease: 'power2.out',
+                        onUpdate: () => {
+                            if (this.controller.snapHandler && typeof this.controller.snapHandler.updateImagesDuringSnap === 'function') {
+                                this.controller.snapHandler.updateImagesDuringSnap(this.controller, targetOffset);
+                            } else if (this.controller.moveTimelineImages) {
+                                this.controller.moveTimelineImages(0);
+                            }
+                            if (this.controller.updateCurrentYear) this.controller.updateCurrentYear();
+                            if (this.controller.syncDebugPanel) this.controller.syncDebugPanel();
+                            if (this.controller.updateCameraLookAtForOriginalX) this.controller.updateCameraLookAtForOriginalX(targetOffset);
+                            if (typeof this.controller.updateTimelineVignette === 'function') {
+                                this.controller.updateTimelineVignette();
+                            } else if (this.controller.effects && typeof this.controller.effects.updateTimelineVignette === 'function') {
+                                this.controller.effects.updateTimelineVignette();
+                            }
+                        },
+                        onComplete: () => {
+                            console.log('🎯 Arrow navigation complete');
+                            this.controller.currentSnapIndex = targetIndex;
+                            if (typeof this.controller.updateTimelineVignette === 'function') {
+                                this.controller.updateTimelineVignette();
+                            } else if (this.controller.effects && typeof this.controller.effects.updateTimelineVignette === 'function') {
+                                this.controller.effects.updateTimelineVignette();
+                            } else {
+                                console.error('❌ updateTimelineVignette not found on controller');
+                            }
+                            this.controller.triggerHapticFeedback('snap');
+                            if (this.controller.updateCurrentYear) this.controller.updateCurrentYear();
+                            if (this.controller.syncDebugPanel) this.controller.syncDebugPanel();
+                        }
+                    });
+                }
+
+                window.dispatchEvent(new CustomEvent('timelineNavigation', {
+                    detail: { year: targetYear }
+                }));
+            } else {
+                console.log('🔑 Already at last year (2019)');
             }
         }
     }
@@ -548,7 +710,7 @@ export class TimelineEventHandler {
      */
     destroy() {
         window.removeEventListener('click', this.onClick);
-        window.removeEventListener('keydown', this.onKeyDown);
+        document.removeEventListener('keydown', this.onKeyDown);
         window.removeEventListener('wheel', this.onScroll);
         window.removeEventListener('mousedown', this.onMouseDown);
         window.removeEventListener('mousemove', this.onMouseMove);

@@ -681,6 +681,10 @@ export class TimelineController {
                 this.imageManager.updateTimelinePlanePositions();
                 this.imageManager.updateInitialImagePositions();
             }
+            // Update vignette every frame after positions change (smooth during arrow keys, drag, scroll, snap)
+            if (this.effects && typeof this.effects.updateTimelineVignette === 'function') {
+                this.effects.updateTimelineVignette();
+            }
         }
         // Lenis RAF for smooth scroll (when active in timeline)
         if (this.smoothScrollController) {
