@@ -356,6 +356,11 @@ export class DetailView {
 
         console.log('Closing detail view');
 
+        // Set ignore scroll flag immediately to prevent any scroll that's happening from moving timeline
+        if (this.controller && this.controller.lastEnlargedCloseTime !== undefined) {
+            this.controller.ignoreScrollUntil = Date.now() + 500;
+        }
+
         // Allow scroll and clicks to pass through immediately so timeline scroll works
         if (this.overlay) {
             this.overlay.style.pointerEvents = 'none';

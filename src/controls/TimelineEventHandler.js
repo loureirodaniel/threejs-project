@@ -4,6 +4,7 @@
  */
 import * as THREE from 'three';
 import { gsap } from 'gsap';
+import { TIMELINE_FIRST_POSITION, getTimelinePlaneX, getTimelineAdditionalPlaneX } from '../config/timelineLayout.js';
 
 export class TimelineEventHandler {
     constructor(timelineController) {
@@ -147,6 +148,22 @@ export class TimelineEventHandler {
         
         if (this.controller.isTransitioning) return;
         
+        // Block scroll entirely while we're in the process of closing (prevents scroll during close transition)
+        if (this.controller.isClosingEnlargedImage) {
+            console.log('Scroll ignored - currently closing enlarged image');
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+        }
+        
+        // Ignore scroll events entirely for a brief period after closing enlarged image (prevents scroll that closed from moving timeline)
+        if (this.controller.ignoreScrollUntil && Date.now() < this.controller.ignoreScrollUntil) {
+            console.log('Scroll ignored - within close scroll ignore window');
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+        }
+        
         // Ignore wheel while dragging timeline or shortly after drag end to avoid interference
         if (this.controller.currentSceneIndex === 1) {
             if (this.controller.isDragging) {
@@ -256,7 +273,7 @@ export class TimelineEventHandler {
             
             // Record nearest index at drag start for first-drag guard
             if (this.controller.currentSceneIndex === 1) {
-                this.controller.dragStartOffset = this.controller.timelineOffset ?? -5.25;
+                this.controller.dragStartOffset = this.controller.timelineOffset ?? TIMELINE_FIRST_POSITION;
                 this.controller.dragStartNearestIndex = this.controller.getNearestSnapIndex(this.controller.dragStartOffset);
             }
             
@@ -447,7 +464,7 @@ export class TimelineEventHandler {
                         if (this.controller.timelineScene && this.controller.timelineScene.getTimelinePlanes) {
                             const planes = this.controller.timelineScene.getTimelinePlanes();
                             planes.forEach((plane, index) => {
-                                const originalX = ((index + 8) * 1.5) - 5.25;
+                                const originalX = getTimelineAdditionalPlaneX(index);
                                 plane.position.x = originalX - this.controller.timelineOffset;
                             });
                         }
@@ -456,7 +473,7 @@ export class TimelineEventHandler {
                             const initialImages = window.app.imagePlanes.getPlanes();
                             initialImages.forEach((image, index) => {
                                 if (image.userData.isTimelineTransitioned) {
-                                    const originalX = (index * 1.5) - 5.25;
+                                    const originalX = getTimelinePlaneX(index);
                                     image.position.x = originalX - this.controller.timelineOffset;
                                 }
                             });

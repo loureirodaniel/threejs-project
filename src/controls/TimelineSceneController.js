@@ -1,8 +1,8 @@
 /**
  * TimelineSceneController - Manages scene transitions and timeline activation
- * Extracted from TimelineController to improve code organization
  */
 import * as THREE from 'three';
+import { TIMELINE_FIRST_POSITION } from '../config/timelineLayout.js';
 
 export class TimelineSceneController {
     constructor(timelineController) {
@@ -68,9 +68,8 @@ export class TimelineSceneController {
             this.controller.timelineScene.activate();
         }
         
-        // Initialize timeline offset so the FIRST image (original X = -5.25) lands centered at X=0
-        this.controller.timelineOffset = -5.25;
-        console.log('TimelineController: Set timeline offset to -5.25 (first image centered)');
+        this.controller.timelineOffset = TIMELINE_FIRST_POSITION;
+        console.log('TimelineController: Set timeline offset to', TIMELINE_FIRST_POSITION, '(first image centered)');
 
         // Reset first-drag guard state when entering the timeline
         this.controller.hasDraggedOnTimeline = false;
@@ -105,7 +104,7 @@ export class TimelineSceneController {
             this.controller.imageManager.moveTimelineImages(0);
         }
         if (this.controller.updateCameraLookAtForOriginalX) {
-            this.controller.updateCameraLookAtForOriginalX(-5.25);
+            this.controller.updateCameraLookAtForOriginalX(TIMELINE_FIRST_POSITION);
         }
         // Ensure vignette is visible immediately when landing on first image
         if (this.controller.effects) {

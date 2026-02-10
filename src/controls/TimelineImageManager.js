@@ -1,9 +1,10 @@
 /**
  * TimelineImageManager - Handles image positioning, enlargement, and year calculations for timeline
- * Extracted from TimelineController to reduce complexity and improve maintainability
+ * Spacing from config/timelineLayout.js (Figma-aligned).
  */
 import * as THREE from 'three';
 import { gsap } from 'gsap';
+import { TIMELINE_PLANE_WIDTH, TIMELINE_X_RANGE, TIMELINE_FIRST_POSITION, getTimelinePlaneX, getTimelineAdditionalPlaneX, getTimelineSnapPositions } from '../config/timelineLayout.js';
 
 export class TimelineImageManager {
     constructor(timelineController) {
@@ -15,10 +16,10 @@ export class TimelineImageManager {
         this.originalImageState = null;
         this.isImageEnlarged = false;
         
-        // Image configuration
+        // Image configuration (plane size matches timeline layout – Figma: larger images)
         this.imageConfig = {
-            originalWidth: 1.5,
-            originalHeight: 1.5 / (4 / 3), // 4:3 aspect ratio
+            originalWidth: TIMELINE_PLANE_WIDTH,
+            originalHeight: TIMELINE_PLANE_WIDTH / (4 / 3), // 4:3 aspect ratio
             targetViewportScale: 1.0, // 100% of viewport
             enlargedOpacity: 1.0,
             dimmedOpacity: 0.25,
@@ -51,10 +52,9 @@ export class TimelineImageManager {
         }
         
         const yearRange = 2019 - 2010; // 9 years (2010-2019)
-        const xRange = 13.5; // -5.25 to 8.25 (images are at -5.25, -3.75, -2.25, -0.75, 0.75, 2.25, 3.75, 5.25, 6.75, 8.25)
         
-        // Map timeline offset to year (offset=-5.25 is 2010, offset=8.25 is 2019)
-        const normalizedX = Math.max(0, Math.min(1, (timelineOffset + 5.25) / xRange)); // 0 to 1
+        // Map timeline offset to year (offset=TIMELINE_FIRST_POSITION is 2010)
+        const normalizedX = Math.max(0, Math.min(1, (timelineOffset - TIMELINE_FIRST_POSITION) / TIMELINE_X_RANGE)); // 0 to 1
         const year = Math.round(2010 + (normalizedX * yearRange));
         
         return Math.max(2010, Math.min(2019, year));
@@ -79,14 +79,12 @@ export class TimelineImageManager {
         const previousOffset = this.controller.timelineOffset;
         this.controller.timelineOffset += deltaX;
         
-        // Clamp timeline offset (new range: -5.25 to 8.25)
-        this.controller.timelineOffset = Math.max(-5.25, Math.min(8.25, this.controller.timelineOffset));
+        const lastPos = TIMELINE_FIRST_POSITION + TIMELINE_X_RANGE;
+        this.controller.timelineOffset = Math.max(TIMELINE_FIRST_POSITION, Math.min(lastPos, this.controller.timelineOffset));
         
-        // Check if we hit a boundary and trigger haptic feedback
-        if (this.controller.timelineOffset === -5.25 && previousOffset > -5.25) {
-            // Hit start boundary (2010)
+        if (this.controller.timelineOffset === TIMELINE_FIRST_POSITION && previousOffset > TIMELINE_FIRST_POSITION) {
             this.controller.triggerHapticFeedback('boundary');
-        } else if (this.controller.timelineOffset === 8.25 && previousOffset < 8.25) {
+        } else if (this.controller.timelineOffset === lastPos && previousOffset < lastPos) {
             // Hit end boundary (2019)
             this.controller.triggerHapticFeedback('boundary');
         }
@@ -112,7 +110,7 @@ export class TimelineImageManager {
         
         const planes = this.controller.timelineScene.getTimelinePlanes();
         planes.forEach((plane, index) => {
-            const originalX = ((index + 8) * 1.5) - 5.25;
+            const originalX = getTimelineAdditionalPlaneX(index);
             plane.position.x = originalX - this.controller.timelineOffset;
             
             // Ensure images remain visible
@@ -130,7 +128,7 @@ export class TimelineImageManager {
         const initialImages = window.app.imagePlanes.getPlanes();
         initialImages.forEach((image, index) => {
             if (image.userData.isTimelineTransitioned) {
-                const originalX = (index * 1.5) - 5.25;
+                const originalX = getTimelinePlaneX(index);
                 image.position.x = originalX - this.controller.timelineOffset;
                 
                 // Ensure images remain visible
@@ -144,8 +142,8 @@ export class TimelineImageManager {
      * Get the current focused slot index (0-9) from timeline offset.
      */
     getFocusedSlotIndex() {
-        const snapPositions = [-5.25, -3.75, -2.25, -0.75, 0.75, 2.25, 3.75, 5.25, 6.75, 8.25];
-        const offset = this.controller.timelineOffset ?? -5.25;
+        const snapPositions = getTimelineSnapPositions();
+        const offset = this.controller.timelineOffset ?? TIMELINE_FIRST_POSITION;
         let best = 0;
         let minDist = Infinity;
         snapPositions.forEach((p, i) => {
@@ -239,7 +237,7 @@ export class TimelineImageManager {
      * Update camera look-at based on nearest snap position (instant, no movement).
      */
     updateCameraLookAt() {
-        const snapPositions = [-5.25, -3.75, -2.25, -0.75, 0.75, 2.25, 3.75, 5.25, 6.75, 8.25];
+        const snapPositions = getTimelineSnapPositions();
         let nearestX = snapPositions[0];
         let minDist = Infinity;
         for (const x of snapPositions) {
@@ -404,7 +402,7 @@ export class TimelineImageManager {
             ? (this.controller.getSnapIndexForPlane(plane) ?? this.controller.currentSnapIndex ?? 0)
             : (this.controller.currentSnapIndex ?? 0);
         
-        const snapPositions = this.controller.getSnapPositions?.() ?? [-5.25, -3.75, -2.25, -0.75, 0.75, 2.25, 3.75, 5.25, 6.75, 8.25];
+        const snapPositions = this.controller.getSnapPositions?.() ?? getTimelineSnapPositions();
         const clampedIndex = Math.max(0, Math.min(returnSnapIndex, snapPositions.length - 1));
         const snapX = snapPositions[clampedIndex];
         
@@ -438,10 +436,10 @@ export class TimelineImageManager {
             smooth.setScrollProgress(progress);
         }
         
-        // Re-apply position on next frame so we win any race with scroll/Lenis and stay on the correct year
+        // Re-apply position multiple times to ensure we win any race with scroll/Lenis and stay on the correct year
         const snapXFinal = snapX;
         const clampedIndexFinal = clampedIndex;
-        requestAnimationFrame(() => {
+        const reapplyPosition = () => {
             this.controller.timelineOffset = snapXFinal;
             this.controller.currentSnapIndex = clampedIndexFinal;
             if (typeof this.controller.updateCameraLookAtForOriginalX === 'function') {
@@ -452,6 +450,14 @@ export class TimelineImageManager {
                 const progress = yearCount > 1 ? clampedIndexFinal / (yearCount - 1) : 0;
                 smooth.setScrollProgress(progress);
             }
+        };
+        // Apply immediately, then again on next frame, and once more after a short delay
+        requestAnimationFrame(() => {
+            reapplyPosition();
+            requestAnimationFrame(() => {
+                reapplyPosition();
+                setTimeout(() => reapplyPosition(), 50);
+            });
         });
         
         // Reposition all other planes (not the closing one) so they match the new offset immediately
@@ -521,12 +527,12 @@ export class TimelineImageManager {
      * @param {THREE.Mesh} excludePlane - Plane to leave unchanged
      */
     updatePositionsExcludingPlane(excludePlane) {
-        const offset = this.controller.timelineOffset ?? -5.25;
+        const offset = this.controller.timelineOffset ?? TIMELINE_FIRST_POSITION;
         if (this.controller.timelineScene && this.controller.timelineScene.getTimelinePlanes) {
             const planes = this.controller.timelineScene.getTimelinePlanes();
             planes.forEach((p, index) => {
                 if (p === excludePlane) return;
-                const originalX = ((index + 8) * 1.5) - 5.25;
+                const originalX = getTimelineAdditionalPlaneX(index);
                 p.position.x = originalX - offset;
                 p.position.y = 0;
             });
@@ -536,7 +542,7 @@ export class TimelineImageManager {
             initialImages.forEach((img, index) => {
                 if (img === excludePlane) return;
                 if (!img.userData.isTimelineTransitioned) return;
-                const originalX = (index * 1.5) - 5.25;
+                const originalX = getTimelinePlaneX(index);
                 img.position.x = originalX - offset;
                 img.position.y = 0;
             });

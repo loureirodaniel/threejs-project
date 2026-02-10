@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { TIMELINE_PLANE_WIDTH } from '../config/timelineLayout.js';
 
 export class ImagePlanes {
     constructor(scene, camera) {
@@ -43,7 +44,7 @@ export class ImagePlanes {
 
     createImagePlanes() {
         const aspectRatio = 4/3;
-        const width = 1.5; // Match the timeline image size
+        const width = TIMELINE_PLANE_WIDTH;
         const height = width / aspectRatio;
         
         // Get visible range at Z=0

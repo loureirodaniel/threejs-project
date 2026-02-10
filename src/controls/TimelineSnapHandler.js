@@ -1,15 +1,14 @@
 /**
  * TimelineSnapHandler - Handles snap positioning, magnetic behavior, and first-drag guards for timeline navigation
- * Extracted from TimelineController to reduce complexity and improve maintainability
+ * Spacing and positions from config/timelineLayout.js (Figma-aligned).
  */
 import { gsap } from 'gsap';
+import { getTimelineSnapPositions, getTimelinePlaneX, getTimelineAdditionalPlaneX } from '../config/timelineLayout.js';
 
 export class TimelineSnapHandler {
     constructor(timelineController) {
         this.controller = timelineController;
-        
-        // Snap positions (every 1.5 units corresponding to image positions, starting at -5.25)
-        this.snapPositions = [-5.25, -3.75, -2.25, -0.75, 0.75, 2.25, 3.75, 5.25, 6.75, 8.25];
+        this.snapPositions = getTimelineSnapPositions();
         
         // Snap configuration
         this.config = {
@@ -190,7 +189,7 @@ export class TimelineSnapHandler {
         if (controller.timelineScene && typeof controller.timelineScene.getTimelinePlanes === 'function') {
             const planes = controller.timelineScene.getTimelinePlanes();
             planes.forEach((plane, index) => {
-                const originalX = ((index + 8) * 1.5) - 5.25;
+                const originalX = getTimelineAdditionalPlaneX(index);
                 plane.position.x = originalX - controller.timelineOffset;
             });
         }
@@ -200,7 +199,7 @@ export class TimelineSnapHandler {
             const initialImages = window.app.imagePlanes.getPlanes();
             initialImages.forEach((image, index) => {
                 if (image.userData.isTimelineTransitioned) {
-                    const originalX = (index * 1.5) - 5.25;
+                    const originalX = getTimelinePlaneX(index);
                     image.position.x = originalX - controller.timelineOffset;
                 }
             });

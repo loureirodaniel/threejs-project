@@ -3,6 +3,7 @@
  * Extracted from TimelineController to reduce complexity and improve maintainability
  */
 import { gsap } from 'gsap';
+import { getTimelinePlaneX, getTimelineAdditionalPlaneX } from '../config/timelineLayout.js';
 
 export class TimelineAnimationController {
     constructor(timelineController) {
@@ -68,7 +69,7 @@ export class TimelineAnimationController {
         if (this.controller.timelineScene && this.controller.timelineScene.getTimelinePlanes) {
             const planes = this.controller.timelineScene.getTimelinePlanes();
             planes.forEach((plane, index) => {
-                const originalX = ((index + 8) * 1.5) - 5.25; // Positions 6, 8, 10, 12, 14
+                const originalX = getTimelineAdditionalPlaneX(index);
                 plane.position.x = originalX - this.controller.timelineOffset;
                 
                 // Ensure images remain visible
@@ -82,7 +83,7 @@ export class TimelineAnimationController {
             const initialImages = window.app.imagePlanes.getPlanes();
             initialImages.forEach((image, index) => {
                 if (image.userData.isTimelineTransitioned) {
-                    const originalX = (index * 1.5) - 5.25; // Positions -4, -2, 0, 2, 4
+                    const originalX = getTimelinePlaneX(index);
                     image.position.x = originalX - this.controller.timelineOffset;
                     
                     // Ensure images remain visible
@@ -123,7 +124,7 @@ export class TimelineAnimationController {
         // During the year animation, pan camera look-at to the target image
         // Compute the original X for the requested year
         const yearIndex = year - 2010; // 0..9
-        const originalX = (yearIndex * 1.5) - 5.25; // -5.25..8.25
+        const originalX = getTimelinePlaneX(yearIndex);
         if (this.controller.updateCameraLookAtForOriginalX) {
             this.controller.updateCameraLookAtForOriginalX(originalX);
         }

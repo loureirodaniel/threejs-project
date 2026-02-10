@@ -1,7 +1,8 @@
 /**
  * TimelineEffects - Manages haptic feedback, audio, vignette, and UI overlays for timeline
- * Extracted from TimelineController to improve code organization and maintainability
  */
+import { TIMELINE_FIRST_POSITION, getTimelinePlaneX, getTimelineAdditionalPlaneX } from '../config/timelineLayout.js';
+
 export class TimelineEffects {
     constructor(timelineController) {
         this.controller = timelineController;
@@ -333,8 +334,8 @@ export class TimelineEffects {
         if (this.controller.timelineScene && this.controller.timelineScene.getTimelinePlanes) {
             const planes = this.controller.timelineScene.getTimelinePlanes();
             planes.forEach((plane, index) => {
-                const originalX = ((index + 8) * 1.5) - 5.25; // 6..14
-                const worldX = originalX - (this.controller.timelineOffset ?? -5.25);
+                const originalX = getTimelineAdditionalPlaneX(index);
+                const worldX = originalX - (this.controller.timelineOffset ?? TIMELINE_FIRST_POSITION);
                 // Skip if currently enlarged
                 if (!plane.userData.isEnlarged) applyOpacityFalloff(plane, worldX);
             });
@@ -345,8 +346,8 @@ export class TimelineEffects {
             const initialImages = window.app.imagePlanes.getPlanes();
             initialImages.forEach((image, index) => {
                 if (image.userData.isTimelineTransitioned) {
-                    const originalX = (index * 1.5) - 5.25; // -4..4
-                    const worldX = originalX - (this.controller.timelineOffset ?? -5.25);
+                    const originalX = getTimelinePlaneX(index);
+                    const worldX = originalX - (this.controller.timelineOffset ?? TIMELINE_FIRST_POSITION);
                     if (!image.userData.isEnlarged) applyOpacityFalloff(image, worldX);
                 }
             });

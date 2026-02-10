@@ -9,6 +9,7 @@
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import Lenis from 'lenis';
+import { TIMELINE_FIRST_POSITION, getTimelineSnapPositions } from '../config/timelineLayout.js';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -18,7 +19,7 @@ export class SmoothScrollController {
         this.isEnabled = true;
         this.lenis = null;
         this.timelineScrollTrigger = null;
-        this.snapPositions = [-5.25, -3.75, -2.25, -0.75, 0.75, 2.25, 3.75, 5.25, 6.75, 8.25]; // 10 years: 2010-2019
+        this.snapPositions = getTimelineSnapPositions();
         this.yearCount = this.snapPositions.length;
         this.scrollSectionHeight = 100; // px per year step
         this.isActive = false;
@@ -30,6 +31,8 @@ export class SmoothScrollController {
         this.longScrollMultiplier = 1.85; // multiplier when very long scroll
         /** Ignore scroll input for this long (ms) after closing enlarged image to prevent jump to adjacent */
         this.enlargedCloseGraceMs = 900;
+        /** Track grace-period state to stop/resume Lenis and prevent post-close jump */
+        this.wasInCloseGracePeriod = false;
 
         this.init();
     }
@@ -120,28 +123,58 @@ export class SmoothScrollController {
             onUpdate: (self) => this.onScrollProgress(self.progress)
         });
 
-        this.lenis.on('scroll', () => ScrollTrigger.update());
+        this.lenis.on('scroll', () => {
+            // Prevent ScrollTrigger updates during closing or ignore period (prevents scroll that closed from moving timeline)
+            const tc = this.timelineController;
+            if (tc?.isClosingEnlargedImage) {
+                return; // Don't update ScrollTrigger while closing
+            }
+            if (tc?.ignoreScrollUntil && Date.now() < tc.ignoreScrollUntil) {
+                return; // Don't update ScrollTrigger, which would trigger onScrollProgress
+            }
+            ScrollTrigger.update();
+        });
         this.rafBound = (time) => {
             this.lenis?.raf(time);
-            // Every frame during grace period, re-pin scroll to the closed image so we never drift to adjacent
             const tc = this.timelineController;
-            if (tc?.lastEnlargedCloseTime && (Date.now() - tc.lastEnlargedCloseTime) < this.enlargedCloseGraceMs) {
+            const inCloseGrace = tc?.lastEnlargedCloseTime && (Date.now() - tc.lastEnlargedCloseTime) < this.enlargedCloseGraceMs;
+
+            // On entering grace period: stop Lenis to cancel any momentum/target from the close gesture
+            if (inCloseGrace && !this.wasInCloseGracePeriod && this.lenis) {
+                this.lenis.stop();
+            }
+            // On exiting grace period: resume Lenis so scroll works normally again
+            if (!inCloseGrace && this.wasInCloseGracePeriod && this.lenis) {
+                this.lenis.start();
+            }
+            this.wasInCloseGracePeriod = !!inCloseGrace;
+
+            // Every frame during grace period, aggressively re-pin scroll and timeline offset to the closed image
+            if (inCloseGrace) {
                 const idx = tc.currentSnapIndex ?? 0;
                 const lockedProgress = this.yearCount > 1 ? idx / (this.yearCount - 1) : 0;
+                const lockedOffset = this.snapPositions[idx];
+                // Force scroll position (force: true so it works even when Lenis is stopped)
                 this.setScrollProgress(lockedProgress);
+                // Then force timeline offset to match (prevents any drift from other sources)
+                tc.timelineOffset = lockedOffset;
+                // Update image positions so the timeline strip (including right neighbour) stays correct
+                if (tc.moveTimelineImages) tc.moveTimelineImages(0);
+                if (tc.updateCameraLookAtForOriginalX) tc.updateCameraLookAtForOriginalX(lockedOffset);
             }
         };
 
         // Sync initial scroll to current timeline position
         const tc = this.timelineController;
         const nearestIndex = this.snapPositions.reduce((best, p, i) =>
-            Math.abs(p - (tc.timelineOffset ?? -5.25)) < Math.abs(this.snapPositions[best] - (tc.timelineOffset ?? -5.25)) ? i : best, 0);
+            Math.abs(p - (tc.timelineOffset ?? TIMELINE_FIRST_POSITION)) < Math.abs(this.snapPositions[best] - (tc.timelineOffset ?? TIMELINE_FIRST_POSITION)) ? i : best, 0);
         this.setScrollProgress(nearestIndex / (this.yearCount - 1));
     }
 
     deactivate() {
         if (!this.isActive) return;
         this.isActive = false;
+        this.wasInCloseGracePeriod = false;
         this.destroyLenis();
     }
 
@@ -169,11 +202,27 @@ export class SmoothScrollController {
         const tc = this.timelineController;
         if (!tc || tc.getCurrentSceneIndex() !== 1) return;
 
-        // Ignore scroll-driven moves for a short period after closing enlarged image so we stay on the closed image
+        // First check: ignore scroll entirely during the immediate ignore period (prevents scroll that closed from moving timeline)
+        if (tc.ignoreScrollUntil && Date.now() < tc.ignoreScrollUntil) {
+            const idx = tc.currentSnapIndex ?? 0;
+            const lockedProgress = this.yearCount > 1 ? idx / (this.yearCount - 1) : 0;
+            const lockedOffset = this.snapPositions[idx];
+            // Force everything back to locked position
+            this.setScrollProgress(lockedProgress);
+            tc.timelineOffset = lockedOffset;
+            if (tc.updateCameraLookAtForOriginalX) tc.updateCameraLookAtForOriginalX(lockedOffset);
+            return;
+        }
+
+        // Second check: ignore scroll-driven moves for a short period after closing enlarged image so we stay on the closed image
         if (tc.lastEnlargedCloseTime && (Date.now() - tc.lastEnlargedCloseTime) < this.enlargedCloseGraceMs) {
             const idx = tc.currentSnapIndex ?? 0;
             const lockedProgress = this.yearCount > 1 ? idx / (this.yearCount - 1) : 0;
+            // Force scroll position and timeline offset to stay locked - prevent any drift
             this.setScrollProgress(lockedProgress);
+            const lockedOffset = this.snapPositions[idx];
+            tc.timelineOffset = lockedOffset;
+            if (tc.updateCameraLookAtForOriginalX) tc.updateCameraLookAtForOriginalX(lockedOffset);
             return;
         }
 
@@ -193,7 +242,7 @@ export class SmoothScrollController {
         if (!this.lenis) return;
         const limit = this.lenis.limit;
         const targetScroll = Math.max(0, Math.min(limit, progress * limit));
-        this.lenis.scrollTo(targetScroll, { immediate: true });
+        this.lenis.scrollTo(targetScroll, { immediate: true, force: true });
     }
 
     raf(time) {
@@ -220,6 +269,10 @@ export class SmoothScrollController {
     handleVirtualScroll(data, wheelMult, touchMult) {
         if (!this.lenis) return true;
         const tc = this.timelineController;
+        // Block scroll events entirely for a brief moment after closing (prevents scroll that closed from moving timeline)
+        if (tc?.ignoreScrollUntil && Date.now() < tc.ignoreScrollUntil) {
+            return false;
+        }
         // Block all scroll input during grace period after closing enlarged image (avoids sensitivity/length moving timeline)
         if (tc?.lastEnlargedCloseTime && (Date.now() - tc.lastEnlargedCloseTime) < this.enlargedCloseGraceMs) {
             return false;

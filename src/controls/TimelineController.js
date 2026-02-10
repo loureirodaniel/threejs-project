@@ -11,6 +11,7 @@ import { TimelineScrollController } from './TimelineScrollController.js';
 import { TimelineAnimationController } from './TimelineAnimationController.js';
 import { SmoothScrollController } from './SmoothScrollController.js';
 import { DetailView } from '../features/detail/DetailView.js';
+import { TIMELINE_FIRST_POSITION, TIMELINE_X_RANGE, getTimelineSnapPositions, getTimelinePlaneX, getTimelineAdditionalPlaneX } from '../config/timelineLayout.js';
 
 export class TimelineController {
     constructor(camera, sceneManager, timelineScene, backgroundBlurEffect = null) {
@@ -45,7 +46,7 @@ export class TimelineController {
         this.momentumRaf = null;
         
         // Enhanced drag scaling for full timeline traversal
-        this.timelineWidth = 13.5; // Total timeline width (-5.25 to 8.25)
+        this.timelineWidth = TIMELINE_X_RANGE;
         this.viewportDragScale = 1.0; // Scale factor for viewport-based dragging (managed by drag handler)
 
         // Hold-to-pullback camera behavior
@@ -77,6 +78,10 @@ export class TimelineController {
 
         // Ignore scroll-driven timeline moves for a short period after closing enlarged image (prevents landing on adjacent image)
         this.lastEnlargedCloseTime = 0;
+        // Ignore scroll events entirely for a brief moment after closing (prevents scroll that closed from moving timeline)
+        this.ignoreScrollUntil = 0;
+        // Flag to indicate we're currently in the process of closing (blocks scroll during transition)
+        this.isClosingEnlargedImage = false;
 
         // Track accumulated offset moved during a drag (in offset units)
         this.dragAccumulatedOffset = 0;
@@ -197,8 +202,12 @@ export class TimelineController {
     
     
     closeEnlargedImage() {
+        // Set closing flag immediately to block all scroll during the close process
+        this.isClosingEnlargedImage = true;
         // Set immediately so any scroll in this tick or the next frames is ignored (prevents jump to adjacent image)
         this.lastEnlargedCloseTime = Date.now();
+        // Also ignore scroll events entirely for 500ms to prevent the scroll that closed from moving timeline
+        this.ignoreScrollUntil = Date.now() + 500;
         
         // Close detail view if open
         if (this.detailView && this.detailView.isDetailViewOpen()) {
@@ -209,6 +218,11 @@ export class TimelineController {
         if (this.imageManager) {
             this.imageManager.closeEnlargedImage();
         }
+        
+        // Clear closing flag after a short delay (after close animation completes)
+        setTimeout(() => {
+            this.isClosingEnlargedImage = false;
+        }, 600);
     }
 
     /**
@@ -413,11 +427,8 @@ export class TimelineController {
     snapToNearestImage() {
         if (this.timelineOffset === undefined || this.timelineOffset === null) return;
         
-        // Define snap positions (every 1.5 units, corresponding to image positions, starting at -5.25)
-        const snapPositions = [-5.25, -3.75, -2.25, -0.75, 0.75, 2.25, 3.75, 5.25, 6.75, 8.25];
-        
-        // Find the nearest snap position
-        let nearestPosition = 0;
+        const snapPositions = getTimelineSnapPositions();
+        let nearestPosition = snapPositions[0];
         let minDistance = Infinity;
         
         snapPositions.forEach(position => {
@@ -428,36 +439,31 @@ export class TimelineController {
             }
         });
 
-        // First-drag guard: if starting at first and moving rightward, restrict snap to second image
-        if (!this.hasDraggedOnTimeline && this.dragStartNearestIndex === 0 && this.timelineOffset > -5.25) {
-            nearestPosition = -3.75;
+        if (!this.hasDraggedOnTimeline && this.dragStartNearestIndex === 0 && this.timelineOffset > TIMELINE_FIRST_POSITION) {
+            nearestPosition = snapPositions[1];
         }
         
-        // Only snap if we're not already at a snap position
         if (Math.abs(this.timelineOffset - nearestPosition) > 0.1) {
             console.log(`Snapping from ${this.timelineOffset.toFixed(2)} to ${nearestPosition}`);
             
-            // Animate to the nearest snap position
             gsap.to(this, {
                 timelineOffset: nearestPosition,
                 duration: 0.3,
                 ease: "power2.out",
                 onUpdate: () => {
-                    // Update additional timeline images during animation
                     if (this.timelineScene && this.timelineScene.getTimelinePlanes) {
                         const planes = this.timelineScene.getTimelinePlanes();
                         planes.forEach((plane, index) => {
-                            const originalX = ((index + 8) * 1.5) - 5.25; // Positions 6, 8, 10, 12, 14
+                            const originalX = getTimelineAdditionalPlaneX(index);
                             plane.position.x = originalX - this.timelineOffset;
                         });
                     }
                     
-                    // Update initial scene images that have been transitioned
                     if (window.app && window.app.imagePlanes) {
                         const initialImages = window.app.imagePlanes.getPlanes();
                         initialImages.forEach((image, index) => {
                             if (image.userData.isTimelineTransitioned) {
-                                const originalX = (index * 1.5) - 5.25; // Positions -4, -2, 0, 2, 4
+                                const originalX = getTimelinePlaneX(index);
                                 image.position.x = originalX - this.timelineOffset;
                             }
                         });
@@ -624,9 +630,8 @@ export class TimelineController {
             this.timelineScene.activate();
         }
         
-        // Initialize timeline offset so the FIRST image (original X = -5.25) lands centered at X=0
-        this.timelineOffset = -5.25;
-        console.log('TimelineController: Set timeline offset to -5.25 (first image centered)');
+        this.timelineOffset = TIMELINE_FIRST_POSITION;
+        console.log('TimelineController: Set timeline offset to', TIMELINE_FIRST_POSITION, '(first image centered)');
 
         // Reset first-drag guard state when entering the timeline
         this.hasDraggedOnTimeline = false;
@@ -657,7 +662,7 @@ export class TimelineController {
         // Apply the current offset immediately to position images and align look-at
         // This ensures we land with the first image centered when entering the timeline
         this.moveTimelineImages(0);
-        this.updateCameraLookAtForOriginalX(-5.25);
+        this.updateCameraLookAtForOriginalX(TIMELINE_FIRST_POSITION);
         // Ensure vignette is visible immediately when landing on first image
         this.updateTimelineVignette();
         this.updateCurrentYear();
@@ -668,6 +673,14 @@ export class TimelineController {
         // Delegate to scene controller
         if (this.sceneController) {
             this.sceneController.update();
+        }
+        // When on timeline, re-apply image positions every frame from current offset
+        // so the right-side (and all) neighbour images stay visible and correctly placed
+        if (this.getCurrentSceneIndex() === 1 && !this.isTransitioning && this.imageManager) {
+            if (this.timelineOffset !== undefined && this.timelineOffset !== null) {
+                this.imageManager.updateTimelinePlanePositions();
+                this.imageManager.updateInitialImagePositions();
+            }
         }
         // Lenis RAF for smooth scroll (when active in timeline)
         if (this.smoothScrollController) {

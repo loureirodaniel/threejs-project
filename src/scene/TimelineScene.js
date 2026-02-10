@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { gsap } from 'gsap';
+import { TIMELINE_FIRST_POSITION, TIMELINE_PLANE_WIDTH, getTimelineAdditionalPlaneX, getTimelinePlaneX } from '../config/timelineLayout.js';
 
 export class TimelineScene {
     constructor(scene, renderer, camera) {
@@ -51,13 +52,13 @@ export class TimelineScene {
         // since initial scene now covers 2010-2017 (8 images)
         const years = ['2018', '2019'];
         const aspectRatio = 4/3;
-        const width = 1.5;
+        const width = TIMELINE_PLANE_WIDTH;
         const height = width / aspectRatio;
         
         console.log('TimelineScene: Creating additional timeline images for years:', years);
         
         years.forEach((year, index) => {
-            const x = ((index + 8) * 1.5) - 5.25; // Positions 6.75, 8.25 (years 2018-2019)
+            const x = getTimelineAdditionalPlaneX(index);
             const y = 0;
             const z = 0;
             
@@ -114,14 +115,14 @@ export class TimelineScene {
 
         if (!skipPositionOverwrite) {
             this.timelinePlanes.forEach((plane, index) => {
-                const x = ((index + 8) * 1.5) - 5.25;
+                const x = getTimelineAdditionalPlaneX(index);
                 plane.visible = true;
                 plane.position.set(x, 0, 0);
                 plane.scale.setScalar(0.75);
                 plane.rotation.set(0, 0, 0);
                 plane.material.opacity = 0.9;
             });
-            const offset = -5.25;
+            const offset = TIMELINE_FIRST_POSITION;
             const initialImages = this.getInitialSceneImages();
             initialImages.forEach((image, index) => {
                 if (index < 8) {
@@ -129,7 +130,7 @@ export class TimelineScene {
                         image.userData.originalPosition = image.position.clone();
                         image.userData.originalScale = image.scale.clone();
                     }
-                    const originalX = (index * 1.5) - 5.25;
+                    const originalX = getTimelinePlaneX(index);
                     image.visible = true;
                     image.position.set(originalX - offset, 0, 0);
                     image.scale.setScalar(0.75);
@@ -283,7 +284,7 @@ export class TimelineScene {
 
         const initialImages = this.getInitialSceneImages();
         const hasInitial = initialImages && initialImages.length > 0;
-        const offset = -5.25;
+        const offset = TIMELINE_FIRST_POSITION;
         const duration = 2;
         const stagger = 0.12;
         const ease = 'power2.inOut';
@@ -310,7 +311,7 @@ export class TimelineScene {
             plane.visible = true;
             plane.material.opacity = 0;
             plane.scale.setScalar(0);
-            const x = ((i + 8) * 1.5) - 5.25;
+            const x = getTimelineAdditionalPlaneX(i);
             plane.position.set(x, 0, 0);
             plane.rotation.set(0, 0, 0);
             plane.renderOrder = 8 + i;
@@ -351,7 +352,7 @@ export class TimelineScene {
         if (hasInitial) {
             initialImages.forEach((img, i) => {
                 if (i >= 8) return;
-                const origX = (i * 1.5) - 5.25;
+                const origX = getTimelinePlaneX(i);
                 const targetX = origX - offset;
                 gsap.killTweensOf([img.position, img.scale, img.rotation]);
                 tl.to(img.position, { x: targetX, y: 0, z: 0, duration, ease }, i * stagger);

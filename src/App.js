@@ -12,6 +12,7 @@ import { TitleOverlay } from './ui/TitleOverlay.js';
 import { DebugPanel } from './ui/DebugPanel.js';
 import { EventsPanel } from './ui/EventsPanel.js';
 import { TimelineNavigation } from './ui/TimelineNavigation.js';
+import { YearOverlay } from './ui/YearOverlay.js';
 import { MouseController } from './controls/MouseController.js';
 import { TimelineController } from './controls/TimelineController.js';
 import { AppStateManager } from './core/AppStateManager.js';
@@ -50,6 +51,7 @@ export class App {
         this.debugPanel = null;
         this.eventsPanel = null;
         this.timelineNavigation = null;
+        this.yearOverlay = null;
         
         // Controllers
         this.mouseController = null;
@@ -94,6 +96,7 @@ export class App {
         this.debugPanel = new DebugPanel();
         this.eventsPanel = new EventsPanel();
         this.timelineNavigation = new TimelineNavigation();
+        this.yearOverlay = new YearOverlay(2010, 2019);
         
         // Ensure timeline navigation is hidden on app start (initial scene)
         setTimeout(() => {
@@ -152,6 +155,12 @@ export class App {
             
             // Animate title to top-left corner
             this.titleOverlay.animateToTopLeft();
+            
+            // Show year overlay (focused year top-left, 220px; prev/next 42px)
+            if (this.yearOverlay) {
+                this.yearOverlay.show();
+                this.yearOverlay.setYear(this.timelineController.getCurrentYear());
+            }
         } else if (sceneDetail.sceneName === 'initial') {
             // Deactivate timeline scene
             this.timelineScene.deactivate();
@@ -166,6 +175,10 @@ export class App {
             // Ensure timeline navigation is hidden in initial scene
             if (this.timelineNavigation) {
                 this.timelineNavigation.hide();
+            }
+            
+            if (this.yearOverlay) {
+                this.yearOverlay.hide();
             }
             
             // Show scroll hint for initial scene
@@ -220,8 +233,7 @@ export class App {
         if (sceneDetail.sceneName === 'timeline') {
             this.titleOverlay.setTitle('Timeline Scene');
             this.titleOverlay.setSubtitle('Scroll horizontally to navigate through time');
-            // Initialize year display
-            this.onTimelineYearChange({ year: this.timelineController.getCurrentYear() });
+            this.onTimelineYearChange({ detail: { year: this.timelineController.getCurrentYear() } });
         } else if (sceneDetail.sceneName === 'initial') {
             this.titleOverlay.setTitle('Initial Scene');
             this.titleOverlay.setSubtitle('Scroll down to explore timeline');
