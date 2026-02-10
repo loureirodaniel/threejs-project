@@ -35,26 +35,50 @@ export const SCENE_CONFIG = Object.freeze({
 // Physics (drag, scroll, snap, velocity)
 // -----------------------------------------------------------------------------
 
+/** Precomputed snap positions (world X) – declared early for PHYSICS_CONFIG bounds. */
+const SNAP_POSITIONS_FOR_BOUNDS = Object.freeze(
+  Array.from({ length: 10 }, (_, i) => -4.5 + i * 1.5)
+);
+
 /**
  * Physics parameters for drag, scroll, snap, and velocity clamping.
  * Values from TimelineController and TimelineScrollController.
  * @type {Readonly<Object>}
  */
 export const PHYSICS_CONFIG = Object.freeze({
+  // Drag physics
   /** Base drag speed multiplier (offset units per pixel). */
   DRAG_SPEED: 0.008,
   /** Drag momentum friction per frame (0–1; higher = more damping). */
   DRAG_FRICTION: 0.96,
+  /** Multiplier applied to drag release velocity for momentum. */
+  DRAG_TO_SCROLL_MULTIPLIER: 0.5,
+
+  // Scroll physics
   /** Scroll-to-offset sensitivity (multiplier on scroll delta). */
   SCROLL_SENSITIVITY: 0.5,
   /** Scroll momentum friction (0–1). */
   SCROLL_FRICTION: 0.92,
-  /** Distance in world units past which release advances to next/prev snap. */
-  SNAP_THRESHOLD: 0.5,
   /** Maximum scroll/drag velocity magnitude in offset units per frame. */
-  MAX_VELOCITY: 0.9,
-  /** Bounce damping factor (0–1) for boundary/overscroll behavior. */
-  BOUNCE_DAMPING: 0.3
+  MAX_SCROLL_VELOCITY: 0.9,
+
+  // Snapping
+  /** Distance threshold for snapping. */
+  SNAP_THRESHOLD: 0.5,
+  /** Velocity must be below this to trigger snap-to-nearest. */
+  SNAP_VELOCITY_THRESHOLD: 0.05,
+
+  // Bounds
+  /** Velocity reduction on bounce at timeline edges. */
+  BOUNCE_DAMPING: 0.3,
+  /** Allow this fraction of range as overscroll during drag (e.g. 0.2 = 20%). */
+  OVERSCROLL_MULTIPLIER: 0.2,
+
+  // Offsets (derived from timeline snap positions)
+  /** First snap position (world X). */
+  MIN_OFFSET: SNAP_POSITIONS_FOR_BOUNDS[0],
+  /** Last snap position (world X). */
+  MAX_OFFSET: SNAP_POSITIONS_FOR_BOUNDS[SNAP_POSITIONS_FOR_BOUNDS.length - 1]
 });
 
 // -----------------------------------------------------------------------------
@@ -68,9 +92,7 @@ const TIMELINE_YEAR_COUNT = 10;
 const IMAGE_SPACING = 1.5;
 
 /** Precomputed snap positions (world X) for each year index 0..TIMELINE_YEAR_COUNT-1. */
-const SNAP_POSITIONS_ARRAY = Object.freeze(
-  Array.from({ length: TIMELINE_YEAR_COUNT }, (_, i) => -4.5 + i * IMAGE_SPACING)
-);
+const SNAP_POSITIONS_ARRAY = SNAP_POSITIONS_FOR_BOUNDS;
 
 /**
  * Timeline layout and snap configuration.
@@ -122,20 +144,20 @@ export function getTimelineSnapPositions() {
 
 /**
  * Durations and delays for transitions, snap, scroll, and pullback.
- * All time values in seconds unless noted.
+ * Durations in seconds; delays in milliseconds unless noted.
  * @type {Readonly<Object>}
  */
 export const TIMING_CONFIG = Object.freeze({
-  /** Camera transition from initial to timeline scene. Seconds. */
+  /** Scene transition duration (seconds). */
   TRANSITION_DURATION: 1.5,
-  /** Duration of snap-to-nearest-image animation. Seconds. */
+  /** Snap animation duration (seconds). */
   SNAP_DURATION: 0.4,
-  /** Delay after scroll stops before triggering snap. Milliseconds. */
-  SCROLL_STOP_DELAY_MS: 400,
-  /** Delay before snap check (e.g. after wheel cooldown). Milliseconds. */
-  SNAP_CHECK_DELAY_MS: 300,
-  /** Delay to ignore scroll after closing enlarged image (pullback/ignore window). Milliseconds. */
-  PULLBACK_DELAY_MS: 500
+  /** Time to wait before detecting scroll stop (ms). */
+  SCROLL_STOP_DELAY: 400,
+  /** Time to wait before checking if should snap (ms). */
+  SNAP_CHECK_DELAY: 300,
+  /** Hold-to-pullback delay (ms). */
+  PULLBACK_DELAY: 500
 });
 
 // -----------------------------------------------------------------------------
