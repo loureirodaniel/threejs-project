@@ -6,12 +6,13 @@
  *
  * @module timeline-v2/core
  *
- * SUPPORTED EVENT TYPES:
- * - 'timeline:scroll' - { delta, timestamp }
- * - 'timeline:drag:start' - { clientX, clientY, timestamp }
- * - 'timeline:drag:move' - { delta, velocity, timestamp }
- * - 'timeline:drag:end' - { velocity, timestamp }
- * - 'timeline:click' - { target, worldPos, normalizedX, normalizedY }
+ * Supported event types:
+ * - 'timeline:scroll' - { delta, timestamp, deltaX, deltaY }
+ * - 'timeline:drag:start' - { clientX, clientY, normalizedX, normalizedY, timestamp, isTouch? }
+ * - 'timeline:drag:move' - { delta, velocity, clientX, clientY, timestamp, isTouch? }
+ * - 'timeline:drag:end' - { velocity, totalDistance?, totalTime?, timestamp, isTouch? }
+ * - 'timeline:click' - { clientX, clientY, normalizedX, normalizedY, timestamp, target }
+ * - 'timeline:navigate' - { direction: 'prev'|'next', targetIndex }
  * - 'timeline:snap:start' - { fromOffset, toOffset, toIndex }
  * - 'timeline:snap:complete' - { offset, index }
  * - 'timeline:year:change' - { year, offset }
