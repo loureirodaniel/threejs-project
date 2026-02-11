@@ -36,9 +36,9 @@ export const SCENE_CONFIG = Object.freeze({
 // -----------------------------------------------------------------------------
 
 /** Precomputed snap positions (world X) – declared early for PHYSICS_CONFIG bounds. */
-const SNAP_POSITIONS_FOR_BOUNDS = Object.freeze(
-  Array.from({ length: 10 }, (_, i) => -4.5 + i * 1.5)
-);
+const SNAP_POSITIONS_FOR_BOUNDS = Object.freeze([
+  -4.5, -3.0, -1.5, 0.0, 1.5, 3.0, 4.5, 6.0, 7.5, 9.0
+]);
 
 /**
  * Physics parameters for drag, scroll, snap, and velocity clamping.
@@ -92,7 +92,9 @@ const TIMELINE_YEAR_COUNT = 10;
 const IMAGE_SPACING = 1.5;
 
 /** Precomputed snap positions (world X) for each year index 0..TIMELINE_YEAR_COUNT-1. */
-const SNAP_POSITIONS_ARRAY = SNAP_POSITIONS_FOR_BOUNDS;
+const SNAP_POSITIONS_ARRAY = Object.freeze([
+  -4.5, -3.0, -1.5, 0.0, 1.5, 3.0, 4.5, 6.0, 7.5, 9.0
+]);
 
 /**
  * Timeline layout and snap configuration.
@@ -104,10 +106,10 @@ export const TIMELINE_CONFIG = Object.freeze({
   FIRST_POSITION: -4.5,
   /** Total horizontal range of the timeline (first to last image). World units. */
   X_RANGE: 13.5,
+  /** Center-to-center distance between adjacent timeline images. World units. */
+  IMAGE_SPACING: 1.5,
   /** Snap positions (world X) for each year index. World units. */
   SNAP_POSITIONS: SNAP_POSITIONS_ARRAY,
-  /** Center-to-center distance between adjacent timeline images. World units. */
-  IMAGE_SPACING,
   /** Number of timeline years/positions. */
   YEAR_COUNT: TIMELINE_YEAR_COUNT
 });
@@ -169,10 +171,27 @@ export const TIMING_CONFIG = Object.freeze({
  * @type {Readonly<Object>}
  */
 export const EFFECTS_CONFIG = Object.freeze({
-  /** Vignette dimming amount at edges (0–1). */
-  VIGNETTE_STRENGTH: 0.6,
-  /** Vignette full-brightness radius in world units. */
-  VIGNETTE_WIDTH: 4.0,
-  /** Liquid distortion effect strength (displacement scale). */
-  LIQUID_DISTORTION_STRENGTH: 0.02
+  // Vignette effect
+  VIGNETTE_FOCUS_WIDTH: 2.0, // Distance for full brightness (world units)
+  VIGNETTE_FALLOFF_WIDTH: 4.0, // Distance over which opacity fades
+  VIGNETTE_MIN_OPACITY: 0.3, // Minimum opacity for far images
+  VIGNETTE_STRENGTH: 0.7, // Overall vignette strength (0-1)
+
+  // Image scaling
+  FOCUS_SCALE: 0.85, // Scale for focused (center) image
+  NORMAL_SCALE: 0.75, // Scale for non-focused images
+
+  // Liquid distortion
+  LIQUID_DISTORTION_STRENGTH: 0.02,
+  LIQUID_FADE_IN_DURATION: 0.6,
+  LIQUID_FADE_OUT_DURATION: 0.12,
+
+  // Background blur
+  BLUR_STRENGTH: 5.0,
+
+  // Image enlargement
+  ENLARGE_SCALE: 2.0,
+  ENLARGE_Z_OFFSET: 2.0,
+  ENLARGE_DURATION: 0.4,
+  CLOSE_DURATION: 0.3
 });
