@@ -163,6 +163,34 @@ export const TIMING_CONFIG = Object.freeze({
 });
 
 // -----------------------------------------------------------------------------
+// Camera behavior (look-at smoothing, optional pullback)
+// -----------------------------------------------------------------------------
+
+/**
+ * Camera behavior tuning values for CameraSystem.
+ * @type {Readonly<Object>}
+ */
+export const CAMERA_CONFIG = Object.freeze({
+  /** Higher values track timeline offset faster (frame-rate independent smoothing). */
+  LOOK_AT_LERP_SPEED: 5.0,
+
+  /** Optional hold-to-pullback behavior during drag. */
+  ENABLE_PULLBACK: false,
+
+  /** Pull camera backward by this world-unit distance when pullback is active. */
+  PULLBACK_DISTANCE: 2.0,
+
+  /** Pullback tween duration in seconds. */
+  PULLBACK_DURATION: 0.3,
+
+  /** Return tween duration in seconds. */
+  PULLBACK_RETURN_DURATION: 0.3,
+
+  /** Scene transition duration in seconds. */
+  TRANSITION_DURATION: 1.5
+});
+
+// -----------------------------------------------------------------------------
 // Effects (vignette, liquid distortion)
 // -----------------------------------------------------------------------------
 
