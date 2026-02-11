@@ -14,7 +14,7 @@ import { EventsPanel } from './ui/EventsPanel.js';
 import { TimelineNavigation } from './ui/TimelineNavigation.js';
 import { YearOverlay } from './ui/YearOverlay.js';
 import { MouseController } from './controls/MouseController.js';
-import { TimelineController as NewTimelineController } from './timeline-v2/core/TimelineController.js';
+import { TimelineController } from './timeline-v2/core/TimelineController.js';
 import { AppStateManager } from './core/AppStateManager.js';
 import { eventBus } from './core/EventBus.js';
 import { AppEventHandlers } from './core/AppEventHandlers.js';
@@ -141,7 +141,7 @@ export class App {
         
         this.mouseController = new MouseController(camera);
         console.log('🆕 Using NEW timeline controller (v2 architecture)');
-        this.timelineController = new NewTimelineController(
+        this.timelineController = new TimelineController(
             camera,
             this.sceneManager,
             this.timelineScene,
