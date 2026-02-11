@@ -14,6 +14,8 @@ const INITIAL_STATE = Object.freeze({
   isTransitioning: false,
   transitionProgress: 0,
   introComplete: false,
+  imagesGathering: false,
+  imagesGathered: false,
 
   // Timeline position
   timelineOffset: -4.5,

@@ -95,27 +95,27 @@ class InputSystem {
     const scrollThreshold = 100; // Pixels needed to trigger transition
 
     this.onInitialSceneWheel = (event) => {
-      // Only handle on initial scene
       const currentScene = this.state.get('currentSceneIndex');
-      if (currentScene !== 0) return;
+      if (currentScene === 0) {
+        // Accumulate only downward intent on initial scene
+        this.sceneTransitionTotalScroll = Math.max(0, this.sceneTransitionTotalScroll + Math.max(0, event.deltaY));
+        const scrollProgress = this.sceneTransitionTotalScroll / scrollThreshold;
 
-      // Accumulate scroll
-      this.sceneTransitionTotalScroll += Math.abs(event.deltaY);
+        console.log(`📜 Initial scene scroll: ${this.sceneTransitionTotalScroll.toFixed(0)}/${scrollThreshold}`);
+        this.handleSceneTransition(scrollProgress);
+      } else if (currentScene === 1) {
+        // On timeline scene, derive progress from timeline position (near min offset = top/start)
+        const positions = TIMELINE_CONFIG.SNAP_POSITIONS || [];
+        const minOffset = positions[0] ?? -4.5;
+        const maxOffset = positions[positions.length - 1] ?? 13.5;
+        const currentOffset = this.state.get('timelineOffset');
+        const denominator = Math.max(maxOffset - minOffset, 0.0001);
+        const scrollProgress = (currentOffset - minOffset) / denominator;
 
-      console.log(`📜 Initial scene scroll: ${this.sceneTransitionTotalScroll.toFixed(0)}/${scrollThreshold}`);
-
-      // Check if threshold reached
-      if (this.sceneTransitionTotalScroll >= scrollThreshold) {
-        console.log('🎬 Scroll threshold reached - transitioning to timeline!');
-
-        // Trigger transition
-        this.eventBus.emit('scene:transition:start', {
-          fromScene: 'initial',
-          toScene: 'timeline'
-        });
-
-        // Reset
-        this.sceneTransitionTotalScroll = 0;
+        // Only allow return-to-initial when user scrolls back/up near start of timeline.
+        if (event.deltaY < 0) {
+          this.handleSceneTransition(scrollProgress);
+        }
       }
 
       // Reset scroll accumulation after 500ms of no scroll
@@ -155,12 +155,17 @@ class InputSystem {
 
       // Swipe up (scroll down) detected
       if (deltaY > 100) {
-        console.log('🎬 Touch swipe detected - transitioning to timeline!');
-
-        this.eventBus.emit('scene:transition:start', {
-          fromScene: 'initial',
-          toScene: 'timeline'
-        });
+        this.sceneTransitionTotalScroll = scrollThreshold;
+        this.handleSceneTransition(1);
+      } else if (deltaY < -80) {
+        // Swipe down on timeline can return when already near beginning.
+        const positions = TIMELINE_CONFIG.SNAP_POSITIONS || [];
+        const minOffset = positions[0] ?? -4.5;
+        const maxOffset = positions[positions.length - 1] ?? 13.5;
+        const currentOffset = this.state.get('timelineOffset');
+        const denominator = Math.max(maxOffset - minOffset, 0.0001);
+        const scrollProgress = (currentOffset - minOffset) / denominator;
+        this.handleSceneTransition(scrollProgress);
       }
     };
 
@@ -168,6 +173,54 @@ class InputSystem {
     window.addEventListener('touchmove', this.onInitialSceneTouchMove);
 
     console.log('✅ InputSystem: Scene transition touch listener added');
+  }
+
+  /**
+   * Handle scene transitions with two-step image gathering flow
+   * @param {number} scrollProgress - Normalized progress [0..1]
+   */
+  handleSceneTransition(scrollProgress) {
+    const currentScene = this.state.get('currentSceneIndex');
+    const imagesGathered = this.state.get('imagesGathered');
+    const imagesGathering = this.state.get('imagesGathering');
+
+    // Scene 0 -> 1 transition (initial -> timeline)
+    if (currentScene === 0 && scrollProgress > 0.1) {
+      // Step 1: Start gathering animation
+      if (!imagesGathering && !imagesGathered) {
+        console.log('🌟 InputSystem: Scroll threshold reached, starting image gathering...');
+        this.state.setState({ imagesGathering: true });
+        this.eventBus.emit('images:gather:start');
+        return;
+      }
+
+      // Step 2: After gathering, allow transition
+      if (imagesGathered && scrollProgress > 0.2 && !this.state.get('isTransitioning')) {
+        console.log('✅ InputSystem: Images gathered, transitioning to timeline scene');
+        this.state.setState({ currentSceneIndex: 1 });
+        this.eventBus.emit('scene:transition', {
+          from: 0,
+          to: 1,
+          trigger: 'scroll'
+        });
+      }
+    }
+
+    // Scene 1 -> 0 transition (timeline -> initial)
+    if (currentScene === 1 && scrollProgress < 0.05 && !this.state.get('isTransitioning')) {
+      console.log('⬆️ InputSystem: Scroll back to top, returning to initial scene');
+      this.state.setState({
+        imagesGathered: false,
+        imagesGathering: false,
+        currentSceneIndex: 0
+      });
+
+      this.eventBus.emit('scene:transition', {
+        from: 1,
+        to: 0,
+        trigger: 'scroll'
+      });
+    }
   }
 
   /**

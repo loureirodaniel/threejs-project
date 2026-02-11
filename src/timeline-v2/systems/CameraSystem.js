@@ -43,6 +43,8 @@ class CameraSystem {
     // Subscribe to events
     this.unsubscribeFns.push(
       this.eventBus.on('scene:transition:start', this.onSceneTransition.bind(this)),
+      this.eventBus.on('scene:transition', this.onSceneTransition.bind(this)),
+      this.eventBus.on('images:gather:start', this.startImageGathering.bind(this)),
       this.eventBus.on('timeline:drag:start', this.onDragStart.bind(this)),
       this.eventBus.on('timeline:drag:end', this.onDragEnd.bind(this))
     );
@@ -90,12 +92,22 @@ class CameraSystem {
    * @param {object} data - { fromScene, toScene }
    */
   onSceneTransition({ fromScene, toScene } = {}) {
-    console.log(`🎬 CameraSystem: Transitioning ${fromScene} -> ${toScene}`);
+    let resolvedFromScene = fromScene;
+    let resolvedToScene = toScene;
+
+    // Support both scene-name payload and scene-index payload.
+    if ((!resolvedFromScene || !resolvedToScene) && typeof arguments[0] === 'object' && arguments[0] !== null) {
+      const { from, to } = arguments[0];
+      if (typeof from === 'number') resolvedFromScene = from === 0 ? 'initial' : 'timeline';
+      if (typeof to === 'number') resolvedToScene = to === 0 ? 'initial' : 'timeline';
+    }
+
+    console.log(`🎬 CameraSystem: Transitioning ${resolvedFromScene} -> ${resolvedToScene}`);
 
     // Get scene configurations
-    const toConfig = SCENE_CONFIG[toScene];
+    const toConfig = SCENE_CONFIG[resolvedToScene];
     if (!toConfig) {
-      console.error('❌ Scene config not found:', { fromScene, toScene });
+      console.error('❌ Scene config not found:', { fromScene: resolvedFromScene, toScene: resolvedToScene });
       return;
     }
 
@@ -134,7 +146,7 @@ class CameraSystem {
       }, '<')
       .call(() => {
         // Transition complete
-        const newSceneIndex = toScene === 'timeline' ? 1 : 0;
+        const newSceneIndex = resolvedToScene === 'timeline' ? 1 : 0;
         
         this.state.setState({ 
           isTransitioning: false,
@@ -143,78 +155,175 @@ class CameraSystem {
         
         // CRITICAL: Timeline scene activation
         if (newSceneIndex === 1) {
-          // Timeline scene - move images to horizontal timeline layout
           const offset = this.state.get('timelineOffset') || -4.5;
           this.lookAtCurrent.set(-offset, 0, 0);
           this.lookAtTarget.set(-offset, 0, 0);
           this.camera.lookAt(this.lookAtCurrent);
           
-          console.log('🎬 CameraSystem: Activating timeline scene...');
+          console.log('🎬 CameraSystem: Activating timeline scene (images already gathered)...');
           
           if (window.app && window.app.imagePlanes) {
             const planes = window.app.imagePlanes.getPlanes();
-            console.log(`  Moving ${planes.length} images to timeline positions`);
-            
-            const spacing = 1.5; // Distance between images
-            const firstPosition = -4.5; // First image X position
             
             planes.forEach((plane, index) => {
               plane.userData.isTimelineTransitioned = true;
-              
-              const targetX = firstPosition + index * spacing;
-              
-              // Animate position (smooth transition)
-              gsap.to(plane.position, {
-                x: targetX - offset,
-                y: 0,
-                z: 0,
-                duration: 1.0,
-                ease: 'power2.inOut',
-                delay: index * 0.05 // Stagger by 50ms
-              });
-              
-              // Animate scale to timeline scale
-              gsap.to(plane.scale, {
-                x: 0.75,
-                y: 0.75,
-                z: 0.75,
-                duration: 1.0,
-                ease: 'power2.inOut',
-                delay: index * 0.05
-              });
-              
-              // Animate opacity to full
-              if (plane.material) {
-                gsap.to(plane.material, {
-                  opacity: 1.0,
-                  duration: 1.0,
-                  ease: 'power2.inOut',
-                  delay: index * 0.05
-                });
-              }
-              
               plane.visible = true;
-              
-              console.log(`  Image ${index}: animating to x=${targetX.toFixed(2)}`);
+              console.log(`  Image ${index}: already at timeline position x=${plane.position.x.toFixed(2)}`);
             });
             
-            console.log('✅ Timeline scene transition animations started');
+            console.log('✅ Timeline scene activated (no repositioning needed)');
           } else {
             console.error('❌ window.app.imagePlanes not found!');
           }
         } else {
-          // INITIAL SCENE - Show images in scattered decorative layout
+          // INITIAL SCENE - Return to scattered layout
           this.lookAtCurrent.set(0, 0, 0);
           this.lookAtTarget.set(0, 0, 0);
           this.camera.lookAt(0, 0, 0);
           
-          console.log('📐 Initial scene active - positioning images in scattered layout');
-          this.positionInitialSceneImages();
+          console.log('📐 CameraSystem: Returning to initial scene - scattering images...');
+          this.scatterImagesToInitialLayout();
         }
         
-        this.eventBus.emit('scene:transition:complete', { scene: toScene });
+        this.eventBus.emit('scene:transition:complete', { scene: resolvedToScene });
         console.log('✅ CameraSystem: Transition complete');
       });
+  }
+
+  /**
+   * Animate images gathering into timeline positions before scene transition.
+   */
+  startImageGathering() {
+    console.log('🎬 CameraSystem: Starting image gathering animation...');
+
+    if (!window.app || !window.app.imagePlanes) {
+      console.warn('⚠️ imagePlanes not available');
+      this.state.setState({ imagesGathering: false });
+      return;
+    }
+
+    const planes = window.app.imagePlanes.getPlanes();
+    if (!planes || planes.length === 0) {
+      console.warn('⚠️ No image planes available for gathering');
+      this.state.setState({
+        imagesGathering: false,
+        imagesGathered: true
+      });
+      this.eventBus.emit('images:gather:complete');
+      return;
+    }
+
+    const spacing = 1.5;
+    const firstPosition = -4.5;
+    const offset = this.state.get('timelineOffset') || -4.5;
+
+    planes.forEach((plane, index) => {
+      const targetX = firstPosition + (index * spacing);
+
+      console.log(`  Image ${index}: gathering to x=${(targetX - offset).toFixed(2)}`);
+
+      gsap.to(plane.position, {
+        x: targetX - offset,
+        y: 0,
+        z: 0,
+        duration: 1.2,
+        ease: 'power3.inOut',
+        delay: index * 0.05
+      });
+
+      gsap.to(plane.scale, {
+        x: 0.75,
+        y: 0.75,
+        z: 0.75,
+        duration: 1.2,
+        ease: 'power3.inOut',
+        delay: index * 0.05
+      });
+
+      if (plane.material) {
+        gsap.to(plane.material, {
+          opacity: 1.0,
+          duration: 1.2,
+          ease: 'power2.inOut',
+          delay: index * 0.05
+        });
+      }
+
+      plane.visible = true;
+
+      if (index === planes.length - 1) {
+        gsap.delayedCall(1.2 + (index * 0.05), () => {
+          console.log('✅ CameraSystem: Image gathering complete');
+          this.state.setState({
+            imagesGathering: false,
+            imagesGathered: true
+          });
+          this.eventBus.emit('images:gather:complete');
+        });
+      }
+    });
+  }
+
+  /**
+   * Animate images back to scattered initial-scene layout.
+   */
+  scatterImagesToInitialLayout() {
+    if (!(window.app && window.app.imagePlanes)) return;
+
+    const planes = window.app.imagePlanes.getPlanes();
+    const scatteredPositions = [
+      { x: -2.5, y: 2.8, scale: 0.6 },
+      { x: -3.0, y: 2.0, scale: 0.5 },
+      { x: 2.5, y: 2.5, scale: 0.55 },
+      { x: 3.2, y: 3.0, scale: 0.5 },
+      { x: -3.5, y: 0.5, scale: 0.5 },
+      { x: -2.8, y: -0.5, scale: 0.55 },
+      { x: 3.0, y: 0.3, scale: 0.6 },
+      { x: 3.5, y: -0.8, scale: 0.5 },
+      { x: -2.2, y: -2.8, scale: 0.55 },
+      { x: 2.0, y: -2.5, scale: 0.6 }
+    ];
+
+    planes.forEach((plane, index) => {
+      plane.userData.isTimelineTransitioned = false;
+
+      const pos = scatteredPositions[index] || {
+        x: (Math.random() - 0.5) * 6,
+        y: (Math.random() - 0.5) * 5,
+        scale: 0.5 + Math.random() * 0.2
+      };
+
+      gsap.to(plane.position, {
+        x: pos.x,
+        y: pos.y,
+        z: 0,
+        duration: 1.0,
+        ease: 'power3.inOut',
+        delay: index * 0.05
+      });
+
+      gsap.to(plane.scale, {
+        x: pos.scale,
+        y: pos.scale,
+        z: pos.scale,
+        duration: 1.0,
+        ease: 'power3.inOut',
+        delay: index * 0.05
+      });
+
+      if (plane.material) {
+        gsap.to(plane.material, {
+          opacity: 0.7,
+          duration: 1.0,
+          ease: 'power2.inOut',
+          delay: index * 0.05
+        });
+      }
+
+      plane.visible = true;
+    });
+
+    console.log('✅ Images scattered back to initial positions');
   }
 
   positionInitialSceneImages() {
