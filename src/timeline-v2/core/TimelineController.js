@@ -17,6 +17,7 @@ import { PhysicsSystem } from '../systems/PhysicsSystem.js';
 import { RenderSystem } from '../systems/RenderSystem.js';
 import { CameraSystem } from '../systems/CameraSystem.js';
 import * as TimelineUtils from '../utils/TimelineUtils.js';
+import { TIMELINE_CONFIG } from '../utils/TimelineConstants.js';
 
 class TimelineController {
   constructor(camera, sceneManager, timelineScene, effects = {}) {
@@ -205,6 +206,52 @@ class TimelineController {
 
   getState() {
     return this.state.getState();
+  }
+
+  // ============================================
+  // COMPATIBILITY METHODS (for old UI components)
+  // ============================================
+
+  /**
+   * Compatibility: Mark intro animation as complete
+   * Called by TitleOverlay and AppIntroSequence
+   */
+  setIntroComplete() {
+    console.log('✅ Intro animation complete');
+    this.state.setState({ introComplete: true });
+  }
+
+  /**
+   * Compatibility: Check if intro is complete
+   * @returns {boolean}
+   */
+  isIntroComplete() {
+    return this.state.get('introComplete') === true;
+  }
+
+  /**
+   * Compatibility: Get snap positions
+   * @returns {number[]} Array of snap offsets
+   */
+  getSnapPositions() {
+    return TIMELINE_CONFIG.SNAP_POSITIONS || [];
+  }
+
+  /**
+   * Compatibility: Move timeline images (called by old drag handlers)
+   * @param {number} delta - Offset delta (not used in new system)
+   */
+  moveTimelineImages(delta) {
+    // No-op: RenderSystem handles this automatically via state
+    // Old code may call this, but new system doesn't need it
+    void delta;
+  }
+
+  /**
+   * Compatibility: Update current year (called by old code)
+   */
+  updateCurrentYear() {
+    // No-op: RenderSystem handles this automatically via state
   }
 
   // ============================================

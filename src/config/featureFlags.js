@@ -21,7 +21,7 @@ export const FEATURE_FLAGS = Object.freeze({
    *
    * SAFE TO CHANGE: Can flip instantly to rollback if needed
    */
-  USE_NEW_TIMELINE_CONTROLLER: false,
+  USE_NEW_TIMELINE_CONTROLLER: true,
 
   /**
    * Debug logging for new controller

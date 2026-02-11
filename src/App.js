@@ -14,7 +14,9 @@ import { EventsPanel } from './ui/EventsPanel.js';
 import { TimelineNavigation } from './ui/TimelineNavigation.js';
 import { YearOverlay } from './ui/YearOverlay.js';
 import { MouseController } from './controls/MouseController.js';
-import { TimelineController } from './controls/TimelineController.js';
+import { FEATURE_FLAGS, logFeatureFlags } from './config/featureFlags.js';
+import { TimelineController as OldTimelineController } from './controls/TimelineController.js';
+import { TimelineController as NewTimelineController } from './timeline-v2/core/TimelineController.js';
 import { AppStateManager } from './core/AppStateManager.js';
 import { eventBus } from './core/EventBus.js';
 import { AppEventHandlers } from './core/AppEventHandlers.js';
@@ -56,6 +58,7 @@ export class App {
         // Controllers
         this.mouseController = null;
         this.timelineController = null;
+        this.lastFrameTime = 0;
 
         // Comment system
         this.commentStorage = null;
@@ -73,6 +76,10 @@ export class App {
         // Initialize core modules
         this.eventHandlers = new AppEventHandlers(this, this.stateManager, this.eventBus);
         this.introSequence = new AppIntroSequence(this);
+
+        if (FEATURE_FLAGS.DEBUG_NEW_CONTROLLER) {
+            logFeatureFlags();
+        }
         
         // Initialize scene manager first
         this.sceneManager = new SceneManager();
@@ -115,7 +122,27 @@ export class App {
         }, 1000);
         
         this.mouseController = new MouseController(camera);
-        this.timelineController = new TimelineController(camera, this.sceneManager, this.timelineScene, this.backgroundBlurEffect);
+        if (FEATURE_FLAGS.USE_NEW_TIMELINE_CONTROLLER) {
+            console.log('🆕 Using NEW timeline controller (v2 architecture)');
+            this.timelineController = new NewTimelineController(
+                camera,
+                this.sceneManager,
+                this.timelineScene,
+                {
+                    vignetteEffect: this.vignetteEffect,
+                    liquidDistortionEffect: this.liquidDistortionEffect,
+                    backgroundBlurEffect: this.backgroundBlurEffect
+                }
+            );
+        } else {
+            console.log('✅ Using OLD timeline controller (legacy architecture)');
+            this.timelineController = new OldTimelineController(
+                camera,
+                this.sceneManager,
+                this.timelineScene,
+                this.backgroundBlurEffect
+            );
+        }
 
         // Wire title animation completion so scrolling is enabled only after text animation
         this.titleOverlay.setOnTextAnimationComplete(() => this.introSequence.onTextAnimationComplete());
@@ -293,13 +320,22 @@ export class App {
         }
     }
     
-    animate() {
-        requestAnimationFrame(this.animate.bind(this));
-        
-        const deltaTime = 0.016; // Approximate 60fps
-        
-        // Update timeline controller
-        this.timelineController.update();
+    animate = (timestamp) => {
+        requestAnimationFrame(this.animate);
+
+        const currentTimestamp = typeof timestamp === 'number' ? timestamp : performance.now();
+
+        // Calculate deltaTime in seconds
+        if (this.lastFrameTime === 0) {
+            this.lastFrameTime = currentTimestamp;
+        }
+        const deltaTime = Math.min((currentTimestamp - this.lastFrameTime) / 1000, 0.1); // Cap at 100ms
+        this.lastFrameTime = currentTimestamp;
+
+        // Update timeline controller with deltaTime
+        if (this.timelineController && this.timelineController.update) {
+            this.timelineController.update(deltaTime, currentTimestamp);
+        }
         
         // Update spotlight position based on mouse (only in initial scene)
         if (this.timelineController.getCurrentSceneIndex() === 0) {
@@ -309,11 +345,11 @@ export class App {
         
         // Animate image planes (only in initial scene)
         if (this.timelineController.getCurrentSceneIndex() === 0) {
-            this.imagePlanes.animate(Date.now());
+            this.imagePlanes.animate(currentTimestamp);
         }
         
         // Update timeline scene
-        this.timelineScene.update(Date.now(), this.sceneManager.getCamera());
+        this.timelineScene.update(currentTimestamp, this.sceneManager.getCamera());
         
         // Update liquid distortion effect
         if (this.liquidDistortionEffect) {
