@@ -13,15 +13,7 @@ export const FEATURE_FLAGS = Object.freeze({
   // NEW TIMELINE ARCHITECTURE
   // ============================================
 
-  /**
-   * Toggle between old and new timeline controller
-   *
-   * false (default) = Use OLD architecture (11 controllers, scattered state)
-   * true = Use NEW architecture (4 systems, unified state)
-   *
-   * SAFE TO CHANGE: Can flip instantly to rollback if needed
-   */
-  USE_NEW_TIMELINE_CONTROLLER: true,
+  // New timeline architecture is now mandatory (v2 systems).
 
   /**
    * Debug logging for new controller

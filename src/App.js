@@ -14,8 +14,6 @@ import { EventsPanel } from './ui/EventsPanel.js';
 import { TimelineNavigation } from './ui/TimelineNavigation.js';
 import { YearOverlay } from './ui/YearOverlay.js';
 import { MouseController } from './controls/MouseController.js';
-import { FEATURE_FLAGS, logFeatureFlags } from './config/featureFlags.js';
-import { TimelineController as OldTimelineController } from './controls/TimelineController.js';
 import { TimelineController as NewTimelineController } from './timeline-v2/core/TimelineController.js';
 import { AppStateManager } from './core/AppStateManager.js';
 import { eventBus } from './core/EventBus.js';
@@ -83,10 +81,6 @@ export class App {
         this.eventHandlers = new AppEventHandlers(this, this.stateManager, this.eventBus);
         this.introSequence = new AppIntroSequence(this);
 
-        if (FEATURE_FLAGS.DEBUG_NEW_CONTROLLER) {
-            logFeatureFlags();
-        }
-        
         // Initialize scene manager first
         this.sceneManager = new SceneManager();
         const scene = this.sceneManager.getScene();
@@ -146,27 +140,17 @@ export class App {
         }, 1000);
         
         this.mouseController = new MouseController(camera);
-        if (FEATURE_FLAGS.USE_NEW_TIMELINE_CONTROLLER) {
-            console.log('🆕 Using NEW timeline controller (v2 architecture)');
-            this.timelineController = new NewTimelineController(
-                camera,
-                this.sceneManager,
-                this.timelineScene,
-                {
-                    vignetteEffect: this.vignetteEffect,
-                    liquidDistortionEffect: this.liquidDistortionEffect,
-                    backgroundBlurEffect: this.backgroundBlurEffect
-                }
-            );
-        } else {
-            console.log('✅ Using OLD timeline controller (legacy architecture)');
-            this.timelineController = new OldTimelineController(
-                camera,
-                this.sceneManager,
-                this.timelineScene,
-                this.backgroundBlurEffect
-            );
-        }
+        console.log('🆕 Using NEW timeline controller (v2 architecture)');
+        this.timelineController = new NewTimelineController(
+            camera,
+            this.sceneManager,
+            this.timelineScene,
+            {
+                vignetteEffect: this.vignetteEffect,
+                liquidDistortionEffect: this.liquidDistortionEffect,
+                backgroundBlurEffect: this.backgroundBlurEffect
+            }
+        );
 
         // Wire title animation completion so scrolling is enabled only after text animation
         this.titleOverlay.setOnTextAnimationComplete(() => this.introSequence.onTextAnimationComplete());
