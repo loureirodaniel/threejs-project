@@ -25,10 +25,13 @@ import { CommentManager } from './features/comments/CommentManager.js';
 import { CommentStorage } from './features/comments/CommentStorage.js';
 import { CommentModeration } from './features/comments/CommentModeration.js';
 import { CommentUI } from './features/comments/CommentUI.js';
+import { dataService } from './services/DataService.js';
 
 
 export class App {
-    constructor() {
+    constructor(container) {
+        this.container = container;
+
         // Core modules
         this.stateManager = new AppStateManager();
         this.eventBus = eventBus;
@@ -66,10 +69,13 @@ export class App {
         this.commentManager = null;
         this.commentUI = null;
         
-        this.init();
+        this.init()
+            .then(() => console.log('✅ App initialized successfully'))
+            .catch(error => console.error('❌ App initialization failed:', error));
     }
     
-    init() {
+    async init() {
+        try {
         // Make app instance globally accessible for demo scripts
         window.app = this;
         
@@ -85,11 +91,20 @@ export class App {
         this.sceneManager = new SceneManager();
         const scene = this.sceneManager.getScene();
         const camera = this.sceneManager.getCamera();
+        const renderer = this.sceneManager.getRenderer();
+
+        // Fetch timeline data
+        console.log('📥 Loading timeline data...');
+        const imageData = await dataService.getTimelineImages();
+        console.log(`✅ Loaded ${imageData.length} images`);
+
+        const yearRange = await dataService.getYearRange();
+        console.log(`📅 Timeline covers ${yearRange.minYear} - ${yearRange.maxYear} (${yearRange.totalYears} years)`);
         
         // Initialize all other components
         this.lighting = new Lighting(scene);
-        this.imagePlanes = new ImagePlanes(scene, camera);
-        this.timelineScene = new TimelineScene(scene, this.sceneManager.getRenderer(), camera);
+        this.imagePlanes = new ImagePlanes(scene, camera, imageData);
+        this.timelineScene = new TimelineScene(scene, renderer, camera, imageData);
         
         // Connect initial scene images to timeline scene for transitions
         this.timelineScene.setInitialSceneImages(this.imagePlanes.getPlanes());
@@ -103,7 +118,7 @@ export class App {
         this.debugPanel = new DebugPanel();
         this.eventsPanel = new EventsPanel();
         this.timelineNavigation = new TimelineNavigation();
-        this.yearOverlay = new YearOverlay(2010, 2019);
+        this.yearOverlay = new YearOverlay(yearRange.minYear, yearRange.maxYear);
         
         // Ensure timeline navigation is hidden on app start (initial scene)
         setTimeout(() => {
@@ -162,6 +177,14 @@ export class App {
         // Start animation loop
         this.animate();
         // Scroll hint is shown when intro text animation completes (see introSequence.onTextAnimationComplete)
+        
+        // Optional: preload for smoother image display (non-blocking)
+        // dataService.preloadImages().catch(err => console.warn('Image preload failed:', err));
+        } catch (error) {
+            console.error('❌ Failed to initialize app:', error);
+            this.showErrorMessage('Failed to load timeline. Please refresh the page.');
+            throw error;
+        }
     }
     
     
@@ -318,6 +341,24 @@ export class App {
         if (this.liquidDistortionEffect) {
             this.liquidDistortionEffect.onWindowResize();
         }
+    }
+
+    showErrorMessage(message) {
+        const errorDiv = document.createElement('div');
+        errorDiv.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 0, 0, 0.9);
+            color: white;
+            padding: 20px 40px;
+            border-radius: 8px;
+            font-size: 18px;
+            z-index: 10000;
+        `;
+        errorDiv.textContent = message;
+        document.body.appendChild(errorDiv);
     }
     
     animate = (timestamp) => {
