@@ -135,27 +135,170 @@ class CameraSystem {
       .call(() => {
         // Transition complete
         const newSceneIndex = toScene === 'timeline' ? 1 : 0;
-        this.state.setState({
+        
+        this.state.setState({ 
           isTransitioning: false,
           currentSceneIndex: newSceneIndex
         });
-
-        // Reset look-at vectors after transition
+        
+        // CRITICAL: Timeline scene activation
         if (newSceneIndex === 1) {
-          const offset = this.state.get('timelineOffset');
+          // Timeline scene - move images to horizontal timeline layout
+          const offset = this.state.get('timelineOffset') || -4.5;
           this.lookAtCurrent.set(-offset, 0, 0);
           this.lookAtTarget.set(-offset, 0, 0);
           this.camera.lookAt(this.lookAtCurrent);
+          
+          console.log('🎬 CameraSystem: Activating timeline scene...');
+          
+          if (window.app && window.app.imagePlanes) {
+            const planes = window.app.imagePlanes.getPlanes();
+            console.log(`  Moving ${planes.length} images to timeline positions`);
+            
+            const spacing = 1.5; // Distance between images
+            const firstPosition = -4.5; // First image X position
+            
+            planes.forEach((plane, index) => {
+              plane.userData.isTimelineTransitioned = true;
+              
+              const targetX = firstPosition + index * spacing;
+              
+              // Animate position (smooth transition)
+              gsap.to(plane.position, {
+                x: targetX - offset,
+                y: 0,
+                z: 0,
+                duration: 1.0,
+                ease: 'power2.inOut',
+                delay: index * 0.05 // Stagger by 50ms
+              });
+              
+              // Animate scale to timeline scale
+              gsap.to(plane.scale, {
+                x: 0.75,
+                y: 0.75,
+                z: 0.75,
+                duration: 1.0,
+                ease: 'power2.inOut',
+                delay: index * 0.05
+              });
+              
+              // Animate opacity to full
+              if (plane.material) {
+                gsap.to(plane.material, {
+                  opacity: 1.0,
+                  duration: 1.0,
+                  ease: 'power2.inOut',
+                  delay: index * 0.05
+                });
+              }
+              
+              plane.visible = true;
+              
+              console.log(`  Image ${index}: animating to x=${targetX.toFixed(2)}`);
+            });
+            
+            console.log('✅ Timeline scene transition animations started');
+          } else {
+            console.error('❌ window.app.imagePlanes not found!');
+          }
         } else {
-          const target = toConfig.target || { x: 0, y: 0, z: 0 };
-          this.lookAtCurrent.set(target.x, target.y, target.z);
-          this.lookAtTarget.copy(this.lookAtCurrent);
-          this.camera.lookAt(this.lookAtCurrent);
+          // INITIAL SCENE - Show images in scattered decorative layout
+          this.lookAtCurrent.set(0, 0, 0);
+          this.lookAtTarget.set(0, 0, 0);
+          this.camera.lookAt(0, 0, 0);
+          
+          console.log('📐 Initial scene active - positioning images in scattered layout');
+          this.positionInitialSceneImages();
         }
-
+        
         this.eventBus.emit('scene:transition:complete', { scene: toScene });
         console.log('✅ CameraSystem: Transition complete');
       });
+  }
+
+  positionInitialSceneImages() {
+    if (window.app && window.app.imagePlanes) {
+      const planes = window.app.imagePlanes.getPlanes();
+
+      // Position images in artistic scattered pattern
+      // These positions create a balanced composition around the title
+      // Camera: z=5, FOV=75 -> visible range ~= +/-4 units X/Y at z=0
+      const scatteredPositions = [
+        // Top-left cluster
+        { x: -2.5, y: 2.8, scale: 0.6 },
+        { x: -3.0, y: 2.0, scale: 0.5 },
+
+        // Top-right cluster
+        { x: 2.5, y: 2.5, scale: 0.55 },
+        { x: 3.2, y: 3.0, scale: 0.5 },
+
+        // Left side
+        { x: -3.5, y: 0.5, scale: 0.5 },
+        { x: -2.8, y: -0.5, scale: 0.55 },
+
+        // Right side
+        { x: 3.0, y: 0.3, scale: 0.6 },
+        { x: 3.5, y: -0.8, scale: 0.5 },
+
+        // Bottom cluster
+        { x: -2.2, y: -2.8, scale: 0.55 },
+        { x: 2.0, y: -2.5, scale: 0.6 }
+      ];
+
+      planes.forEach((plane, index) => {
+        // Reset timeline flag
+        plane.userData.isTimelineTransitioned = false;
+
+        // Get position (or generate if more than 10 images)
+        const pos = scatteredPositions[index] || {
+          x: (Math.random() - 0.5) * 6,
+          y: (Math.random() - 0.5) * 5,
+          scale: 0.5 + Math.random() * 0.2
+        };
+
+        // Set position
+        plane.position.set(pos.x, pos.y, 0);
+
+        // Set scale (smaller and varied for artistic effect)
+        plane.scale.set(pos.scale, pos.scale, pos.scale);
+
+        // Ensure visible
+        plane.visible = true;
+
+        // Set initial opacity (will fade in)
+        if (plane.material) {
+          plane.material.opacity = 0;
+          plane.material.transparent = true;
+        }
+
+        console.log(`  Image ${index}: x=${pos.x.toFixed(2)}, y=${pos.y.toFixed(2)}, scale=${pos.scale}`);
+      });
+
+      // Fade in images with stagger
+      planes.forEach((plane, index) => {
+        if (plane.material) {
+          gsap.to(plane.material, {
+            opacity: 0.7, // Subtle opacity (not full bright)
+            duration: 1.2,
+            delay: 0.3 + index * 0.1, // Stagger by 100ms per image
+            ease: 'power2.out'
+          });
+        }
+
+        // Optional: Slight scale animation for drama
+        gsap.from(plane.scale, {
+          x: 0,
+          y: 0,
+          z: 0,
+          duration: 1.2,
+          delay: 0.3 + index * 0.1,
+          ease: 'back.out(1.7)'
+        });
+      });
+
+      console.log('✅ Initial scene images positioned with fade-in animation');
+    }
   }
 
   /**

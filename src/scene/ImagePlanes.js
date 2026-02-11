@@ -2,7 +2,13 @@ import * as THREE from 'three';
 import { TIMELINE_PLANE_WIDTH } from '../config/timelineLayout.js';
 
 export class ImagePlanes {
-    constructor(scene, camera) {
+    constructor(scene, camera, imageData) {
+        console.log('🖼️ ImagePlanes: Constructor called');
+        console.log('  Scene:', scene);
+        console.log('  Camera:', camera);
+        console.log('  Image data:', imageData);
+        console.log('  Image data length:', imageData?.length);
+
         this.scene = scene;
         this.camera = camera;
         this.planes = [];
@@ -11,9 +17,8 @@ export class ImagePlanes {
         this.animationDelay = 300; // 300ms delay between each image
         this.animationDuration = 800; // 800ms for each scale animation
         
-        // Realistic photography URLs (using Unsplash for high-quality images)
-        // Total of 8 images for the initial scene - these will be used in timeline positions 0-7
-        this.imageUrls = [
+        // Fallback image URLs if no external data is provided
+        this.defaultImageUrls = [
             'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800&h=600&fit=crop', // Mountain landscape
             'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800&h=600&fit=crop', // Forest
             'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&h=600&fit=crop', // Ocean waves
@@ -23,8 +28,19 @@ export class ImagePlanes {
             'https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=800&h=600&fit=crop', // Alpine lake
             'https://images.unsplash.com/photo-1518837695005-2083093ee35b?w=800&h=600&fit=crop'  // Mountain range
         ];
+
+        this.imageData = Array.isArray(imageData) && imageData.length > 0
+            ? imageData
+            : this.defaultImageUrls;
         
         this.createImagePlanes();
+
+        console.log(`✅ ImagePlanes: Created ${this.planes.length} image planes`);
+        console.log('  Planes:', this.planes.map((p, i) => ({
+            index: i,
+            position: { x: p.position.x, y: p.position.y, z: p.position.z },
+            visible: p.visible
+        })));
     }
     
     // Calculate visible X/Y range at Z=0 for the camera
@@ -55,10 +71,9 @@ export class ImagePlanes {
     }
     
     createGridLayout(range, width, height) {
-        // Use a 4 column × 4 row grid as requested
-        const numImages = 8;
-        const gridCols = 4;
-        const gridRows = 4;
+        const numImages = this.imageData.length;
+        const gridCols = Math.max(4, Math.ceil(Math.sqrt(numImages)));
+        const gridRows = Math.ceil(numImages / gridCols);
         
         // Calculate cell dimensions
         const cellWidth = (range.maxX - range.minX) / gridCols;
@@ -70,24 +85,19 @@ export class ImagePlanes {
         const startX = (range.maxX + range.minX - gridWidth) / 2;
         const startY = (range.maxY + range.minY - gridHeight) / 2;
         
-        // Define strategic grid positions for the 8 images to create a balanced layout
-        // Using positions that fill the 4×4 grid nicely
-        const gridPositions = [
-            { row: 0, col: 0 }, // Top-left corner
-            { row: 0, col: 3 }, // Top-right corner
-            { row: 1, col: 1 }, // Upper middle area, center-left
-            { row: 1, col: 2 }, // Upper middle area, center-right
-            { row: 2, col: 0 }, // Lower middle area, left
-            { row: 2, col: 3 }, // Lower middle area, right
-            { row: 3, col: 1 }, // Bottom area, center-left
-            { row: 3, col: 2 }  // Bottom area, center-right
-        ];
-        
-        // Place all images in strategic grid positions with randomness within cells
-        for (let i = 0; i < Math.min(numImages, gridPositions.length); i++) {
-            const gridPos = gridPositions[i];
-            const cellCenterX = startX + (gridPos.col + 0.5) * cellWidth;
-            const cellCenterY = startY + (gridPos.row + 0.5) * cellHeight;
+        // Place all images in grid positions with randomness within cells
+        this.imageData.forEach((imageItem, index) => {
+            const imageUrl = typeof imageItem === 'string'
+                ? imageItem
+                : imageItem.url || this.defaultImageUrls[index % this.defaultImageUrls.length];
+            const year = typeof imageItem === 'object' ? imageItem.year : (2010 + index);
+            const row = Math.floor(index / gridCols);
+            const col = index % gridCols;
+
+            console.log(`  Creating plane ${index}: year=${year}`);
+
+            const cellCenterX = startX + (col + 0.5) * cellWidth;
+            const cellCenterY = startY + (row + 0.5) * cellHeight;
             
             // Add randomness within the cell (±30% of cell size for more variation)
             const randomOffsetX = (Math.random() - 0.5) * cellWidth * 0.6;
@@ -100,12 +110,12 @@ export class ImagePlanes {
             const clampedX = Math.max(range.minX + width/2, Math.min(range.maxX - width/2, finalX));
             const clampedY = Math.max(range.minY + height/2, Math.min(range.maxY - height/2, finalY));
             
-            this.createImagePlane(i, clampedX, clampedY, 0, width, height);
-        }
+            this.createImagePlane(index, imageUrl, clampedX, clampedY, 0, width, height);
+        });
     }
     
-    createImagePlane(index, x, y, z, width, height) {
-        const texture = this.textureLoader.load(this.imageUrls[index]);
+    createImagePlane(index, imageUrl, x, y, z, width, height) {
+        const texture = this.textureLoader.load(imageUrl);
         const geometry = new THREE.PlaneGeometry(width, height);
         const material = new THREE.MeshBasicMaterial({ 
             map: texture,

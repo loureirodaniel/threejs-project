@@ -60,6 +60,17 @@ class TimelineController {
     console.log('  - PhysicsSystem ready');
     console.log('  - RenderSystem ready');
     console.log('  - CameraSystem ready');
+
+    // Position images for initial scene
+    // Delay ensures imagePlanes is created
+    setTimeout(() => {
+      if (this.state.get('currentSceneIndex') === 0) {
+        console.log('🎨 TimelineController: Setting up initial scene images...');
+        if (this.cameraSystem?.positionInitialSceneImages) {
+          this.cameraSystem.positionInitialSceneImages();
+        }
+      }
+    }, 200);
   }
 
   /**

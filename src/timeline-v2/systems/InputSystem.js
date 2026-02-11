@@ -42,6 +42,11 @@ class InputSystem {
     // Cooldown timers
     this.lastWheelTime = 0;
     this.wheelCooldownMs = 0;
+    this.sceneTransitionScrollTimeout = null;
+    this.sceneTransitionTotalScroll = 0;
+    this.onInitialSceneWheel = null;
+    this.onInitialSceneTouchStart = null;
+    this.onInitialSceneTouchMove = null;
 
     // Bind all event handlers in constructor (for proper cleanup)
     this.onWheel = this.onWheel.bind(this);
@@ -76,7 +81,93 @@ class InputSystem {
     // Keyboard events
     document.addEventListener('keydown', this.onKeyDown);
 
+    // Add scene transition scroll
+    this.initSceneTransitionScroll();
+    this.initSceneTransitionTouch();
+
     console.log('✅ InputSystem initialized');
+  }
+
+  /**
+   * Listen for scroll on initial scene to trigger timeline transition
+   */
+  initSceneTransitionScroll() {
+    const scrollThreshold = 100; // Pixels needed to trigger transition
+
+    this.onInitialSceneWheel = (event) => {
+      // Only handle on initial scene
+      const currentScene = this.state.get('currentSceneIndex');
+      if (currentScene !== 0) return;
+
+      // Accumulate scroll
+      this.sceneTransitionTotalScroll += Math.abs(event.deltaY);
+
+      console.log(`📜 Initial scene scroll: ${this.sceneTransitionTotalScroll.toFixed(0)}/${scrollThreshold}`);
+
+      // Check if threshold reached
+      if (this.sceneTransitionTotalScroll >= scrollThreshold) {
+        console.log('🎬 Scroll threshold reached - transitioning to timeline!');
+
+        // Trigger transition
+        this.eventBus.emit('scene:transition:start', {
+          fromScene: 'initial',
+          toScene: 'timeline'
+        });
+
+        // Reset
+        this.sceneTransitionTotalScroll = 0;
+      }
+
+      // Reset scroll accumulation after 500ms of no scroll
+      clearTimeout(this.sceneTransitionScrollTimeout);
+      this.sceneTransitionScrollTimeout = setTimeout(() => {
+        this.sceneTransitionTotalScroll = 0;
+      }, 500);
+    };
+
+    window.addEventListener('wheel', this.onInitialSceneWheel, { passive: false });
+
+    console.log('✅ InputSystem: Scene transition scroll listener added');
+  }
+
+  /**
+   * Listen for touch swipe up to trigger timeline transition
+   */
+  initSceneTransitionTouch() {
+    let touchStartY = 0;
+    let touchMoveY = 0;
+
+    this.onInitialSceneTouchStart = (event) => {
+      const currentScene = this.state.get('currentSceneIndex');
+      if (currentScene !== 0) return;
+      if (!event.touches || event.touches.length === 0) return;
+
+      touchStartY = event.touches[0].clientY;
+    };
+
+    this.onInitialSceneTouchMove = (event) => {
+      const currentScene = this.state.get('currentSceneIndex');
+      if (currentScene !== 0) return;
+      if (!event.touches || event.touches.length === 0) return;
+
+      touchMoveY = event.touches[0].clientY;
+      const deltaY = touchStartY - touchMoveY;
+
+      // Swipe up (scroll down) detected
+      if (deltaY > 100) {
+        console.log('🎬 Touch swipe detected - transitioning to timeline!');
+
+        this.eventBus.emit('scene:transition:start', {
+          fromScene: 'initial',
+          toScene: 'timeline'
+        });
+      }
+    };
+
+    window.addEventListener('touchstart', this.onInitialSceneTouchStart);
+    window.addEventListener('touchmove', this.onInitialSceneTouchMove);
+
+    console.log('✅ InputSystem: Scene transition touch listener added');
   }
 
   /**
@@ -373,6 +464,22 @@ class InputSystem {
     document.removeEventListener('touchmove', this.onTouchMove);
     document.removeEventListener('touchend', this.onTouchEnd);
     document.removeEventListener('keydown', this.onKeyDown);
+    if (this.onInitialSceneWheel) {
+      window.removeEventListener('wheel', this.onInitialSceneWheel);
+      this.onInitialSceneWheel = null;
+    }
+    if (this.sceneTransitionScrollTimeout) {
+      clearTimeout(this.sceneTransitionScrollTimeout);
+      this.sceneTransitionScrollTimeout = null;
+    }
+    if (this.onInitialSceneTouchStart) {
+      window.removeEventListener('touchstart', this.onInitialSceneTouchStart);
+      this.onInitialSceneTouchStart = null;
+    }
+    if (this.onInitialSceneTouchMove) {
+      window.removeEventListener('touchmove', this.onInitialSceneTouchMove);
+      this.onInitialSceneTouchMove = null;
+    }
 
     console.log('🧹 InputSystem disposed');
   }

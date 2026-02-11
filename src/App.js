@@ -103,7 +103,16 @@ export class App {
         
         // Initialize all other components
         this.lighting = new Lighting(scene);
-        this.imagePlanes = new ImagePlanes(scene, camera, imageData);
+        const initialScene = this.sceneManager.initialScene?.scene || scene;
+        this.imagePlanes = new ImagePlanes(initialScene, camera, imageData);
+
+        // Expose to window for debugging and NEW controller access
+        window.app = window.app || {};
+        window.app.imagePlanes = this.imagePlanes;
+        window.app.camera = camera;
+        window.app.sceneManager = this.sceneManager;
+
+        console.log('✅ App exposed to window.app for debugging');
         this.timelineScene = new TimelineScene(scene, renderer, camera, imageData);
         
         // Connect initial scene images to timeline scene for transitions
