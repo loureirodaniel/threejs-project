@@ -16,6 +16,7 @@ import { InputSystem } from '../systems/InputSystem.js';
 import { PhysicsSystem } from '../systems/PhysicsSystem.js';
 import { RenderSystem } from '../systems/RenderSystem.js';
 import { CameraSystem } from '../systems/CameraSystem.js';
+import { AnimationChoreographer } from '../systems/AnimationChoreographer.js';
 import * as TimelineUtils from '../utils/TimelineUtils.js';
 import { TIMELINE_CONFIG } from '../utils/TimelineConstants.js';
 
@@ -38,6 +39,12 @@ class TimelineController {
     this.physicsSystem = new PhysicsSystem(this.state, this.eventBus);
     this.renderSystem = new RenderSystem(this.state, this.eventBus, this.timelineScene, this.effects);
     this.cameraSystem = new CameraSystem(this.state, this.eventBus, this.camera);
+    this.animationChoreographer = new AnimationChoreographer(
+      this.state,
+      this.eventBus,
+      this.camera,
+      this.sceneManager?.scene || null
+    );
 
     this.unsubscribeFns = [];
     this.lastFrameTime = 0;
@@ -60,6 +67,7 @@ class TimelineController {
     console.log('  - PhysicsSystem ready');
     console.log('  - RenderSystem ready');
     console.log('  - CameraSystem ready');
+    console.log('  - AnimationChoreographer ready');
 
     // Position images for initial scene
     // Delay ensures imagePlanes is created
@@ -285,6 +293,10 @@ class TimelineController {
     this.physicsSystem.dispose();
     this.renderSystem.dispose();
     this.cameraSystem.dispose();
+    if (this.animationChoreographer) {
+      this.animationChoreographer.dispose();
+      this.animationChoreographer = null;
+    }
     this.state.dispose();
     this.eventBus.clear();
 

@@ -47,7 +47,7 @@ class AnimationChoreographer {
     const imageWidthPx = 0.75 * pixelsPerUnit;
     
     // Desired margin between images
-    const marginPx = 130;
+    const marginPx = 430;
     
     // Total spacing (center to center) in pixels
     const totalSpacingPx = imageWidthPx + marginPx;
@@ -61,6 +61,11 @@ class AnimationChoreographer {
       Image Width: ${imageWidthPx.toFixed(0)}px
       Margin: ${marginPx}px
       Total Spacing: ${spacingUnits.toFixed(3)} units (${totalSpacingPx.toFixed(0)}px)`);
+
+    // Store calculated spacing in state for timeline navigation
+    this.state.setState({
+      calculatedSpacing: spacingUnits
+    });
     
     return spacingUnits;
   }
@@ -89,18 +94,16 @@ class AnimationChoreographer {
     const firstPosition = TIMELINE_CONFIG.FIRST_POSITION || -4.5;
     const offset = this.state.get('timelineOffset') || firstPosition;
     
-    // Store original camera FOV
-    const originalFOV = this.camera.fov;
-    
     // Create master timeline
     this.gatheringTimeline = gsap.timeline({
       onComplete: () => {
         console.log('✅ Gathering sequence complete');
+        console.log(`📷 Camera z after gathering: ${this.camera.position.z.toFixed(2)}`);
         this.completeGathering();
       }
     });
     
-    // === ANIMATE IMAGES TO TIMELINE POSITIONS ===
+    // === ANIMATE IMAGES ===
     planes.forEach((plane, index) => {
       const targetX = firstPosition + (index * spacing) - offset;
       const staggerDelay = index * 0.06; // 60ms between each image
@@ -140,45 +143,40 @@ class AnimationChoreographer {
       plane.visible = true;
     });
     
-    // === CAMERA DOLLY INTO FIRST IMAGE ===
-    // Start camera movement at 0.8 seconds
+    // ===== CAMERA SEQUENCE: Smooth zoom-out, then dolly in =====
+    const startCameraZ = 10; // Far view during gathering
+    const endCameraZ = 5;    // Close view at timeline
+
+    console.log(`📷 Camera sequence: ${this.camera.position.z.toFixed(2)} -> ${startCameraZ} -> ${endCameraZ}`);
+
+    // STEP 1: Smooth zoom-out (0.0s - 0.5s)
+    // Pull camera back for overview as images start moving
     this.gatheringTimeline.to(this.camera.position, {
       x: 0,
       y: 0,
-      z: 7, // Closer than final timeline position (8)
-      duration: 1.0,
-      ease: 'power1.inOut'
-    }, 0.8);
-    
-    // Zoom FOV during dolly
-    this.gatheringTimeline.to(this.camera, {
-      fov: originalFOV - 3,
-      duration: 1.0,
-      ease: 'power1.inOut',
-      onUpdate: () => {
-        this.camera.updateProjectionMatrix();
+      z: startCameraZ,
+      duration: 0.5,
+      ease: 'power1.out', // Fast at start, slow at end
+      onComplete: () => {
+        console.log('📷 Zoom-out complete, camera at overview position');
       }
-    }, 0.8);
-    
-    // === FINAL CAMERA POSITION ===
-    // Move to standard timeline camera position after pause
+    }, 0); // Start immediately
+
+    // STEP 2: Hold at overview (0.5s - 0.8s)
+    // Let user see the full gathering motion
+
+    // STEP 3: Smooth dolly-in (0.8s - 2.3s)
+    // Zoom into timeline as images settle
     this.gatheringTimeline.to(this.camera.position, {
       x: 0,
       y: 0,
-      z: 8, // Final timeline camera Z
-      duration: 0.5,
-      ease: 'power2.out'
-    }, '+=0.2');
-    
-    // Restore original FOV
-    this.gatheringTimeline.to(this.camera, {
-      fov: originalFOV,
-      duration: 0.5,
-      ease: 'power2.out',
-      onUpdate: () => {
-        this.camera.updateProjectionMatrix();
+      z: endCameraZ,
+      duration: 1.5,
+      ease: 'power2.inOut', // Smooth acceleration/deceleration
+      onComplete: () => {
+        console.log(`📷 Dolly-in complete at z=${this.camera.position.z.toFixed(2)}`);
       }
-    }, '<');
+    }, 0.8); // Start after 0.8 seconds
     
     console.log(`⏱️ Total animation duration: ${this.gatheringTimeline.duration().toFixed(2)}s`);
   }

@@ -206,21 +206,6 @@ class InputSystem {
       }
     }
 
-    // Scene 1 -> 0 transition (timeline -> initial)
-    if (currentScene === 1 && scrollProgress < 0.05 && !this.state.get('isTransitioning')) {
-      console.log('⬆️ InputSystem: Scroll back to top, returning to initial scene');
-      this.state.setState({
-        imagesGathered: false,
-        imagesGathering: false,
-        currentSceneIndex: 0
-      });
-
-      this.eventBus.emit('scene:transition', {
-        from: 1,
-        to: 0,
-        trigger: 'scroll'
-      });
-    }
   }
 
   /**

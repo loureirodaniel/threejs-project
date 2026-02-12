@@ -22,6 +22,7 @@ const INITIAL_STATE = Object.freeze({
   targetOffset: -4.5,
   currentSnapIndex: 0,
   currentYear: 2010,
+  calculatedSpacing: 4.194, // Dynamic spacing calculated by AnimationChoreographer
 
   // User interaction state
   isDragging: false,

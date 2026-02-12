@@ -106,7 +106,7 @@ class RenderSystem {
     const safeOffset = Number.isFinite(offset) ? offset : 0;
     const { timelinePlanes, transitionedPlanes } = this.getPlaneCollections();
 
-    const spacing = TIMELINE_CONFIG.IMAGE_SPACING || 1.5;
+    const spacing = this.state.get('calculatedSpacing') || 1.8; // Use dynamic spacing
     const firstPosition = TIMELINE_CONFIG.FIRST_POSITION || -4.5;
     const cullDistance = 15;
 
@@ -207,12 +207,28 @@ class RenderSystem {
    * @param {{newValue: number}} payload
    */
   onOffsetChange({ newValue }) {
-    const year = TimelineUtils.offsetToYear(newValue);
-    const currentYear = this.state.get('currentYear');
+    // Calculate current year based on dynamic spacing
+    const currentOffset = this.state.get('timelineOffset');
+    const calculatedSpacing = this.state.get('calculatedSpacing') || 1.8;
+    const firstPosition = TIMELINE_CONFIG.FIRST_POSITION || -4.5;
+    const startYear = 2010;
+    const yearCount = TIMELINE_CONFIG.YEAR_COUNT || 10;
 
-    if (year !== currentYear) {
-      this.state.setState({ currentYear: year });
-      this.eventBus.emit('timeline:year:change', { year, offset: newValue });
+    // Calculate which year we're closest to
+    const relativeOffset = currentOffset - firstPosition;
+    const yearIndex = Math.round(relativeOffset / calculatedSpacing);
+    const clampedIndex = Math.max(0, Math.min(yearIndex, yearCount - 1));
+    const currentYear = startYear + clampedIndex;
+
+    // Update state if year changed
+    const previousYear = this.state.get('currentYear');
+    if (currentYear !== previousYear) {
+      this.state.setState({ currentYear });
+      this.eventBus.emit('timeline:year:change', {
+        year: currentYear,
+        offset: currentOffset
+      });
+      console.log(`📅 Year changed to ${currentYear} (index ${clampedIndex})`);
     }
   }
 

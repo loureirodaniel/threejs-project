@@ -169,9 +169,25 @@ class PhysicsSystem {
    * @returns {number} Clamped offset
    */
   applyBounds(offset, allowOverscroll = false) {
-    const positions = TIMELINE_CONFIG.SNAP_POSITIONS;
-    const minOffset = positions[0];
-    const maxOffset = positions[positions.length - 1];
+    // Get dynamic spacing if available, otherwise use snap positions
+    const calculatedSpacing = this.state.get('calculatedSpacing');
+    const yearCount = TIMELINE_CONFIG.YEAR_COUNT || 10;
+    const firstPosition = TIMELINE_CONFIG.FIRST_POSITION || -4.5;
+
+    let minOffset, maxOffset;
+
+    if (calculatedSpacing) {
+      // Use dynamically calculated spacing from AnimationChoreographer
+      minOffset = firstPosition;
+      maxOffset = firstPosition + ((yearCount - 1) * calculatedSpacing);
+      console.log(`📏 PhysicsSystem: Using dynamic bounds: ${minOffset.toFixed(2)} to ${maxOffset.toFixed(2)}`);
+    } else {
+      // Fallback to snap positions
+      const positions = TIMELINE_CONFIG.SNAP_POSITIONS;
+      minOffset = positions[0];
+      maxOffset = positions[positions.length - 1];
+      console.log(`📏 PhysicsSystem: Using static bounds: ${minOffset.toFixed(2)} to ${maxOffset.toFixed(2)}`);
+    }
 
     if (allowOverscroll) {
       const overscrollAmount = (maxOffset - minOffset) * (PHYSICS_CONFIG.OVERSCROLL_MULTIPLIER ?? 0.2);
@@ -234,19 +250,29 @@ class PhysicsSystem {
    */
   snapToNearest() {
     const currentOffset = this.state.get('timelineOffset');
-    const nearestIndex = offsetToSnapIndex(currentOffset);
-    const targetOffset = snapIndexToOffset(nearestIndex);
-
+    const calculatedSpacing = this.state.get('calculatedSpacing') || 1.8;
+    const firstPosition = TIMELINE_CONFIG.FIRST_POSITION || -4.5;
+    const yearCount = TIMELINE_CONFIG.YEAR_COUNT || 10;
+    
+    // Calculate nearest snap index based on current offset
+    const relativeOffset = currentOffset - firstPosition;
+    const nearestIndex = Math.round(relativeOffset / calculatedSpacing);
+    const clampedIndex = Math.max(0, Math.min(nearestIndex, yearCount - 1));
+    
+    // Calculate target offset for that index
+    const targetOffset = firstPosition + (clampedIndex * calculatedSpacing);
+    
     const skipSnapDistance = 0.05;
     if (Math.abs(currentOffset - targetOffset) < skipSnapDistance) {
       this.state.setState({
-        currentSnapIndex: nearestIndex,
+        currentSnapIndex: clampedIndex,
         targetOffset: targetOffset
       });
       return;
     }
-
-    this.snapToOffset(targetOffset, nearestIndex);
+    
+    console.log(`📍 Snapping to index ${clampedIndex}, offset ${targetOffset.toFixed(2)}`);
+    this.snapToOffset(targetOffset, clampedIndex);
   }
 
   /**

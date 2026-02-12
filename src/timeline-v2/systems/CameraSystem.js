@@ -44,7 +44,6 @@ class CameraSystem {
     this.unsubscribeFns.push(
       this.eventBus.on('scene:transition:start', this.onSceneTransition.bind(this)),
       this.eventBus.on('scene:transition', this.onSceneTransition.bind(this)),
-      this.eventBus.on('images:gather:start', this.startImageGathering.bind(this)),
       this.eventBus.on('timeline:drag:start', this.onDragStart.bind(this)),
       this.eventBus.on('timeline:drag:end', this.onDragEnd.bind(this))
     );
@@ -104,6 +103,16 @@ class CameraSystem {
 
     console.log(`🎬 CameraSystem: Transitioning ${resolvedFromScene} -> ${resolvedToScene}`);
 
+    if (resolvedFromScene === 'initial' && resolvedToScene === 'timeline') {
+      const imagesGathered = this.state.get('imagesGathered');
+      if (imagesGathered) {
+        console.log('📷 CameraSystem: Images already gathered, skipping camera animation');
+        this.state.setState({ isTransitioning: false });
+        this.eventBus.emit('scene:transition:complete', { scene: 'timeline' });
+        return; // Exit early, don't touch camera
+      }
+    }
+
     // Get scene configurations
     const toConfig = SCENE_CONFIG[resolvedToScene];
     if (!toConfig) {
@@ -121,29 +130,41 @@ class CameraSystem {
     this.state.setState({ isTransitioning: true });
 
     const duration = TIMING_CONFIG?.TRANSITION_DURATION ?? 1.5;
+    const isInitialToTimelineTransition = (
+      resolvedFromScene === 'initial' && resolvedToScene === 'timeline'
+    );
+    const shouldSkipCameraMovement = isInitialToTimelineTransition;
 
     // Animate camera position and FOV
     this.transitionAnimation = gsap.timeline({
       onComplete: () => {
         this.transitionAnimation = null;
       }
-    })
-      .to(this.camera.position, {
+    });
+
+    // Initial -> timeline camera positioning is fully handled by AnimationChoreographer.
+    if (!shouldSkipCameraMovement) {
+      this.transitionAnimation.to(this.camera.position, {
         x: toConfig.position.x,
         y: toConfig.position.y,
         z: toConfig.position.z,
         duration,
         ease: 'power2.inOut'
-      })
+      });
+    } else {
+      console.log('📷 CameraSystem: Skipping camera movement (position handled by AnimationChoreographer)');
+    }
+
+    this.transitionAnimation
       .to(this.camera, {
-        fov: toConfig.fov,
-        duration,
-        ease: 'power2.inOut',
-        onUpdate: () => {
-          // Projection matrix must update whenever FOV changes
-          this.camera.updateProjectionMatrix();
-        }
-      }, '<')
+      fov: toConfig.fov,
+      duration,
+      ease: 'power2.inOut',
+      onUpdate: () => {
+        // Projection matrix must update whenever FOV changes
+        this.camera.updateProjectionMatrix();
+      }
+    }, shouldSkipCameraMovement ? 0 : '<')
       .call(() => {
         // Transition complete
         const newSceneIndex = resolvedToScene === 'timeline' ? 1 : 0;
@@ -188,80 +209,6 @@ class CameraSystem {
         this.eventBus.emit('scene:transition:complete', { scene: resolvedToScene });
         console.log('✅ CameraSystem: Transition complete');
       });
-  }
-
-  /**
-   * Animate images gathering into timeline positions before scene transition.
-   */
-  startImageGathering() {
-    console.log('🎬 CameraSystem: Starting image gathering animation...');
-
-    if (!window.app || !window.app.imagePlanes) {
-      console.warn('⚠️ imagePlanes not available');
-      this.state.setState({ imagesGathering: false });
-      return;
-    }
-
-    const planes = window.app.imagePlanes.getPlanes();
-    if (!planes || planes.length === 0) {
-      console.warn('⚠️ No image planes available for gathering');
-      this.state.setState({
-        imagesGathering: false,
-        imagesGathered: true
-      });
-      this.eventBus.emit('images:gather:complete');
-      return;
-    }
-
-    const spacing = 1.5;
-    const firstPosition = -4.5;
-    const offset = this.state.get('timelineOffset') || -4.5;
-
-    planes.forEach((plane, index) => {
-      const targetX = firstPosition + (index * spacing);
-
-      console.log(`  Image ${index}: gathering to x=${(targetX - offset).toFixed(2)}`);
-
-      gsap.to(plane.position, {
-        x: targetX - offset,
-        y: 0,
-        z: 0,
-        duration: 1.2,
-        ease: 'power3.inOut',
-        delay: index * 0.05
-      });
-
-      gsap.to(plane.scale, {
-        x: 0.75,
-        y: 0.75,
-        z: 0.75,
-        duration: 1.2,
-        ease: 'power3.inOut',
-        delay: index * 0.05
-      });
-
-      if (plane.material) {
-        gsap.to(plane.material, {
-          opacity: 1.0,
-          duration: 1.2,
-          ease: 'power2.inOut',
-          delay: index * 0.05
-        });
-      }
-
-      plane.visible = true;
-
-      if (index === planes.length - 1) {
-        gsap.delayedCall(1.2 + (index * 0.05), () => {
-          console.log('✅ CameraSystem: Image gathering complete');
-          this.state.setState({
-            imagesGathering: false,
-            imagesGathered: true
-          });
-          this.eventBus.emit('images:gather:complete');
-        });
-      }
-    });
   }
 
   /**
