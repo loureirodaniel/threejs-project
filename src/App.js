@@ -66,6 +66,7 @@ export class App {
         this.commentModeration = null;
         this.commentManager = null;
         this.commentUI = null;
+        this.dataService = dataService;
         
         this.init()
             .then(() => console.log('✅ App initialized successfully'))
@@ -105,6 +106,7 @@ export class App {
         window.app.imagePlanes = this.imagePlanes;
         window.app.camera = camera;
         window.app.sceneManager = this.sceneManager;
+        window.app.dataService = this.dataService;
 
         console.log('✅ App exposed to window.app for debugging');
         this.timelineScene = new TimelineScene(scene, renderer, camera, imageData);

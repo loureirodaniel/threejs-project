@@ -17,6 +17,7 @@ import { PhysicsSystem } from '../systems/PhysicsSystem.js';
 import { RenderSystem } from '../systems/RenderSystem.js';
 import { CameraSystem } from '../systems/CameraSystem.js';
 import { AnimationChoreographer } from '../systems/AnimationChoreographer.js';
+import { ImageEnlargement } from '../ui/ImageEnlargement.js';
 import * as TimelineUtils from '../utils/TimelineUtils.js';
 import { TIMELINE_CONFIG } from '../utils/TimelineConstants.js';
 
@@ -45,6 +46,10 @@ class TimelineController {
       this.camera,
       this.sceneManager?.scene || null
     );
+    this.imageEnlargement = new ImageEnlargement(
+      this.state,
+      this.eventBus
+    );
 
     this.unsubscribeFns = [];
     this.lastFrameTime = 0;
@@ -68,6 +73,7 @@ class TimelineController {
     console.log('  - RenderSystem ready');
     console.log('  - CameraSystem ready');
     console.log('  - AnimationChoreographer ready');
+    console.log('  - ImageEnlargement ready');
 
     // Position images for initial scene
     // Delay ensures imagePlanes is created
@@ -298,6 +304,10 @@ class TimelineController {
       this.animationChoreographer = null;
     }
     this.state.dispose();
+    if (this.imageEnlargement) {
+      this.imageEnlargement.dispose();
+      this.imageEnlargement = null;
+    }
     this.eventBus.clear();
 
     console.log('✅ NEW TimelineController disposed');

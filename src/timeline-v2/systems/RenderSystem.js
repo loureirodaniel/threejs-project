@@ -56,6 +56,7 @@ class RenderSystem {
     // Subscribe to events
     this.unsubscribeFns.push(
       this.eventBus.on('timeline:click', this.onImageClick.bind(this)),
+      this.eventBus.on('timeline:click', this.onTimelineClick.bind(this)),
       this.eventBus.on('timeline:image:close', this.onImageClose.bind(this)),
       this.eventBus.on('timeline:snap:complete', this.onSnapComplete.bind(this))
     );
@@ -254,6 +255,125 @@ class RenderSystem {
       return;
     }
     this.effects.liquidDistortionEffect?.fadeOutEffect?.();
+  }
+
+  /**
+   * Handle timeline clicks - Works with imagePlanes.imageData directly
+   */
+  onTimelineClick(data) {
+    console.log('🖱️ Click detected');
+    
+    const app = window.app;
+    if (!app) {
+      console.error('❌ window.app not available');
+      return;
+    }
+    
+    console.log('✅ window.app available');
+    
+    // Get imagePlanes
+    const imagePlanes = app.imagePlanes;
+    if (!imagePlanes) {
+      console.error('❌ imagePlanes not available');
+      return;
+    }
+    
+    console.log('✅ imagePlanes available');
+    
+    // Get planes array
+    const planes = imagePlanes.getPlanes ? imagePlanes.getPlanes() : imagePlanes.planes;
+    if (!planes || planes.length === 0) {
+      console.error('❌ No planes array');
+      return;
+    }
+    
+    console.log(`✅ Found ${planes.length} planes`);
+    
+    // Get image data - DIRECTLY from imagePlanes
+    const imageData = imagePlanes.imageData;
+    if (!imageData || imageData.length === 0) {
+      console.error('❌ imagePlanes.imageData is missing');
+      console.log('imagePlanes properties:', Object.keys(imagePlanes));
+      return;
+    }
+    
+    console.log(`✅ Found ${imageData.length} image data entries`);
+    
+    // Get camera
+    const camera = app.camera;
+    if (!camera) {
+      console.error('❌ Camera not available');
+      return;
+    }
+    
+    console.log('✅ Camera available');
+    
+    // Raycasting
+    const THREE = window.THREE;
+    if (!THREE) {
+      console.error('❌ THREE.js not available');
+      return;
+    }
+    
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2(data.normalizedX, data.normalizedY);
+    raycaster.setFromCamera(mouse, camera);
+    
+    const intersects = raycaster.intersectObjects(planes, false);
+    
+    console.log(`🎯 Raycasting: ${intersects.length} intersections`);
+    
+    if (intersects.length === 0) {
+      console.log('No plane clicked');
+      return;
+    }
+    
+    // Get clicked plane
+    const clickedPlane = intersects[0].object;
+    const planeIndex = planes.indexOf(clickedPlane);
+    
+    if (planeIndex === -1) {
+      console.error('❌ Plane not found in array');
+      return;
+    }
+    
+    const imgData = imageData[planeIndex];
+    if (!imgData) {
+      console.error(`❌ No image data at index ${planeIndex}`);
+      return;
+    }
+    
+    console.log(`✅ Clicked image ${planeIndex}:`, imgData);
+    
+    // Calculate target offset
+    const calculatedSpacing = this.state.get('calculatedSpacing') || 4.194;
+    const firstPosition = -4.5;
+    const targetOffset = firstPosition + (planeIndex * calculatedSpacing);
+    
+    console.log(`📹 Moving to offset ${targetOffset.toFixed(2)}`);
+    
+    // Get PhysicsSystem
+    const physicsSystem = app.timelineController?.physicsSystem;
+    
+    if (physicsSystem && physicsSystem.snapToOffset) {
+      // Snap camera to image
+      physicsSystem.snapToOffset(targetOffset, planeIndex);
+      
+      // Wait for camera, then enlarge
+      setTimeout(() => {
+        console.log('🖼️ Enlarging image now');
+        this.eventBus.emit('timeline:image:enlarge', {
+          plane: clickedPlane,
+          imageData: imgData
+        });
+      }, 600);
+    } else {
+      console.warn('⚠️ PhysicsSystem not available, enlarging immediately');
+      this.eventBus.emit('timeline:image:enlarge', {
+        plane: clickedPlane,
+        imageData: imgData
+      });
+    }
   }
 
   /**

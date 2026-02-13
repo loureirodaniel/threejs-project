@@ -11,6 +11,7 @@ export class ImagePlanes {
 
         this.scene = scene;
         this.camera = camera;
+        this.imageData = imageData; // Store for later access
         this.planes = [];
         this.textureLoader = new THREE.TextureLoader();
         this.startTime = Date.now();
