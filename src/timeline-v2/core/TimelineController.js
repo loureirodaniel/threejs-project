@@ -17,7 +17,7 @@ import { PhysicsSystem } from '../systems/PhysicsSystem.js';
 import { RenderSystem } from '../systems/RenderSystem.js';
 import { CameraSystem } from '../systems/CameraSystem.js';
 import { AnimationChoreographer } from '../systems/AnimationChoreographer.js';
-import { ImageEnlargement } from '../ui/ImageEnlargement.js';
+import { ImageDetailPage } from '../ui/ImageDetailPage.js';
 import * as TimelineUtils from '../utils/TimelineUtils.js';
 import { TIMELINE_CONFIG } from '../utils/TimelineConstants.js';
 
@@ -46,7 +46,7 @@ class TimelineController {
       this.camera,
       this.sceneManager?.scene || null
     );
-    this.imageEnlargement = new ImageEnlargement(
+    this.imageDetailPage = new ImageDetailPage(
       this.state,
       this.eventBus
     );
@@ -304,9 +304,9 @@ class TimelineController {
       this.animationChoreographer = null;
     }
     this.state.dispose();
-    if (this.imageEnlargement) {
-      this.imageEnlargement.dispose();
-      this.imageEnlargement = null;
+    if (this.imageDetailPage) {
+      this.imageDetailPage.dispose();
+      this.imageDetailPage = null;
     }
     this.eventBus.clear();
 

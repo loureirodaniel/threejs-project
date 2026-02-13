@@ -59,6 +59,7 @@ export class App {
         // Controllers
         this.mouseController = null;
         this.timelineController = null;
+        this.imageData = null;
         this.lastFrameTime = 0;
 
         // Comment system
@@ -92,6 +93,7 @@ export class App {
         console.log('📥 Loading timeline data...');
         const imageData = await dataService.getTimelineImages();
         console.log(`✅ Loaded ${imageData.length} images`);
+        this.imageData = imageData;
 
         const yearRange = await dataService.getYearRange();
         console.log(`📅 Timeline covers ${yearRange.minYear} - ${yearRange.maxYear} (${yearRange.totalYears} years)`);
@@ -105,7 +107,10 @@ export class App {
         window.app = window.app || {};
         window.app.imagePlanes = this.imagePlanes;
         window.app.camera = camera;
+        window.app.scene = scene;
         window.app.sceneManager = this.sceneManager;
+        window.app.timelineController = this.timelineController;
+        window.app.imageData = this.imageData;
         window.app.dataService = this.dataService;
 
         console.log('✅ App exposed to window.app for debugging');
@@ -153,6 +158,7 @@ export class App {
                 backgroundBlurEffect: this.backgroundBlurEffect
             }
         );
+        window.app.timelineController = this.timelineController;
 
         // Wire title animation completion so scrolling is enabled only after text animation
         this.titleOverlay.setOnTextAnimationComplete(() => this.introSequence.onTextAnimationComplete());

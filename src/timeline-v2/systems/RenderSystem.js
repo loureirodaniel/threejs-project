@@ -40,6 +40,7 @@ class RenderSystem {
     // One reusable raycaster + vector (avoid allocations on each click)
     this.raycaster = new THREE.Raycaster();
     this.mouseNDC = new THREE.Vector2();
+    this.paused = false;
 
     this.unsubscribeFns = [];
     this.init();
@@ -55,10 +56,17 @@ class RenderSystem {
 
     // Subscribe to events
     this.unsubscribeFns.push(
-      this.eventBus.on('timeline:click', this.onImageClick.bind(this)),
       this.eventBus.on('timeline:click', this.onTimelineClick.bind(this)),
       this.eventBus.on('timeline:image:close', this.onImageClose.bind(this)),
-      this.eventBus.on('timeline:snap:complete', this.onSnapComplete.bind(this))
+      this.eventBus.on('timeline:snap:complete', this.onSnapComplete.bind(this)),
+      this.eventBus.on('timeline:pause', () => {
+        this.paused = true;
+        console.log('⏸️ Timeline rendering paused');
+      }),
+      this.eventBus.on('timeline:resume', () => {
+        this.paused = false;
+        console.log('▶️ Timeline rendering resumed');
+      })
     );
 
     console.log('RenderSystem initialized');
@@ -67,7 +75,12 @@ class RenderSystem {
   /**
    * Main render update - called every frame
    */
-  update() {
+  update(deltaTime) {
+    if (this.paused) {
+      return; // Skip rendering when detail page is open
+    }
+    void deltaTime;
+
     const { timelineOffset, currentSceneIndex } = this.state.getState();
 
     // Only update if on timeline scene
@@ -258,252 +271,97 @@ class RenderSystem {
   }
 
   /**
-   * Handle timeline clicks - Works with imagePlanes.imageData directly
+   * Handle timeline clicks - Proximity-based detection (more reliable)
    */
   onTimelineClick(data) {
-    console.log('🖱️ Click detected');
+    console.log('🖱️ CLICK at screen:', data.clientX, data.clientY);
     
-    const app = window.app;
-    if (!app) {
-      console.error('❌ window.app not available');
-      return;
-    }
-    
-    console.log('✅ window.app available');
-    
-    // Get imagePlanes
-    const imagePlanes = app.imagePlanes;
-    if (!imagePlanes) {
-      console.error('❌ imagePlanes not available');
-      return;
-    }
-    
-    console.log('✅ imagePlanes available');
-    
-    // Get planes array
-    const planes = imagePlanes.getPlanes ? imagePlanes.getPlanes() : imagePlanes.planes;
-    if (!planes || planes.length === 0) {
-      console.error('❌ No planes array');
-      return;
-    }
-    
-    console.log(`✅ Found ${planes.length} planes`);
-    
-    // Get image data - DIRECTLY from imagePlanes
-    const imageData = imagePlanes.imageData;
-    if (!imageData || imageData.length === 0) {
-      console.error('❌ imagePlanes.imageData is missing');
-      console.log('imagePlanes properties:', Object.keys(imagePlanes));
-      return;
-    }
-    
-    console.log(`✅ Found ${imageData.length} image data entries`);
-    
-    // Get camera
-    const camera = app.camera;
-    if (!camera) {
-      console.error('❌ Camera not available');
-      return;
-    }
-    
-    console.log('✅ Camera available');
-    
-    // Raycasting
-    const THREE = window.THREE;
-    if (!THREE) {
-      console.error('❌ THREE.js not available');
-      return;
-    }
-    
-    const raycaster = new THREE.Raycaster();
-    const mouse = new THREE.Vector2(data.normalizedX, data.normalizedY);
-    raycaster.setFromCamera(mouse, camera);
-    
-    const intersects = raycaster.intersectObjects(planes, false);
-    
-    console.log(`🎯 Raycasting: ${intersects.length} intersections`);
-    
-    if (intersects.length === 0) {
-      console.log('No plane clicked');
-      return;
-    }
-    
-    // Get clicked plane
-    const clickedPlane = intersects[0].object;
-    const planeIndex = planes.indexOf(clickedPlane);
-    
-    if (planeIndex === -1) {
-      console.error('❌ Plane not found in array');
-      return;
-    }
-    
-    const imgData = imageData[planeIndex];
-    if (!imgData) {
-      console.error(`❌ No image data at index ${planeIndex}`);
-      return;
-    }
-    
-    console.log(`✅ Clicked image ${planeIndex}:`, imgData);
-    
-    // Calculate target offset
-    const calculatedSpacing = this.state.get('calculatedSpacing') || 4.194;
-    const firstPosition = -4.5;
-    const targetOffset = firstPosition + (planeIndex * calculatedSpacing);
-    
-    console.log(`📹 Moving to offset ${targetOffset.toFixed(2)}`);
-    
-    // Get PhysicsSystem
-    const physicsSystem = app.timelineController?.physicsSystem;
-    
-    if (physicsSystem && physicsSystem.snapToOffset) {
-      // Snap camera to image
-      physicsSystem.snapToOffset(targetOffset, planeIndex);
+    try {
+      const app = window.app;
+      if (!app || !app.imagePlanes || !app.camera) {
+        console.error('❌ Missing components');
+        return;
+      }
       
-      // Wait for camera, then enlarge
-      setTimeout(() => {
-        console.log('🖼️ Enlarging image now');
-        this.eventBus.emit('timeline:image:enlarge', {
-          plane: clickedPlane,
-          imageData: imgData
-        });
-      }, 600);
-    } else {
-      console.warn('⚠️ PhysicsSystem not available, enlarging immediately');
-      this.eventBus.emit('timeline:image:enlarge', {
-        plane: clickedPlane,
-        imageData: imgData
+      const imagePlanes = app.imagePlanes;
+      const planes = imagePlanes.planes || imagePlanes.getPlanes();
+      const imageData = imagePlanes.imageData;
+      const camera = app.camera;
+      const detailPage = app.timelineController?.imageDetailPage;
+      
+      if (!planes || !imageData || !camera || !detailPage) {
+        console.error('❌ Missing required data');
+        return;
+      }
+      
+      console.log(`✅ Checking ${planes.length} planes`);
+      
+      // Convert each plane's 3D position to screen coordinates
+      const screenPositions = planes.map((plane, index) => {
+        const vector = plane.position.clone();
+        vector.project(camera);
+        
+        const widthHalf = window.innerWidth / 2;
+        const heightHalf = window.innerHeight / 2;
+        
+        const screenX = (vector.x * widthHalf) + widthHalf;
+        const screenY = -(vector.y * heightHalf) + heightHalf;
+        
+        // Calculate distance from click to plane center
+        const distance = Math.sqrt(
+          Math.pow(screenX - data.clientX, 2) + 
+          Math.pow(screenY - data.clientY, 2)
+        );
+        
+        return {
+          index,
+          plane,
+          screenX,
+          screenY,
+          distance,
+          imageData: imageData[index]
+        };
       });
-    }
-  }
-
-  /**
-   * Handle image click from InputSystem.
-   * @param {object} payload
-   */
-  onImageClick({ normalizedX, normalizedY }) {
-    if (this.state.get('isImageEnlarged')) {
-      this.closeEnlargedImage();
-      return;
-    }
-
-    const clickedPlane = this.raycastImages(normalizedX, normalizedY);
-    if (clickedPlane) {
-      this.enlargeImage(clickedPlane);
-    }
-  }
-
-  /**
-   * Raycast to find clicked image.
-   * @param {number} normalizedX - Mouse X in [0,1]
-   * @param {number} normalizedY - Mouse Y in [0,1]
-   * @returns {THREE.Mesh|null}
-   */
-  raycastImages(normalizedX, normalizedY) {
-    if (!Number.isFinite(normalizedX) || !Number.isFinite(normalizedY)) return null;
-
-    this.mouseNDC.x = normalizedX * 2 - 1;
-    this.mouseNDC.y = -(normalizedY * 2 - 1);
-
-    const camera = typeof window !== 'undefined' ? window.app?.camera : null;
-    if (!camera) return null;
-
-    const { allPlanes } = this.getPlaneCollections();
-    if (allPlanes.length === 0) return null;
-
-    this.raycaster.setFromCamera(this.mouseNDC, camera);
-    const intersects = this.raycaster.intersectObjects(allPlanes, false);
-    return intersects.length > 0 ? intersects[0].object : null;
-  }
-
-  /**
-   * Enlarge image with animation.
-   * @param {THREE.Mesh} plane
-   */
-  enlargeImage(plane) {
-    if (!plane) return;
-
-    if (this.enlargeAnimation) {
-      this.enlargeAnimation.kill();
-      this.enlargeAnimation = null;
-    }
-
-    this.originalImageState = {
-      position: plane.position.clone(),
-      scale: plane.scale.clone(),
-      rotation: plane.rotation.clone()
-    };
-    this.enlargedImage = plane;
-
-    const targetScale = 2.0;
-    const targetZ = 2;
-
-    this.enlargeAnimation = gsap.timeline()
-      .to(plane.scale, {
-        x: targetScale,
-        y: targetScale,
-        z: targetScale,
-        duration: 0.4,
-        ease: 'power2.out'
-      })
-      .to(plane.position, {
-        z: targetZ,
-        duration: 0.4,
-        ease: 'power2.out'
-      }, '<')
-      .call(() => {
-        this.state.setState({
-          isImageEnlarged: true,
-          enlargedImageId: plane.uuid
+      
+      // Find closest plane within 150px radius
+      const closest = screenPositions
+        .filter(p => p.distance < 150)
+        .sort((a, b) => a.distance - b.distance)[0];
+      
+      if (closest) {
+        console.log(`✅ Clicked image ${closest.index} (${closest.distance.toFixed(0)}px away)`);
+        console.log(`   Image year: ${closest.imageData.year}`);
+        
+        // Open detail page
+        detailPage.open({
+          plane: closest.plane,
+          imageData: closest.imageData
         });
-        this.eventBus.emit('timeline:image:enlarge', { plane });
-      });
+      } else {
+        console.log('❌ No image within 150px of click');
+        
+        // Show distances for debugging
+        const sorted = screenPositions.sort((a, b) => a.distance - b.distance);
+        console.log('Closest 3 images:', sorted.slice(0, 3).map(p => ({
+          index: p.index,
+          year: p.imageData.year,
+          distance: p.distance.toFixed(0) + 'px',
+          screenPos: `(${p.screenX.toFixed(0)}, ${p.screenY.toFixed(0)})`
+        })));
+      }
+      
+    } catch (error) {
+      console.error('❌ Error in onTimelineClick:', error);
+    }
   }
 
   /**
    * Handle close request from InputSystem/UI.
    */
   onImageClose() {
-    this.closeEnlargedImage();
-  }
-
-  /**
-   * Animate enlarged image back to original state.
-   */
-  closeEnlargedImage() {
-    const enlargedId = this.state.get('enlargedImageId');
-    if (!enlargedId || !this.enlargedImage || !this.originalImageState) {
-      return;
-    }
-
-    const plane = this.enlargedImage;
-
-    if (this.enlargeAnimation) {
-      this.enlargeAnimation.kill();
-      this.enlargeAnimation = null;
-    }
-
-    this.enlargeAnimation = gsap.timeline()
-      .to(plane.scale, {
-        x: this.originalImageState.scale.x,
-        y: this.originalImageState.scale.y,
-        z: this.originalImageState.scale.z,
-        duration: 0.3,
-        ease: 'power2.in'
-      })
-      .to(plane.position, {
-        z: this.originalImageState.position.z,
-        duration: 0.3,
-        ease: 'power2.in'
-      }, '<')
-      .call(() => {
-        this.state.setState({
-          isImageEnlarged: false,
-          enlargedImageId: null
-        });
-        this.enlargedImage = null;
-        this.originalImageState = null;
-        this.enlargeAnimation = null;
-      });
+    console.log('🔴 onImageClose called from RenderSystem');
+    // Just emit the close event, ImageDetailPage handles it
+    this.eventBus.emit('timeline:image:close');
   }
 
   /**
