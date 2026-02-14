@@ -18,6 +18,7 @@
 
 import * as THREE from 'three';
 import { gsap } from 'gsap';
+import { ImageExpandAnimation } from './ImageExpandAnimation.js';
 import * as TimelineUtils from '../utils/TimelineUtils.js';
 import { EFFECTS_CONFIG, TIMELINE_CONFIG } from '../utils/TimelineConstants.js';
 
@@ -41,6 +42,15 @@ class RenderSystem {
     this.raycaster = new THREE.Raycaster();
     this.mouseNDC = new THREE.Vector2();
     this.paused = false;
+    this.currentAnimatingPlane = null;
+    this.currentImageData = null;
+    const app = typeof window !== 'undefined' ? (window.app || {}) : {};
+
+    // Initialize expand animation system
+    this.expandAnimation = new ImageExpandAnimation(
+      app.camera,
+      app.renderer
+    );
 
     this.unsubscribeFns = [];
     this.init();
@@ -68,6 +78,41 @@ class RenderSystem {
         console.log('▶️ Timeline rendering resumed');
       })
     );
+
+    // Listen for signal to hide 3D plane when detail page takes over
+    this.onHidePlaneForDetailPage = () => {
+      // Find currently animating plane and hide it
+      if (this.currentAnimatingPlane) {
+        this.currentAnimatingPlane.visible = false;
+        console.log('🙈 3D plane hidden on detail page signal');
+      }
+    };
+    window.addEventListener('hidePlaneForDetailPage', this.onHidePlaneForDetailPage);
+
+    // Listen for animation handoff signal
+    this.onImageExpandHandoff = (event) => {
+      const { plane } = event.detail;
+      
+      console.log('🎨 Handoff signal received - hiding plane and revealing detail');
+      
+      // Simply hide the 3D plane
+      if (this.currentAnimatingPlane) {
+        this.currentAnimatingPlane.visible = false;
+        console.log('🙈 3D plane hidden');
+      }
+      
+      // Reveal detail page with smooth fade
+      const detailPage = window.app.timelineController?.imageDetailPage;
+      if (detailPage) {
+        detailPage.open({
+          plane: this.currentAnimatingPlane,
+          imageData: this.currentImageData, // Store this when animation starts
+          reveal: true
+        });
+        console.log('👁️ Detail page reveal triggered');
+      }
+    };
+    window.addEventListener('imageExpandHandoff', this.onImageExpandHandoff);
 
     console.log('RenderSystem initialized');
   }
@@ -332,11 +377,84 @@ class RenderSystem {
         console.log(`✅ Clicked image ${closest.index} (${closest.distance.toFixed(0)}px away)`);
         console.log(`   Image year: ${closest.imageData.year}`);
         
-        // Open detail page
-        detailPage.open({
-          plane: closest.plane,
-          imageData: closest.imageData
-        });
+        // Get current centered image index from state
+        const currentIndex = this.state.get('currentImageIndex') || 0;
+        const clickedIndex = closest.index;
+        
+        console.log(`📍 Current centered image: ${currentIndex}, clicked: ${clickedIndex}`);
+
+        const startSeamlessHandoff = () => {
+          const animatingPlane = closest.plane;
+          const imageDataForDetail = closest.imageData;
+
+          // STEP 1: Preload detail page (invisible) BEFORE animation starts
+          console.log('🔧 Step 1: Preloading detail page');
+          detailPage.open({
+            plane: animatingPlane,
+            imageData: imageDataForDetail,
+            preload: true // Sets up DOM but keeps invisible
+          });
+
+          // STEP 2: Start 3D plane animation
+          console.log('🎬 Step 2: Starting 3D plane animation');
+          this.currentAnimatingPlane = animatingPlane;
+          this.currentImageData = imageDataForDetail;
+
+          this.expandAnimation.animateToDetail(animatingPlane, () => {
+            console.log('✅ Animation complete, executing handoff');
+            
+            // STEP 3: At exact moment animation completes, do synchronized handoff
+            
+            // 3a: Hide 3D plane
+            animatingPlane.visible = false;
+            console.log('🙈 3D plane hidden');
+            
+            // 3b: Reveal detail page fullscreen image (already loaded and positioned)
+            detailPage.open({
+              plane: animatingPlane,
+              imageData: imageDataForDetail,
+              reveal: true // Instantly shows preloaded page
+            });
+            
+            console.log('👁️ Detail page revealed - seamless handoff complete');
+          });
+
+          // Optional: Listen for animation progress to hide plane earlier (more seamless)
+          // Add this inside the animation timeline in ImageExpandAnimation.js
+        };
+        
+        // Check if we need to snap to this image first
+        if (clickedIndex !== currentIndex) {
+          console.log(`📹 Image ${clickedIndex} is not centered, snapping camera first...`);
+          
+          // Calculate target offset for this image
+          const calculatedSpacing = this.state.get('calculatedSpacing') || 4.194;
+          const firstPosition = -4.5;
+          const targetOffset = firstPosition + (clickedIndex * calculatedSpacing);
+          
+          console.log(`📹 Snapping to offset ${targetOffset.toFixed(2)}`);
+          
+          // Get PhysicsSystem for camera movement
+          const physicsSystem = app.timelineController?.physicsSystem;
+          
+          if (physicsSystem && physicsSystem.snapToOffset) {
+            // Snap camera to clicked image
+            physicsSystem.snapToOffset(targetOffset, clickedIndex);
+            
+            // Wait 200ms for camera to reach image, then open detail page
+            setTimeout(() => {
+              console.log(`⏰ Camera snap complete, opening detail page for ${closest.imageData.year}`);
+              startSeamlessHandoff();
+            }, 500);
+          } else {
+            console.warn('⚠️ PhysicsSystem not available, opening without snap');
+            startSeamlessHandoff();
+          }
+        } else {
+          // Image is already centered, open immediately
+          console.log(`✅ Image ${clickedIndex} is already centered, opening immediately`);
+          startSeamlessHandoff();
+        }
       } else {
         console.log('❌ No image within 150px of click');
         
@@ -400,6 +518,18 @@ class RenderSystem {
 
     this.enlargedImage = null;
     this.originalImageState = null;
+    if (this.onHidePlaneForDetailPage) {
+      window.removeEventListener('hidePlaneForDetailPage', this.onHidePlaneForDetailPage);
+      this.onHidePlaneForDetailPage = null;
+    }
+    if (this.onImageExpandHandoff) {
+      window.removeEventListener('imageExpandHandoff', this.onImageExpandHandoff);
+      this.onImageExpandHandoff = null;
+    }
+    this.currentAnimatingPlane = null;
+    this.currentImageData = null;
+    this.expandAnimation?.cancel?.();
+    this.expandAnimation = null;
     this.timelineScene = null;
     this.effects = null;
 

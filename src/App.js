@@ -107,6 +107,7 @@ export class App {
         window.app = window.app || {};
         window.app.imagePlanes = this.imagePlanes;
         window.app.camera = camera;
+        window.app.renderer = renderer;
         window.app.scene = scene;
         window.app.sceneManager = this.sceneManager;
         window.app.timelineController = this.timelineController;
