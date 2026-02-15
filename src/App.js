@@ -55,6 +55,7 @@ export class App {
         this.eventsPanel = null;
         this.timelineNavigation = null;
         this.yearOverlay = null;
+        this.timelineUIWrapper = null;
         
         // Controllers
         this.mouseController = null;
@@ -143,6 +144,7 @@ export class App {
         this.eventsPanel = new EventsPanel();
         this.timelineNavigation = new TimelineNavigation();
         this.yearOverlay = new YearOverlay(yearRange.minYear, yearRange.maxYear);
+        this.setupTimelineUIWrapper();
         
         // Ensure timeline navigation is hidden on app start (initial scene)
         setTimeout(() => {
@@ -356,6 +358,30 @@ export class App {
         if (this.liquidDistortionEffect) {
             this.liquidDistortionEffect.onWindowResize();
         }
+    }
+
+    setupTimelineUIWrapper() {
+        if (typeof document === 'undefined') return;
+
+        let wrapper = document.querySelector('.timeline-ui-wrapper');
+        if (!wrapper) {
+            wrapper = document.createElement('div');
+            wrapper.className = 'timeline-ui-wrapper';
+            document.body.appendChild(wrapper);
+        }
+
+        const titleElement = this.titleOverlay?.getTitleDiv?.();
+        const yearElement = this.yearOverlay?.container || document.getElementById('year-overlay');
+
+        if (titleElement && titleElement.parentNode !== wrapper) {
+            wrapper.appendChild(titleElement);
+        }
+
+        if (yearElement && yearElement.parentNode !== wrapper) {
+            wrapper.appendChild(yearElement);
+        }
+
+        this.timelineUIWrapper = wrapper;
     }
 
     showErrorMessage(message) {

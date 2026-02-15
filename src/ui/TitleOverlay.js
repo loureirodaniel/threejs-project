@@ -21,6 +21,7 @@ export class TitleOverlay {
         
         // Add text using HTML overlay for better quality
         this.titleDiv = document.createElement('div');
+        this.titleDiv.className = 'project-title';
         this.titleDiv.style.position = 'absolute';
         this.titleDiv.style.top = '50%';
         this.titleDiv.style.left = '50%';

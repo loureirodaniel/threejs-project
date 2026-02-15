@@ -36,6 +36,7 @@ export class YearOverlay {
     init() {
         this.container = document.createElement('div');
         this.container.id = 'year-overlay';
+        this.container.className = 'year-display';
         this.container.setAttribute('aria-hidden', 'true');
         this.container.style.cssText = `
             position: fixed;

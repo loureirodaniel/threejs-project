@@ -45,6 +45,7 @@ class RenderSystem {
     this.detailRenderInterval = null;
     this.currentAnimatingPlane = null;
     this.currentImageData = null;
+    this.hiddenTimelineUIState = [];
     const app = typeof window !== 'undefined' ? (window.app || {}) : {};
     this.camera = app.camera;
 
@@ -79,17 +80,8 @@ class RenderSystem {
       this.eventBus.on('timeline:resume', () => {
         this.paused = false;
         this.stopDetailRenderLoop();
-        document.body.classList.remove('detail-view-open');
-        // Restore hidden elements
-        setTimeout(() => {
-          document.querySelectorAll('[data-was-hidden]').forEach(el => {
-            el.style.removeProperty('display');
-            el.style.removeProperty('opacity');
-            el.style.removeProperty('visibility');
-            delete el.dataset.wasHidden;
-          });
-          console.log('👁️ Title and year restored');
-        }, 100);
+        this.showTimelineUI();
+        console.log('👁️ Title and year visible again');
         console.log('▶️ Timeline rendering resumed');
       })
     );
@@ -124,47 +116,8 @@ class RenderSystem {
           imageData: this.currentImageData, // Store this when animation starts
           reveal: true
         });
-        document.body.classList.add('detail-view-open');
+        this.hideTimelineUI();
         console.log('🙈 Title and year hidden');
-
-        // Force hide title with multiple methods
-        setTimeout(() => {
-          // Method 1: Hide by text content
-          document.querySelectorAll('h1, h2, div, span, p').forEach(el => {
-            const text = el.textContent?.toLowerCase() || '';
-            const isTitle = text.includes('three') && text.includes('project');
-            const notInDetail = !el.closest('.detail-overlay');
-            
-            if (isTitle && notInDetail && el.childNodes.length < 3) {
-              el.dataset.wasHidden = 'true';
-              el.style.setProperty('display', 'none', 'important');
-              el.style.setProperty('opacity', '0', 'important');
-              el.style.setProperty('visibility', 'hidden', 'important');
-              console.log('🙈 Hid title:', el.tagName, text.substring(0, 30));
-            }
-          });
-          
-          // Method 2: Hide by class patterns
-          const selectors = [
-            '[class*="title"]',
-            '[class*="Title"]', 
-            '[class*="header"]',
-            '[class*="Header"]'
-          ];
-          
-          selectors.forEach(selector => {
-            document.querySelectorAll(selector).forEach(el => {
-              if (!el.closest('.detail-overlay')) {
-                const text = el.textContent?.toLowerCase() || '';
-                if (text.includes('three') || text.includes('project')) {
-                  el.dataset.wasHidden = 'true';
-                  el.style.setProperty('display', 'none', 'important');
-                  console.log('🙈 Hid by selector:', selector);
-                }
-              }
-            });
-          });
-        }, 100);
         console.log('👁️ Detail page reveal triggered');
       }
     };
@@ -623,47 +576,8 @@ class RenderSystem {
                 animatingPlane.visible = false;
               }
             });
-            document.body.classList.add('detail-view-open');
+            this.hideTimelineUI();
             console.log('🙈 Title and year hidden');
-
-            // Force hide title with multiple methods
-            setTimeout(() => {
-              // Method 1: Hide by text content
-              document.querySelectorAll('h1, h2, div, span, p').forEach(el => {
-                const text = el.textContent?.toLowerCase() || '';
-                const isTitle = text.includes('three') && text.includes('project');
-                const notInDetail = !el.closest('.detail-overlay');
-                
-                if (isTitle && notInDetail && el.childNodes.length < 3) {
-                  el.dataset.wasHidden = 'true';
-                  el.style.setProperty('display', 'none', 'important');
-                  el.style.setProperty('opacity', '0', 'important');
-                  el.style.setProperty('visibility', 'hidden', 'important');
-                  console.log('🙈 Hid title:', el.tagName, text.substring(0, 30));
-                }
-              });
-              
-              // Method 2: Hide by class patterns
-              const selectors = [
-                '[class*="title"]',
-                '[class*="Title"]', 
-                '[class*="header"]',
-                '[class*="Header"]'
-              ];
-              
-              selectors.forEach(selector => {
-                document.querySelectorAll(selector).forEach(el => {
-                  if (!el.closest('.detail-overlay')) {
-                    const text = el.textContent?.toLowerCase() || '';
-                    if (text.includes('three') || text.includes('project')) {
-                      el.dataset.wasHidden = 'true';
-                      el.style.setProperty('display', 'none', 'important');
-                      console.log('🙈 Hid by selector:', selector);
-                    }
-                  }
-                });
-              });
-            }, 100);
 
             // Verify canvas is visible
             const canvas = this.renderer?.domElement;
@@ -758,6 +672,49 @@ class RenderSystem {
   }
 
   /**
+   * Safely hide only timeline UI elements.
+   */
+  hideTimelineUI() {
+    if (typeof document === 'undefined') return;
+    const selectors = ['.timeline-ui-wrapper', '.project-title', '#year-overlay'];
+    const elements = selectors
+      .map((selector) => document.querySelector(selector))
+      .filter(Boolean);
+
+    this.hiddenTimelineUIState = [];
+    elements.forEach((el) => {
+      this.hiddenTimelineUIState.push({
+        el,
+        opacity: el.style.opacity,
+        visibility: el.style.visibility,
+        pointerEvents: el.style.pointerEvents
+      });
+      el.style.opacity = '0';
+      el.style.visibility = 'hidden';
+      el.style.pointerEvents = 'none';
+    });
+  }
+
+  /**
+   * Restore timeline UI elements hidden by hideTimelineUI().
+   */
+  showTimelineUI() {
+    if (!Array.isArray(this.hiddenTimelineUIState) || this.hiddenTimelineUIState.length === 0) {
+      return;
+    }
+
+    this.hiddenTimelineUIState.forEach((item) => {
+      const { el, opacity, visibility, pointerEvents } = item;
+      if (!el) return;
+      el.style.opacity = opacity || '';
+      el.style.visibility = visibility || '';
+      el.style.pointerEvents = pointerEvents || '';
+    });
+
+    this.hiddenTimelineUIState = [];
+  }
+
+  /**
    * Clean up
    */
   dispose() {
@@ -796,6 +753,8 @@ class RenderSystem {
     this.stopDetailRenderLoop();
     this.currentAnimatingPlane = null;
     this.currentImageData = null;
+    this.showTimelineUI();
+    this.hiddenTimelineUIState = [];
     this.rippleAnimation = null;
     this.timelineScene = null;
     this.effects = null;
