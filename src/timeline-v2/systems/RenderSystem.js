@@ -79,6 +79,8 @@ class RenderSystem {
       this.eventBus.on('timeline:resume', () => {
         this.paused = false;
         this.stopDetailRenderLoop();
+        document.body.classList.remove('detail-view-open');
+        console.log('👁️ Timeline UI restored');
         console.log('▶️ Timeline rendering resumed');
       })
     );
@@ -113,6 +115,8 @@ class RenderSystem {
           imageData: this.currentImageData, // Store this when animation starts
           reveal: true
         });
+        document.body.classList.add('detail-view-open');
+        console.log('🙈 Timeline UI hidden');
         console.log('👁️ Detail page reveal triggered');
       }
     };
@@ -571,6 +575,8 @@ class RenderSystem {
                 animatingPlane.visible = false;
               }
             });
+            document.body.classList.add('detail-view-open');
+            console.log('🙈 Timeline UI hidden');
 
             // Verify canvas is visible
             const canvas = this.renderer?.domElement;
