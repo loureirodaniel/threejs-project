@@ -58,3 +58,35 @@ canvas {
 .close-button {
   z-index: 1001;
 }
+
+.timeline-title,
+.project-title,
+h1 {
+  font-size: 3rem;
+  font-weight: 700;
+  color: white;
+  text-align: center;
+  margin: 0;
+  padding: 0;
+
+  /* GSAP will handle positioning */
+  /* These are just fallbacks */
+  position: fixed;
+  top: 50vh;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 100;
+
+  /* Prevent text selection */
+  user-select: none;
+  pointer-events: none;
+
+  /* Optional: text shadow for visibility */
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+/* Optional: hide during detail view (from previous solution) */
+body:has(.detail-overlay) .timeline-title {
+  opacity: 0;
+  transition: opacity 0.3s;
+}

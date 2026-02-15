@@ -18,6 +18,7 @@ import { RenderSystem } from '../systems/RenderSystem.js';
 import { CameraSystem } from '../systems/CameraSystem.js';
 import { AnimationChoreographer } from '../systems/AnimationChoreographer.js';
 import { ImageDetailPage } from '../ui/ImageDetailPage.js';
+import { TitleScrollAnimation } from '../../animations/TitleScrollAnimation.js';
 import * as TimelineUtils from '../utils/TimelineUtils.js';
 import { TIMELINE_CONFIG } from '../utils/TimelineConstants.js';
 
@@ -67,6 +68,10 @@ class TimelineController {
       this.eventBus.on('scene:transition:complete', this.onTransitionComplete.bind(this))
     );
 
+    // Initialize title scroll animation
+    this.titleScrollAnimation = new TitleScrollAnimation();
+
+    console.log('✅ TimelineController initialized with title animation');
     console.log('✅ NEW TimelineController initialized');
     console.log('  - InputSystem ready');
     console.log('  - PhysicsSystem ready');
@@ -361,6 +366,10 @@ class TimelineController {
     if (this.imageDetailPage) {
       this.imageDetailPage.dispose();
       this.imageDetailPage = null;
+    }
+    if (this.titleScrollAnimation) {
+      this.titleScrollAnimation.destroy();
+      this.titleScrollAnimation = null;
     }
     this.eventBus.clear();
 

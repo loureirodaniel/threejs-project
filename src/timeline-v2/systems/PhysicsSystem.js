@@ -79,6 +79,9 @@ class PhysicsSystem {
       return;
     }
 
+    // Store previous offset before physics step
+    const previousOffset = this.state.get('timelineOffset');
+
     if (Math.abs(this.velocity) > 0.001) {
       const friction = this.state.get('friction');
       const frictionFactor = Math.pow(friction, deltaTime * 60);
@@ -101,6 +104,16 @@ class PhysicsSystem {
         });
         this.scheduleSnapCheck();
       }
+    }
+
+    // Emit scroll event when offset meaningfully changes
+    const currentOffset = this.state.get('timelineOffset');
+    if (Math.abs(currentOffset - previousOffset) > 0.01) {
+      this.eventBus.emit('physics:scrolled', {
+        offset: currentOffset,
+        velocity: this.velocity,
+        progress: this.getScrollProgress()
+      });
     }
   }
 
@@ -281,6 +294,32 @@ class PhysicsSystem {
     if (Math.abs(this.velocity) < snapVelocityThreshold) {
       this.snapToNearest();
     }
+  }
+
+  /**
+   * Calculate normalized scroll progress through the timeline (0..1)
+   * @returns {number}
+   */
+  getScrollProgress() {
+    const yearCount = TIMELINE_CONFIG.YEAR_COUNT || 10;
+    const calculatedSpacing = this.state.get('calculatedSpacing');
+    const firstPosition = TIMELINE_CONFIG.FIRST_POSITION || -4.5;
+    const fallbackPositions = TIMELINE_CONFIG.SNAP_POSITIONS || [];
+
+    let minOffset = firstPosition;
+    let maxOffset = firstPosition;
+
+    if (calculatedSpacing) {
+      maxOffset = firstPosition + ((yearCount - 1) * calculatedSpacing);
+    } else if (fallbackPositions.length > 1) {
+      minOffset = fallbackPositions[0];
+      maxOffset = fallbackPositions[fallbackPositions.length - 1];
+    }
+
+    const range = Math.max(0.0001, Math.abs(maxOffset - minOffset));
+    const offset = this.state.get('timelineOffset');
+    const normalized = Math.abs(offset - minOffset) / range;
+    return Math.max(0, Math.min(1, normalized));
   }
 
   /**
