@@ -80,7 +80,16 @@ class RenderSystem {
         this.paused = false;
         this.stopDetailRenderLoop();
         document.body.classList.remove('detail-view-open');
-        console.log('👁️ Title and year visible again');
+        // Restore hidden elements
+        setTimeout(() => {
+          document.querySelectorAll('[data-was-hidden]').forEach(el => {
+            el.style.removeProperty('display');
+            el.style.removeProperty('opacity');
+            el.style.removeProperty('visibility');
+            delete el.dataset.wasHidden;
+          });
+          console.log('👁️ Title and year restored');
+        }, 100);
         console.log('▶️ Timeline rendering resumed');
       })
     );
@@ -117,6 +126,45 @@ class RenderSystem {
         });
         document.body.classList.add('detail-view-open');
         console.log('🙈 Title and year hidden');
+
+        // Force hide title with multiple methods
+        setTimeout(() => {
+          // Method 1: Hide by text content
+          document.querySelectorAll('h1, h2, div, span, p').forEach(el => {
+            const text = el.textContent?.toLowerCase() || '';
+            const isTitle = text.includes('three') && text.includes('project');
+            const notInDetail = !el.closest('.detail-overlay');
+            
+            if (isTitle && notInDetail && el.childNodes.length < 3) {
+              el.dataset.wasHidden = 'true';
+              el.style.setProperty('display', 'none', 'important');
+              el.style.setProperty('opacity', '0', 'important');
+              el.style.setProperty('visibility', 'hidden', 'important');
+              console.log('🙈 Hid title:', el.tagName, text.substring(0, 30));
+            }
+          });
+          
+          // Method 2: Hide by class patterns
+          const selectors = [
+            '[class*="title"]',
+            '[class*="Title"]', 
+            '[class*="header"]',
+            '[class*="Header"]'
+          ];
+          
+          selectors.forEach(selector => {
+            document.querySelectorAll(selector).forEach(el => {
+              if (!el.closest('.detail-overlay')) {
+                const text = el.textContent?.toLowerCase() || '';
+                if (text.includes('three') || text.includes('project')) {
+                  el.dataset.wasHidden = 'true';
+                  el.style.setProperty('display', 'none', 'important');
+                  console.log('🙈 Hid by selector:', selector);
+                }
+              }
+            });
+          });
+        }, 100);
         console.log('👁️ Detail page reveal triggered');
       }
     };
@@ -577,6 +625,45 @@ class RenderSystem {
             });
             document.body.classList.add('detail-view-open');
             console.log('🙈 Title and year hidden');
+
+            // Force hide title with multiple methods
+            setTimeout(() => {
+              // Method 1: Hide by text content
+              document.querySelectorAll('h1, h2, div, span, p').forEach(el => {
+                const text = el.textContent?.toLowerCase() || '';
+                const isTitle = text.includes('three') && text.includes('project');
+                const notInDetail = !el.closest('.detail-overlay');
+                
+                if (isTitle && notInDetail && el.childNodes.length < 3) {
+                  el.dataset.wasHidden = 'true';
+                  el.style.setProperty('display', 'none', 'important');
+                  el.style.setProperty('opacity', '0', 'important');
+                  el.style.setProperty('visibility', 'hidden', 'important');
+                  console.log('🙈 Hid title:', el.tagName, text.substring(0, 30));
+                }
+              });
+              
+              // Method 2: Hide by class patterns
+              const selectors = [
+                '[class*="title"]',
+                '[class*="Title"]', 
+                '[class*="header"]',
+                '[class*="Header"]'
+              ];
+              
+              selectors.forEach(selector => {
+                document.querySelectorAll(selector).forEach(el => {
+                  if (!el.closest('.detail-overlay')) {
+                    const text = el.textContent?.toLowerCase() || '';
+                    if (text.includes('three') || text.includes('project')) {
+                      el.dataset.wasHidden = 'true';
+                      el.style.setProperty('display', 'none', 'important');
+                      console.log('🙈 Hid by selector:', selector);
+                    }
+                  }
+                });
+              });
+            }, 100);
 
             // Verify canvas is visible
             const canvas = this.renderer?.domElement;
