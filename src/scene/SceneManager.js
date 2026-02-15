@@ -5,7 +5,7 @@ export class SceneManager {
     constructor() {
         this.scene = new THREE.Scene();
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        this.renderer = new THREE.WebGLRenderer({ antialias: true });
+        this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
         this.controls = null;
         this.isTransitioning = false;
         
@@ -15,7 +15,8 @@ export class SceneManager {
     init() {
         // Setup renderer
         this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setClearColor(0x000000);
+        this.renderer.setClearColor(0x000000, 1);
+        console.log('🎨 Renderer clear color set to black');
         document.body.appendChild(this.renderer.domElement);
         
         // Setup camera

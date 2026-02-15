@@ -29,7 +29,7 @@ class ImageDetailPage {
     this.eventBus.on('timeline:image:enlarge', this.open.bind(this));
     this.eventBus.on('timeline:image:close', this.close.bind(this));
     
-    console.log('✅ ImageDetailPage initialized');
+    // console.log('✅ ImageDetailPage initialized');
   }
   
   /**
@@ -45,12 +45,34 @@ class ImageDetailPage {
       left: 0;
       width: 100vw;
       height: 100vh;
-      background: #000;
+      background: transparent;
       z-index: 9999;
       opacity: 0;
       pointer-events: none;
       overflow-y: auto;
     `;
+
+    // CRITICAL: Block ALL pointer/touch/mouse events from reaching timeline
+    const blockEvent = (e) => {
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      // console.log('🔒 Event blocked at detail container:', e.type);
+    };
+    
+    // Block all mouse events
+    this.container.addEventListener('mousedown', blockEvent, { capture: true });
+    this.container.addEventListener('mousemove', blockEvent, { capture: true });
+    this.container.addEventListener('mouseup', blockEvent, { capture: true });
+    
+    // Block all touch events
+    this.container.addEventListener('touchstart', blockEvent, { capture: true, passive: false });
+    this.container.addEventListener('touchmove', blockEvent, { capture: true, passive: false });
+    this.container.addEventListener('touchend', blockEvent, { capture: true, passive: false });
+    
+    // Block wheel/scroll
+    this.container.addEventListener('wheel', blockEvent, { capture: true, passive: false });
+    
+    // console.log('✅ All input events blocked at container level');
     
     // Close button (top-left)
     this.closeButton = document.createElement('button');
@@ -60,22 +82,21 @@ class ImageDetailPage {
       </svg>
     `;
     this.closeButton.style.cssText = `
-      position: absolute;
+      position: fixed;
       top: 20px;
       right: 20px;
-      width: 50px;
-      height: 50px;
-      background: rgba(255, 255, 255, 0.2);
-      backdrop-filter: blur(10px);
-      border: 1px solid rgba(255, 255, 255, 0.3);
+      width: 40px;
+      height: 40px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 2px solid rgba(255, 255, 255, 0.3);
       border-radius: 50%;
       cursor: pointer;
-      z-index: 10;
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 24px;
       color: white;
+      z-index: 200;
       transition: all 0.3s ease;
     `;
 
@@ -108,6 +129,23 @@ class ImageDetailPage {
       pointer-events: none;
     `;
 
+    // Create black background overlay (covers WebGL canvas)
+    const blackOverlay = document.createElement('div');
+    blackOverlay.className = 'black-overlay';
+    blackOverlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: #000;
+      z-index: 0;
+      opacity: 0;
+      pointer-events: none;
+    `;
+    this.container.appendChild(blackOverlay);
+    this.blackOverlay = blackOverlay;
+
     // Gradient overlay for readability
     const gradientOverlay = document.createElement('div');
     gradientOverlay.className = 'detail-gradient-overlay';
@@ -116,25 +154,26 @@ class ImageDetailPage {
       bottom: 0;
       left: 0;
       width: 100%;
-      height: 50%;
-      background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 100%);
+      height: 60%;
+      background: linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.7) 40%, transparent 100%);
       z-index: 2;
       pointer-events: none;
+      opacity: 0;
     `;
 
     this.contentContainer = document.createElement('div');
     this.contentContainer.className = 'detail-content-container';
     this.contentContainer.id = 'detail-content';
     this.contentContainer.style.cssText = `
-      position: absolute;
-      top: 100vh;
-      left: 0;
-      width: 100%;
-      min-height: 100vh;
-      padding: 60px 40px;
-      background: #000;
-      z-index: 3;
+      position: relative;
+      z-index: 100;
+      padding: 40px;
+      padding-top: 60vh;
       color: white;
+      max-width: 800px;
+      margin: 0 auto;
+      opacity: 0;
+      min-height: 100vh;
     `;
     
     this.container.appendChild(this.fullscreenImage);
@@ -144,7 +183,7 @@ class ImageDetailPage {
     this.container.style.overflow = 'auto'; // Enable vertical scroll
     document.body.appendChild(this.container);
     
-    console.log('✅ ImageDetailPage container created');
+    // console.log('✅ ImageDetailPage container created');
   }
   
   /**
@@ -154,8 +193,8 @@ class ImageDetailPage {
    * @param {boolean} data.reveal - If true, instantly reveal the preloaded page
    */
   open(data) {
-    console.log('📖 ImageDetailPage.open() called');
-    console.log('📖 Raw data received:', data);
+    // console.log('📖 ImageDetailPage.open() called');
+    // console.log('📖 Raw data received:', data);
     
     if (!data) {
       console.error('❌ No data object provided at all');
@@ -169,11 +208,11 @@ class ImageDetailPage {
       if (!imageData) {
         console.warn('⚠️ No imageData in data object, checking for direct properties...');
         if (data.year || data.id || data.imageUrl) {
-          console.log('✅ Data object appears to be imageData itself, using it directly');
+          // console.log('✅ Data object appears to be imageData itself, using it directly');
           imageData = data;
         } else {
           console.error('❌ Cannot find imageData anywhere in provided data');
-          console.log('Available keys in data:', Object.keys(data));
+          // console.log('Available keys in data:', Object.keys(data));
           return null;
         }
       }
@@ -192,7 +231,7 @@ class ImageDetailPage {
 
     // Preload mode
     if (preloadMode) {
-      console.log('🔧 PRELOAD MODE: Setting up DOM but keeping invisible');
+      // console.log('🔧 PRELOAD MODE: Setting up DOM but keeping invisible');
       
       const imageData = resolveImageData();
       if (!imageData) return;
@@ -212,72 +251,87 @@ class ImageDetailPage {
         this.contentContainer.style.opacity = '0';
       }
       
-      console.log('✅ Detail page preloaded (invisible)');
+      // console.log('✅ Detail page preloaded (invisible)');
       return;
     }
 
     // Reveal mode
     if (revealMode) {
       console.log('🎨 REVEAL MODE: Smooth transition from 3D plane to detail image');
+      
+      const showImageOnly = data.showImageOnly !== false; // Default true
       const imageData = resolveImageData();
       if (!imageData) return;
       prepareDetailDom(imageData);
       
-      // Show container
       this.container.style.pointerEvents = 'auto';
       
-      // Fade in container background
+      // Fade in container
       gsap.to(this.container, {
         opacity: 1,
-        duration: 0.8,               // Slower (was 0.5)
-        ease: 'power3.out'          // Smoother
+        duration: 0.3,
+        ease: 'power2.out'
       });
       
-      // Smoothly reveal fullscreen image
-      gsap.to(this.fullscreenImage, {
+      // Fade in black overlay
+      gsap.to(this.blackOverlay, {
         opacity: 1,
-        scale: 1,
-        duration: 0.6,               // Slower (was 0.3)
-        ease: 'power4.out',          // Smoother (was power3.out)
-        delay: 0.1,                  // Slightly more delay
-        onStart: () => {
-          console.log('🎨 Starting slow, smooth image reveal');
-        },
-        onComplete: () => {
-          console.log('✅ Image reveal complete');
-        }
+        duration: 0.5,
+        ease: 'power2.out'
       });
       
-      // Fade in content after image is visible
+      // Show DOM image (since WebGL has issues)
+      if (showImageOnly) {
+        console.log('✅ Showing DOM fullscreen image');
+        
+        // Position image at top
+        this.fullscreenImage.style.display = 'block';
+        this.fullscreenImage.style.position = 'fixed';
+        this.fullscreenImage.style.top = '0';
+        this.fullscreenImage.style.left = '0';
+        this.fullscreenImage.style.width = '100vw';
+        this.fullscreenImage.style.height = '100vh';
+        this.fullscreenImage.style.objectFit = 'cover';
+        this.fullscreenImage.style.zIndex = '60';  // Above WebGL and black overlay
+        
+        // Fade in the image
+        gsap.to(this.fullscreenImage, {
+          opacity: 1,
+          duration: 0.6,
+          ease: 'power2.out'
+        });
+      }
+      
+      // Fade in content
       setTimeout(() => {
         if (this.contentContainer) {
           gsap.to(this.contentContainer, {
             opacity: 1,
-            duration: 1.0,             // Slower (was 0.8)
-            ease: 'power3.out'        // Smoother
+            duration: 1.0,
+            ease: 'power3.out'
           });
         }
-      }, 900);                         // Later start (was 600)
+      }, 600);
       
-      return; // CRITICAL: Exit here
+      return;
     }
 
     // Normal mode starts here
-    console.log('📖 data.imageData:', data?.imageData);
-    console.log('📖 data.plane:', data?.plane);
+    // console.log('📖 data.imageData:', data?.imageData);
+    // console.log('📖 data.plane:', data?.plane);
     this.currentPlane = data?.plane;
     const seamlessMode = data?.seamless === true;
     this.seamlessMode = seamlessMode;
     if (seamlessMode) {
-      console.log('🎨 Opening in SEAMLESS mode - syncing with 3D animation');
+      // console.log('🎨 Opening in SEAMLESS mode - syncing with 3D animation');
     }
 
     const imageData = resolveImageData();
     if (!imageData) return;
-    console.log('✅ Using imageData:', imageData);
+    // console.log('✅ Using imageData:', imageData);
     
     if (this.isOpen) {
-      console.log('Detail page already open, updating content...');
+      // console.log('Detail page already open, updating content...');
       this.updateContent(imageData);
       return;
     }
@@ -304,7 +358,7 @@ class ImageDetailPage {
       enlargedImageId: imageData.id || imageData.year
     });
     
-    console.log('✅ Detail page opened for year:', imageData.year);
+    // console.log('✅ Detail page opened for year:', imageData.year);
   }
   
   /**
@@ -318,13 +372,13 @@ class ImageDetailPage {
                      imageData.imageUrl || 
                      imageData.image || 
                      imageData.src;
-    console.log('📸 Image URL:', imageUrl);
-    console.log('📸 Full imageData:', imageData);
+    // console.log('📸 Image URL:', imageUrl);
+    // console.log('📸 Full imageData:', imageData);
     
     if (this.fullscreenImage) {
       // Ensure image loads before continuing
       this.fullscreenImage.onload = () => {
-        console.log('✅ Fullscreen image loaded:', imageUrl);
+        // console.log('✅ Fullscreen image loaded:', imageUrl);
       };
 
       this.fullscreenImage.onerror = () => {
@@ -465,7 +519,7 @@ class ImageDetailPage {
       this.fullscreenImage.style.transform = 'scale(0.95)';
     }
     
-    console.log('✅ Content updated for year:', imageData.year);
+    // console.log('✅ Content updated for year:', imageData.year);
   }
   
   /**
@@ -509,56 +563,82 @@ class ImageDetailPage {
    * Close detail page
    */
   close() {
-    console.log('📖 Closing detail page');
+    // console.log('📖 ImageDetailPage.close() called');
     
     if (!this.isOpen) {
-      console.log('Detail page not open');
       return;
     }
     
-    // Animate out
-    gsap.to(this.container, {
+    this.isOpen = false;
+    
+    // Fade out content
+    gsap.to(this.contentContainer, {
       opacity: 0,
       duration: 0.3,
+      ease: 'power2.in'
+    });
+    
+    // Fade out black overlay
+    if (this.blackOverlay) {
+      gsap.to(this.blackOverlay, {
+        opacity: 0,
+        duration: 0.3,
+        ease: 'power2.in'
+      });
+    }
+    
+    // Fade out container
+    gsap.to(this.container, {
+      opacity: 0,
+      duration: 0.4,
       ease: 'power2.in',
       onComplete: () => {
-        // Restore 3D plane visibility
-        const plane = this.currentPlane;
-        if (plane) {
-          plane.visible = true;
-          console.log('👁️ 3D plane restored');
-          
-          // Reset plane scale/position
-          gsap.to(plane.scale, {
-            x: 0.85,
-            y: 0.85,
-            duration: 0.3,
-            ease: 'power2.out'
-          });
-        }
-
-        this.container.style.display = 'none';
-        this.container.style.pointerEvents = 'none';
         this.container.classList.remove('active');
-        this.isOpen = false;
-        this.currentImageData = null;
-        this.seamlessMode = false;
+        this.container.style.pointerEvents = 'none';
         
-        // Re-enable body scroll
-        document.body.style.overflow = '';
+        // Re-enable canvas
+        if (window.app) {
+          window.app.enableCanvasInteraction();
+        }
         
-        // Resume timeline rendering
-        this.eventBus.emit('timeline:resume');
+        const renderSystem = window.app?.timelineController?.renderSystem;
+
+        // Restore hidden planes
+        if (renderSystem && renderSystem.hiddenPlanes) {
+          renderSystem.hiddenPlanes.forEach(plane => {
+            renderSystem.scene.add(plane);
+            plane.visible = true;
+          });
+          renderSystem.hiddenPlanes = [];
+        }
+        
+        // Animate fullscreen plane back
+        if (renderSystem && this.currentPlane) {
+          const plane = this.currentPlane;
+          const originalScale = plane.userData.originalScale;
+          const originalPosition = plane.userData.originalPosition;
+          
+          if (originalScale && originalPosition && plane.userData.isFullscreen) {
+            renderSystem.rippleAnimation.animateFromFullscreen(
+              plane,
+              originalScale,
+              originalPosition,
+              () => {
+                // Resume timeline
+                if (window.app?.timelineController) {
+                  // Unfreeze camera
+                  if (window.app.timelineController.cameraSystem) {
+                    window.app.timelineController.cameraSystem.unfreezeCamera();
+                  }
+                  
+                  window.app.timelineController.resumeTimeline();
+                }
+              }
+            );
+          }
+        }
       }
     });
-    
-    // Update state
-    this.state.setState({
-      isImageEnlarged: false,
-      enlargedImageId: null
-    });
-    
-    console.log('✅ Detail page closing');
   }
   
   /**
@@ -575,7 +655,7 @@ class ImageDetailPage {
     
     document.body.style.overflow = '';
     
-    console.log('🧹 ImageDetailPage disposed');
+    // console.log('🧹 ImageDetailPage disposed');
   }
 }
 

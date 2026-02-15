@@ -53,6 +53,7 @@ class TimelineController {
 
     this.unsubscribeFns = [];
     this.lastFrameTime = 0;
+    this.isPaused = false;
 
     this.init();
   }
@@ -169,6 +170,63 @@ class TimelineController {
       direction: clampedYear > this.getCurrentYear() ? 'next' : 'prev',
       targetIndex
     });
+  }
+
+  /**
+   * Completely freeze timeline when in fullscreen mode
+   */
+  pauseTimeline() {
+    console.log('⏸️ Pausing timeline - disabling all systems');
+    
+    // Disable physics - SET scrollEnabled to false
+    if (this.physicsSystem) {
+      this.physicsSystem.scrollEnabled = false;
+      console.log('🔒 PhysicsSystem disabled:', this.physicsSystem.scrollEnabled);
+    }
+    
+    // Disable input
+    if (this.inputSystem) {
+      this.inputSystem.enabled = false;
+      console.log('🔒 InputSystem disabled');
+    }
+    
+    // Disable choreographer
+    if (this.animationChoreographer) {
+      this.animationChoreographer.enabled = false;
+      console.log('🔒 AnimationChoreographer disabled');
+    }
+    
+    // Flag as paused
+    this.isPaused = true;
+    
+    console.log('✅ Timeline paused - all systems disabled');
+  }
+
+  /**
+   * Resume timeline after closing fullscreen
+   */
+  resumeTimeline() {
+    console.log('▶️ Resuming timeline - enabling all systems');
+    
+    // Re-enable physics
+    if (this.physicsSystem) {
+      this.physicsSystem.scrollEnabled = true;
+    }
+    
+    // Re-enable input
+    if (this.inputSystem) {
+      this.inputSystem.enabled = true;
+    }
+    
+    // Re-enable choreographer
+    if (this.animationChoreographer) {
+      this.animationChoreographer.enabled = true;
+    }
+    
+    // Flag as active
+    this.isPaused = false;
+    
+    console.log('✅ Timeline resumed');
   }
 
   // ============================================

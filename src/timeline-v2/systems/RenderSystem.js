@@ -18,7 +18,7 @@
 
 import * as THREE from 'three';
 import { gsap } from 'gsap';
-import { ImageExpandAnimation } from './ImageExpandAnimation.js';
+import { RippleAnimation } from './RippleAnimation.js';
 import * as TimelineUtils from '../utils/TimelineUtils.js';
 import { EFFECTS_CONFIG, TIMELINE_CONFIG } from '../utils/TimelineConstants.js';
 
@@ -45,12 +45,10 @@ class RenderSystem {
     this.currentAnimatingPlane = null;
     this.currentImageData = null;
     const app = typeof window !== 'undefined' ? (window.app || {}) : {};
+    this.camera = app.camera;
 
     // Initialize expand animation system
-    this.expandAnimation = new ImageExpandAnimation(
-      app.camera,
-      app.renderer
-    );
+    this.rippleAnimation = new RippleAnimation(this.camera);
 
     this.unsubscribeFns = [];
     this.init();
@@ -121,6 +119,35 @@ class RenderSystem {
    * Main render update - called every frame
    */
   update(deltaTime) {
+    this.imagePlanes = this.imagePlanes || window.app?.imagePlanes;
+
+    // CRITICAL: Restore fullscreen planes if they've been moved
+    this.imagePlanes?.planes?.forEach(plane => {
+      if (plane.userData.isFullscreen && plane.userData.isFrozen) {
+        const targetScale = plane.userData.fullscreenScale;
+        const targetPosition = plane.userData.fullscreenPosition;
+        
+        if (targetScale && targetPosition) {
+          // Check if plane has been moved from fullscreen
+          const scaleDiff = Math.abs(plane.scale.x - targetScale.x);
+          const posDiff = Math.abs(plane.position.x - targetPosition.x);
+          
+          if (scaleDiff > 0.01 || posDiff > 0.01) {
+            console.warn('🚨 Fullscreen plane was moved! Restoring...', {
+              currentScale: plane.scale.x.toFixed(2),
+              targetScale: targetScale.x.toFixed(2),
+              currentPos: plane.position.x.toFixed(2),
+              targetPos: targetPosition.x.toFixed(2)
+            });
+            
+            // Force restore fullscreen transform
+            plane.scale.copy(targetScale);
+            plane.position.copy(targetPosition);
+          }
+        }
+      }
+    });
+
     if (this.paused) {
       return; // Skip rendering when detail page is open
     }
@@ -140,6 +167,39 @@ class RenderSystem {
       this.updateVignette(timelineOffset);
       this.lastVignetteUpdate = now;
     }
+  }
+
+  render() {
+    this.imagePlanes = this.imagePlanes || window.app?.imagePlanes;
+    this.renderer = this.renderer || window.app?.renderer;
+    this.scene = this.scene || window.app?.scene;
+    this.camera = this.camera || window.app?.camera;
+
+    const fullscreenPlane = this.imagePlanes.planes.find(p => p.userData.isFullscreen);
+    
+    if (fullscreenPlane) {
+      // FORCE plane properties every frame
+      fullscreenPlane.visible = true;
+      fullscreenPlane.renderOrder = 9999;
+      
+      // Ensure it's in the scene
+      if (!fullscreenPlane.parent) {
+        this.scene.add(fullscreenPlane);
+        console.warn('⚠️ Re-added fullscreen plane to scene!');
+      }
+      
+      // Ensure material is visible
+      if (fullscreenPlane.material) {
+        fullscreenPlane.material.opacity = 1;
+        fullscreenPlane.material.visible = true;
+      }
+      
+      this.renderer.setClearColor(0x000000, 1);
+    } else {
+      this.renderer.setClearColor(0x000000, 0);
+    }
+
+    this.renderer.render(this.scene, this.camera);
   }
 
   /**
@@ -172,6 +232,7 @@ class RenderSystem {
     // Update transitioned initial planes (first sequence: 0..)
     transitionedPlanes.forEach((plane, index) => {
       if (!plane) return;
+      if (plane.userData?.isFrozen && plane.userData?.isFullscreen) return;
       const originalX = firstPosition + index * spacing;
       plane.position.x = originalX - safeOffset;
       plane.visible = Math.abs(plane.position.x) < cullDistance;
@@ -180,6 +241,7 @@ class RenderSystem {
     // Update timeline planes (additional planes that continue sequence, usually from 2018+)
     timelinePlanes.forEach((plane, index) => {
       if (!plane) return;
+      if (plane.userData?.isFrozen && plane.userData?.isFullscreen) return;
       const imageIndex = 8 + index;
       const originalX = firstPosition + imageIndex * spacing;
       plane.position.x = originalX - safeOffset;
@@ -206,6 +268,7 @@ class RenderSystem {
 
     allPlanes.forEach((plane) => {
       if (!plane || !plane.visible || !plane.material) return;
+      if (plane.userData?.isFrozen && plane.userData?.isFullscreen) return;
 
       const distance = Math.abs(plane.position.x - centerX);
 
@@ -329,6 +392,7 @@ class RenderSystem {
       }
       
       const imagePlanes = app.imagePlanes;
+      this.imagePlanes = imagePlanes;
       const planes = imagePlanes.planes || imagePlanes.getPlanes();
       const imageData = imagePlanes.imageData;
       const camera = app.camera;
@@ -400,23 +464,72 @@ class RenderSystem {
           this.currentAnimatingPlane = animatingPlane;
           this.currentImageData = imageDataForDetail;
 
-          this.expandAnimation.animateToDetail(animatingPlane, () => {
-            console.log('✅ Animation complete, executing handoff');
+          const event = data;
+          // Store click position
+          const clickPos = { x: event.clientX, y: event.clientY };
+
+          // Store original transforms for restoration later
+          animatingPlane.userData.originalScale = animatingPlane.scale.clone();
+          animatingPlane.userData.originalPosition = animatingPlane.position.clone();
+
+          console.log('💾 Stored original transforms:', {
+            scale: animatingPlane.userData.originalScale,
+            position: animatingPlane.userData.originalPosition
+          });
+
+          this.physicsSystem = app.timelineController?.physicsSystem || this.physicsSystem;
+
+          // NEW: Disable physics system to prevent interference
+          if (this.physicsSystem) {
+            this.physicsSystem.scrollEnabled = false;
+            console.log('🔒 Physics system DISABLED for fullscreen animation');
+          }
+
+          // Start ripple animation
+          this.rippleAnimation.animateToFullscreen(animatingPlane, clickPos, () => {
+            console.log('🌊 Ripple animation complete, showing detail page');
             
-            // STEP 3: At exact moment animation completes, do synchronized handoff
+            // PAUSE ENTIRE TIMELINE
+            if (window.app?.timelineController) {
+              window.app.timelineController.pauseTimeline();
+
+              // Freeze camera
+              if (window.app.timelineController.cameraSystem) {
+                window.app.timelineController.cameraSystem.freezeCamera();
+              }
+            }
+
+            // Disable canvas interactions
+            if (window.app) {
+              window.app.disableCanvasInteraction();
+            }
             
-            // 3a: Hide 3D plane
-            animatingPlane.visible = false;
-            console.log('🙈 3D plane hidden');
-            
-            // 3b: Reveal detail page fullscreen image (already loaded and positioned)
-            detailPage.open({
-              plane: animatingPlane,
-              imageData: imageDataForDetail,
-              reveal: true // Instantly shows preloaded page
+            // Store hidden planes for restoration
+            this.hiddenPlanes = [];
+            this.fullscreenPlane = animatingPlane;  // Store reference
+
+            // Remove all OTHER planes from scene (NOT the fullscreen one!)
+            this.imagePlanes.planes.forEach(p => {
+              if (p.uuid !== animatingPlane.uuid) {
+                // Remove from scene completely
+                if (p.parent) {
+                  p.parent.remove(p);
+                  this.hiddenPlanes.push(p);
+                }
+              } else {
+                p.visible = true;
+                p.renderOrder = 9999;
+                console.log('👁️ Fullscreen plane render order:', p.renderOrder);
+              }
             });
             
-            console.log('👁️ Detail page revealed - seamless handoff complete');
+            // Show detail page
+            detailPage.open({
+              plane: animatingPlane,
+              imageData: this.currentImageData,
+              reveal: true,
+              showImageOnly: true
+            });
           });
 
           // Optional: Listen for animation progress to hide plane earlier (more seamless)
@@ -528,8 +641,7 @@ class RenderSystem {
     }
     this.currentAnimatingPlane = null;
     this.currentImageData = null;
-    this.expandAnimation?.cancel?.();
-    this.expandAnimation = null;
+    this.rippleAnimation = null;
     this.timelineScene = null;
     this.effects = null;
 

@@ -26,6 +26,11 @@ class PhysicsSystem {
     this.state = state;
     this.eventBus = eventBus;
 
+    // CRITICAL: Initialize as a writable property
+    this.scrollEnabled = true;
+    this.imagePlanes = null;
+    // console.log('✅ PhysicsSystem initialized with scrollEnabled:', this.scrollEnabled);
+
     // Physics state (local to this system)
     this.velocity = 0;
     this.targetVelocity = 0;
@@ -45,7 +50,7 @@ class PhysicsSystem {
     this.eventBus.on('timeline:drag:end', this.onDragEnd.bind(this));
     this.eventBus.on('timeline:navigate', this.onNavigate.bind(this));
 
-    console.log('✅ PhysicsSystem initialized');
+    // console.log('✅ PhysicsSystem initialized');
   }
 
   /**
@@ -54,6 +59,18 @@ class PhysicsSystem {
    * @param {number} timestamp - High-res timestamp from requestAnimationFrame
    */
   update(deltaTime, timestamp) {
+    if (!this.scrollEnabled) return;
+
+    // NEW: Don't update planes if one is fullscreen
+    if (!this.imagePlanes) {
+      this.imagePlanes = window.app?.imagePlanes || null;
+    }
+    const fullscreenPlane = this.imagePlanes?.planes?.find(p => p.userData.isFullscreen);
+    if (fullscreenPlane) {
+      // console.log('🔒 PhysicsSystem: Fullscreen plane detected, skipping updates');
+      return;
+    }
+
     if (this.state.get('isTransitioning') || this.isSnapping) {
       return;
     }
@@ -92,6 +109,12 @@ class PhysicsSystem {
    * @param {object} data - { delta, timestamp, deltaX, deltaY }
    */
   onScroll({ delta, timestamp }) {
+    // Check if scrolling is enabled
+    if (!this.scrollEnabled) {
+      // console.log('🔒 Scroll event blocked - system disabled');
+      return; // Exit early
+    }
+
     console.debug('PhysicsSystem: Scroll event, delta:', delta);
 
     const sensitivity = this.state.get('sensitivity');
@@ -116,6 +139,11 @@ class PhysicsSystem {
    * @param {object} data - { delta, velocity, timestamp }
    */
   onDragMove({ delta, velocity, timestamp }) {
+    if (!this.scrollEnabled) {
+      // console.log('🔒 Drag move BLOCKED - system disabled');
+      return;
+    }
+
     const currentOffset = this.state.get('timelineOffset');
     let newOffset = currentOffset + delta;
     newOffset = this.applyBounds(newOffset, true);
@@ -134,6 +162,11 @@ class PhysicsSystem {
    * @param {object} data - { velocity, timestamp }
    */
   onDragEnd({ velocity, timestamp }) {
+    if (!this.scrollEnabled) {
+      // console.log('🔒 Drag end BLOCKED - system disabled');
+      return;
+    }
+
     console.debug('PhysicsSystem: Drag end, velocity:', velocity);
 
     const dragToScrollMultiplier = PHYSICS_CONFIG.DRAG_TO_SCROLL_MULTIPLIER ?? 0.5;
@@ -155,6 +188,11 @@ class PhysicsSystem {
    * @param {object} data - { direction: 'prev'|'next', targetIndex }
    */
   onNavigate({ direction, targetIndex }) {
+    if (!this.scrollEnabled) {
+      // console.log('🔒 Navigation BLOCKED - system disabled');
+      return;
+    }
+
     console.debug('PhysicsSystem: Navigate to index', targetIndex);
 
     this.velocity = 0;
@@ -180,13 +218,13 @@ class PhysicsSystem {
       // Use dynamically calculated spacing from AnimationChoreographer
       minOffset = firstPosition;
       maxOffset = firstPosition + ((yearCount - 1) * calculatedSpacing);
-      console.log(`📏 PhysicsSystem: Using dynamic bounds: ${minOffset.toFixed(2)} to ${maxOffset.toFixed(2)}`);
+      // console.log(`📏 PhysicsSystem: Using dynamic bounds: ${minOffset.toFixed(2)} to ${maxOffset.toFixed(2)}`);
     } else {
       // Fallback to snap positions
       const positions = TIMELINE_CONFIG.SNAP_POSITIONS;
       minOffset = positions[0];
       maxOffset = positions[positions.length - 1];
-      console.log(`📏 PhysicsSystem: Using static bounds: ${minOffset.toFixed(2)} to ${maxOffset.toFixed(2)}`);
+      // console.log(`📏 PhysicsSystem: Using static bounds: ${minOffset.toFixed(2)} to ${maxOffset.toFixed(2)}`);
     }
 
     if (allowOverscroll) {
@@ -271,7 +309,7 @@ class PhysicsSystem {
       return;
     }
     
-    console.log(`📍 Snapping to index ${clampedIndex}, offset ${targetOffset.toFixed(2)}`);
+    // console.log(`📍 Snapping to index ${clampedIndex}, offset ${targetOffset.toFixed(2)}`);
     this.snapToOffset(targetOffset, clampedIndex);
   }
 
@@ -355,7 +393,7 @@ class PhysicsSystem {
       this.snapAnimation = null;
     }
 
-    console.log('PhysicsSystem disposed');
+    // console.log('PhysicsSystem disposed');
   }
 }
 

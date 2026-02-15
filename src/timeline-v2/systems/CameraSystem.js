@@ -34,6 +34,8 @@ class CameraSystem {
     this.pullbackStartTime = 0;
     this.pullbackAnimation = null;
     this.pullbackCheckRafId = null;
+    this.cameraFrozen = false;
+    this.frozenPosition = null;
 
     this.unsubscribeFns = [];
     this.init();
@@ -56,12 +58,41 @@ class CameraSystem {
    * @param {number} deltaTime - Time since last frame in seconds
    */
   update(deltaTime) {
+    // Don't update camera if frozen
+    if (this.cameraFrozen) {
+      if (this.frozenPosition) {
+        this.camera.position.copy(this.frozenPosition);
+      }
+      return;
+    }
+
     const currentScene = this.state.get('currentSceneIndex');
 
     // Only update look-at on timeline scene
     if (currentScene === 1 && !this.state.get('isTransitioning')) {
       this.updateLookAt(deltaTime);
     }
+  }
+
+  /**
+   * Freeze camera for fullscreen view
+   */
+  freezeCamera() {
+    this.cameraFrozen = true;
+    this.frozenPosition = this.camera.position.clone();
+    console.log('📷 Camera frozen at:', {
+      x: this.frozenPosition.x.toFixed(2),
+      y: this.frozenPosition.y.toFixed(2),
+      z: this.frozenPosition.z.toFixed(2)
+    });
+  }
+
+  /**
+   * Unfreeze camera
+   */
+  unfreezeCamera() {
+    this.cameraFrozen = false;
+    console.log('📷 Camera unfrozen');
   }
 
   /**

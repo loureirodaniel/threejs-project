@@ -61,6 +61,7 @@ export class App {
         this.timelineController = null;
         this.imageData = null;
         this.lastFrameTime = 0;
+        this.isCanvasInteractionDisabled = false;
 
         // Comment system
         this.commentStorage = null;
@@ -88,6 +89,18 @@ export class App {
         const scene = this.sceneManager.getScene();
         const camera = this.sceneManager.getCamera();
         const renderer = this.sceneManager.getRenderer();
+        this.renderer = renderer;
+
+        // Set canvas z-index BELOW detail view
+        this.renderer.domElement.style.position = 'fixed';
+        this.renderer.domElement.style.top = '0';
+        this.renderer.domElement.style.left = '0';
+        this.renderer.domElement.style.zIndex = '50';
+        this.renderer.domElement.style.width = '100vw';
+        this.renderer.domElement.style.height = '100vh';
+        this.renderer.domElement.style.pointerEvents = 'auto';
+
+        console.log('🎨 WebGL canvas z-index set to 50');
 
         // Fetch timeline data
         console.log('📥 Loading timeline data...');
@@ -362,6 +375,25 @@ export class App {
         errorDiv.textContent = message;
         document.body.appendChild(errorDiv);
     }
+
+    // Method to disable WebGL canvas interactions
+    disableCanvasInteraction() {
+        // Remove logging to prevent spam
+        if (this.renderer && this.renderer.domElement) {
+            this.renderer.domElement.style.pointerEvents = 'none';
+            this.renderer.domElement.style.userSelect = 'none';
+        }
+    }
+
+    // Method to enable WebGL canvas interactions
+    enableCanvasInteraction() {
+        // Remove logging to prevent spam
+        if (this.renderer && this.renderer.domElement) {
+            this.renderer.domElement.style.pointerEvents = 'auto';
+            this.renderer.domElement.style.userSelect = 'auto';
+            this.renderer.domElement.style.touchAction = 'auto';
+        }
+    }
     
     animate = (timestamp) => {
         requestAnimationFrame(this.animate);
@@ -378,6 +410,13 @@ export class App {
         // Update timeline controller with deltaTime
         if (this.timelineController && this.timelineController.update) {
             this.timelineController.update(deltaTime, currentTimestamp);
+        }
+
+        // Disable canvas interaction while fullscreen/detail view is open
+        if (this.timelineController?.imageDetailPage?.isOpen) {
+            this.disableCanvasInteraction();
+        } else {
+            this.enableCanvasInteraction();
         }
         
         // Update spotlight position based on mouse (only in initial scene)
@@ -402,8 +441,10 @@ export class App {
         // Update controls regardless of renderer
         this.sceneManager.updateControls();
         
-        // Render the scene with liquid distortion if active
-        if (this.liquidDistortionEffect && this.liquidDistortionEffect.isActive) {
+        // ALWAYS render
+        if (this.timelineController && this.timelineController.renderSystem) {
+            this.timelineController.renderSystem.render();
+        } else if (this.liquidDistortionEffect && this.liquidDistortionEffect.isActive) {
             this.liquidDistortionEffect.render();
         } else {
             this.sceneManager.render();
