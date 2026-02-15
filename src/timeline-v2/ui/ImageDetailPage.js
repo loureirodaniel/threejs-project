@@ -18,6 +18,7 @@ class ImageDetailPage {
     this.titleElement = null;
     this.descriptionElement = null;
     this.metadataContainer = null;
+    this.contentRevealObserver = null;
     
     this.init();
   }
@@ -39,18 +40,12 @@ class ImageDetailPage {
     // Main container - full viewport overlay
     this.container = document.createElement('div');
     this.container.id = 'image-detail-page';
+    this.container.className = 'detail-overlay';
     this.container.style.cssText = `
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      background: transparent;
-      z-index: 9999;
       opacity: 0;
       pointer-events: none;
-      overflow-y: auto;
     `;
+    this.ensureOverlayStyles();
 
     // CRITICAL: Block ALL pointer/touch/mouse events from reaching timeline
     const blockEvent = (e) => {
@@ -71,45 +66,13 @@ class ImageDetailPage {
     
     // Block wheel/scroll
     this.container.addEventListener('wheel', blockEvent, { capture: true, passive: false });
-    
     // console.log('✅ All input events blocked at container level');
     
     // Close button (top-left)
     this.closeButton = document.createElement('button');
-    this.closeButton.innerHTML = `
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M18 6L6 18M6 6l12 12"/>
-      </svg>
-    `;
-    this.closeButton.style.cssText = `
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      width: 40px;
-      height: 40px;
-      background: rgba(255, 255, 255, 0.1);
-      border: 2px solid rgba(255, 255, 255, 0.3);
-      border-radius: 50%;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 24px;
-      color: white;
-      z-index: 200;
-      transition: all 0.3s ease;
-    `;
-
-    // Add hover effect
-    this.closeButton.onmouseenter = () => {
-      this.closeButton.style.background = 'rgba(255, 255, 255, 0.3)';
-      this.closeButton.style.transform = 'scale(1.1)';
-    };
-
-    this.closeButton.onmouseleave = () => {
-      this.closeButton.style.background = 'rgba(255, 255, 255, 0.2)';
-      this.closeButton.style.transform = 'scale(1)';
-    };
+    this.closeButton.className = 'close-button';
+    this.closeButton.setAttribute('aria-label', 'Close detail view');
+    this.closeButton.textContent = '✕';
 
     this.closeButton.addEventListener('click', () => this.close());
     
@@ -138,7 +101,7 @@ class ImageDetailPage {
       left: 0;
       width: 100vw;
       height: 100vh;
-      background: #000;
+      background: transparent;
       z-index: 0;
       opacity: 0;
       pointer-events: none;
@@ -146,44 +109,188 @@ class ImageDetailPage {
     this.container.appendChild(blackOverlay);
     this.blackOverlay = blackOverlay;
 
-    // Gradient overlay for readability
-    const gradientOverlay = document.createElement('div');
-    gradientOverlay.className = 'detail-gradient-overlay';
-    gradientOverlay.style.cssText = `
-      position: absolute;
-      bottom: 0;
-      left: 0;
-      width: 100%;
-      height: 60%;
-      background: linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.7) 40%, transparent 100%);
-      z-index: 2;
-      pointer-events: none;
+    // Spacer keeps the first viewport focused on the fullscreen image
+    this.detailSpacer = document.createElement('div');
+    this.detailSpacer.className = 'detail-spacer';
+
+    this.contentContainer = document.createElement('div');
+    this.contentContainer.className = 'detail-content';
+    this.contentContainer.style.cssText = `
       opacity: 0;
     `;
 
-    this.contentContainer = document.createElement('div');
-    this.contentContainer.className = 'detail-content-container';
-    this.contentContainer.id = 'detail-content';
-    this.contentContainer.style.cssText = `
-      position: relative;
-      z-index: 100;
-      padding: 40px;
-      padding-top: 60vh;
-      color: white;
-      max-width: 800px;
-      margin: 0 auto;
-      opacity: 0;
-      min-height: 100vh;
-    `;
+    this.contentInner = document.createElement('div');
+    this.contentInner.className = 'detail-content-inner';
+    this.contentInner.id = 'detail-content';
+    this.contentContainer.appendChild(this.contentInner);
     
     this.container.appendChild(this.fullscreenImage);
-    this.container.appendChild(gradientOverlay);
     this.container.appendChild(this.closeButton);
+    this.container.appendChild(this.detailSpacer);
     this.container.appendChild(this.contentContainer);
-    this.container.style.overflow = 'auto'; // Enable vertical scroll
     document.body.appendChild(this.container);
     
     // console.log('✅ ImageDetailPage container created');
+  }
+
+  ensureOverlayStyles() {
+    if (document.getElementById('detail-overlay-shared-style')) return;
+
+    const style = document.createElement('style');
+    style.id = 'detail-overlay-shared-style';
+    style.textContent = `
+      /* Container - enables scrolling */
+      .detail-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        z-index: 1000;
+        overflow-y: auto;
+        overflow-x: hidden;
+        scroll-behavior: smooth;
+        background: transparent;
+        pointer-events: all;
+      }
+
+      /* Spacer - Full viewport height where image shows */
+      .detail-spacer {
+        width: 100%;
+        height: 100vh;
+        position: relative;
+        background: transparent;
+        display: block;
+      }
+
+      /* Content section - appears BELOW spacer */
+      .detail-content {
+        width: 100%;
+        min-height: 100vh;
+        background: transparent;
+        padding: 4rem 2rem;
+        display: flex;
+        justify-content: center;
+      }
+
+      /* White card inside content section */
+      .detail-content-inner {
+        max-width: 900px;
+        width: 100%;
+        background: transparent;
+        backdrop-filter: none;
+        border-radius: 0;
+        padding: 0;
+        box-shadow: none;
+      }
+
+      /* Close button */
+      .close-button {
+        position: fixed;
+        top: 2rem;
+        right: 2rem;
+        z-index: 1002;
+        width: 48px;
+        height: 48px;
+        background: rgba(255, 255, 255, 0.2);
+        backdrop-filter: blur(10px);
+        border: 2px solid rgba(255, 255, 255, 0.4);
+        border-radius: 50%;
+        color: white;
+        font-size: 20px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.3s;
+        border: none;
+        outline: none;
+      }
+
+      .close-button:hover {
+        background: rgba(255, 255, 255, 0.3);
+        border-color: rgba(255, 255, 255, 0.6);
+        transform: scale(1.1) rotate(90deg);
+      }
+
+      /* Content styling */
+      .detail-header h1 {
+        font-size: 3rem;
+        font-weight: 700;
+        margin: 0 0 1rem 0;
+        color: white;
+        text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+      }
+
+      .event-subtitle {
+        font-size: 1rem;
+        color: rgba(255, 255, 255, 0.8);
+        margin: 0 0 2rem 0;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+
+      .detail-body {
+        font-size: 1.125rem;
+        line-height: 1.8;
+        color: white;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+      }
+
+      .detail-body p {
+        margin-bottom: 1.5rem;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  animateOverlayIn() {
+    gsap.fromTo(this.container, {
+      opacity: 0
+    }, {
+      opacity: 1,
+      duration: 0.4,
+      ease: 'power2.out'
+    });
+  }
+
+  setupContentRevealObserver() {
+    if (this.contentRevealObserver) {
+      this.contentRevealObserver.disconnect();
+      this.contentRevealObserver = null;
+    }
+
+    if (!this.contentInner) return;
+
+    gsap.set(this.contentInner, { opacity: 0, y: 50 });
+
+    if (typeof IntersectionObserver === 'undefined') {
+      gsap.to(this.contentInner, { opacity: 1, y: 0, duration: 0.6, ease: 'power2.out' });
+      return;
+    }
+
+    this.contentRevealObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+
+        gsap.to(this.contentInner, {
+          opacity: 1,
+          y: 0,
+          duration: 0.6,
+          ease: 'power2.out'
+        });
+
+        if (this.contentRevealObserver) {
+          this.contentRevealObserver.disconnect();
+          this.contentRevealObserver = null;
+        }
+      });
+    }, {
+      threshold: 0.2,
+      root: this.container
+    });
+
+    this.contentRevealObserver.observe(this.contentInner);
   }
   
   /**
@@ -200,6 +307,8 @@ class ImageDetailPage {
       console.error('❌ No data object provided at all');
       return;
     }
+
+    if (this.container) this.container.scrollTop = 0;
     
     const preloadMode = data.preload === true;
     const revealMode = data.reveal === true;
@@ -236,6 +345,7 @@ class ImageDetailPage {
       const imageData = resolveImageData();
       if (!imageData) return;
       prepareDetailDom(imageData);
+      this.setupContentRevealObserver();
       
       // Preload: Set up everything but keep container and image invisible
       this.container.classList.add('active');
@@ -257,7 +367,7 @@ class ImageDetailPage {
 
     // Reveal mode
     if (revealMode) {
-      console.log('🎨 REVEAL MODE: Smooth transition from 3D plane to detail image');
+      console.log('🎨 REVEAL MODE: WebGL plane stays visible');
       
       const showImageOnly = data.showImageOnly !== false; // Default true
       const imageData = resolveImageData();
@@ -266,25 +376,21 @@ class ImageDetailPage {
       
       this.container.style.pointerEvents = 'auto';
       
-      // Fade in container
-      gsap.to(this.container, {
-        opacity: 1,
-        duration: 0.3,
-        ease: 'power2.out'
-      });
+      // Fade in overlay
+      this.animateOverlayIn();
       
-      // Fade in black overlay
+      // Fade in black overlay (behind WebGL)
       gsap.to(this.blackOverlay, {
         opacity: 1,
-        duration: 0.5,
+        duration: 0.8,
         ease: 'power2.out'
       });
       
-      // Show DOM image (since WebGL has issues)
+      // SKIP DOM image entirely - keep WebGL visible
       if (showImageOnly) {
-        console.log('✅ Showing DOM fullscreen image');
+        console.log('✅ Showing DOM image');
         
-        // Position image at top
+        // Setup image (but keep it invisible)
         this.fullscreenImage.style.display = 'block';
         this.fullscreenImage.style.position = 'fixed';
         this.fullscreenImage.style.top = '0';
@@ -292,26 +398,38 @@ class ImageDetailPage {
         this.fullscreenImage.style.width = '100vw';
         this.fullscreenImage.style.height = '100vh';
         this.fullscreenImage.style.objectFit = 'cover';
-        this.fullscreenImage.style.zIndex = '60';  // Above WebGL and black overlay
+        this.fullscreenImage.style.zIndex = '60';
+        this.fullscreenImage.style.opacity = '0';  // Start invisible
         
-        // Fade in the image
-        gsap.to(this.fullscreenImage, {
-          opacity: 1,
-          duration: 0.6,
-          ease: 'power2.out'
-        });
+        // Wait for WebGL animation (1.2s)
+        setTimeout(() => {
+          console.log('✅ Fading in DOM image');
+          
+          // Fade in DOM image
+          gsap.to(this.fullscreenImage, {
+            opacity: 1,
+            duration: 0.3,  // Quick fade
+            ease: 'power2.out',
+            onComplete: () => {
+              console.log('✅ DOM image visible');
+
+              // Call callback to hide WebGL plane
+              if (data.onDOMImageReady) {
+                data.onDOMImageReady();
+              }
+            }
+          });
+        }, 1200);  // ← 1.2 seconds (match animation)
+      } else {
+        console.log('✅ Keeping WebGL plane visible (no DOM switch)');
+        // Hide the DOM image
+        this.fullscreenImage.style.display = 'none';
       }
       
-      // Fade in content
-      setTimeout(() => {
-        if (this.contentContainer) {
-          gsap.to(this.contentContainer, {
-            opacity: 1,
-            duration: 1.0,
-            ease: 'power3.out'
-          });
-        }
-      }, 600);
+      if (this.contentContainer) {
+        this.contentContainer.style.opacity = '1';
+      }
+      this.setupContentRevealObserver();
       
       return;
     }
@@ -350,8 +468,12 @@ class ImageDetailPage {
     this.eventBus.emit('timeline:pause');
 
     this.container.classList.add('active');
-    this.container.style.opacity = '1';
+    this.animateOverlayIn();
     this.container.style.pointerEvents = 'auto';
+    if (this.contentContainer) {
+      this.contentContainer.style.opacity = '1';
+    }
+    this.setupContentRevealObserver();
     
     this.state.setState({
       isImageEnlarged: true,
@@ -394,95 +516,22 @@ class ImageDetailPage {
     
     // Build HTML content
     contentContainer.innerHTML = `
-      <div style="
-        color: white;
-        max-width: 800px;
-      ">
-        <!-- Year/Title -->
-        <h1 data-role="detail-title" style="
-          font-size: 48px;
-          font-weight: 300;
-          margin: 0 0 20px 0;
-          letter-spacing: -1px;
-        ">
-          ${imageData.title || imageData.year}
-        </h1>
-        
-        <!-- Description -->
-        <p data-role="detail-description" style="
-          font-size: 18px;
-          line-height: 1.6;
-          color: rgba(255, 255, 255, 0.8);
-          margin: 0 0 40px 0;
-        ">
-          ${imageData.description || `Timeline entry for year ${imageData.year}. More details coming soon.`}
+      <div class="detail-header">
+        <h1 data-role="detail-title">${imageData.year}</h1>
+        <p class="event-subtitle">Timeline Event</p>
+      </div>
+
+      <div class="detail-body">
+        <p>
+          Event details and description for ${imageData.year} go here...
         </p>
-        
-        <!-- Metadata -->
-        <div data-role="detail-metadata" style="
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-          gap: 20px;
-          margin-bottom: 60px;
-          padding: 30px;
-          background: rgba(255, 255, 255, 0.05);
-          border-radius: 12px;
-        ">
-          <div>
-            <div style="font-size: 14px; color: rgba(255, 255, 255, 0.5); margin-bottom: 8px;">Year</div>
-            <div style="font-size: 24px; font-weight: 500;">${imageData.year}</div>
-          </div>
-          <div>
-            <div style="font-size: 14px; color: rgba(255, 255, 255, 0.5); margin-bottom: 8px;">ID</div>
-            <div style="font-size: 24px; font-weight: 500;">${imageData.id || imageData.year}</div>
-          </div>
-        </div>
-        
-        <!-- Additional Images Section (placeholder) -->
-        <div style="margin-bottom: 60px;">
-          <h2 style="
-            font-size: 32px;
-            font-weight: 300;
-            margin: 0 0 24px 0;
-          ">
-            Gallery
-          </h2>
-          <div style="
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-          ">
-            ${this.buildGallery(imageData)}
-          </div>
-        </div>
-        
-        <!-- Comments Section (placeholder) -->
-        <div style="margin-bottom: 60px;">
-          <h2 style="
-            font-size: 32px;
-            font-weight: 300;
-            margin: 0 0 24px 0;
-          ">
-            Comments
-          </h2>
-          <div style="
-            padding: 40px;
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 12px;
-            text-align: center;
-            color: rgba(255, 255, 255, 0.5);
-          ">
-            <p style="margin: 0; font-size: 16px;">
-              Comments feature coming soon...
-            </p>
-          </div>
-        </div>
+        ${imageData?.description ? `<p data-role="detail-description">${imageData.description}</p>` : ''}
       </div>
     `;
 
     this.titleElement = contentContainer.querySelector('[data-role="detail-title"]');
     this.descriptionElement = contentContainer.querySelector('[data-role="detail-description"]');
-    this.metadataContainer = contentContainer.querySelector('[data-role="detail-metadata"]');
+    this.metadataContainer = null;
 
     if (this.titleElement) {
       this.titleElement.style.cssText = `
@@ -570,6 +619,10 @@ class ImageDetailPage {
     }
     
     this.isOpen = false;
+    if (this.contentRevealObserver) {
+      this.contentRevealObserver.disconnect();
+      this.contentRevealObserver = null;
+    }
     
     // Fade out content
     gsap.to(this.contentContainer, {
@@ -651,6 +704,11 @@ class ImageDetailPage {
     
     if (this.container && this.container.parentNode) {
       this.container.parentNode.removeChild(this.container);
+    }
+
+    if (this.contentRevealObserver) {
+      this.contentRevealObserver.disconnect();
+      this.contentRevealObserver = null;
     }
     
     document.body.style.overflow = '';

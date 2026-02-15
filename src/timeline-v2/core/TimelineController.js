@@ -53,7 +53,6 @@ class TimelineController {
 
     this.unsubscribeFns = [];
     this.lastFrameTime = 0;
-    this.isPaused = false;
 
     this.init();
   }
@@ -103,7 +102,7 @@ class TimelineController {
     this.cameraSystem.update(deltaTime);
 
     // Update rendering (image positions, vignette, effects)
-    this.renderSystem.update();
+    this.renderSystem.update(deltaTime);
   }
 
   // ============================================
@@ -178,10 +177,10 @@ class TimelineController {
   pauseTimeline() {
     console.log('⏸️ Pausing timeline - disabling all systems');
     
-    // Disable physics - SET scrollEnabled to false
+    // Disable physics
     if (this.physicsSystem) {
-      this.physicsSystem.scrollEnabled = false;
-      console.log('🔒 PhysicsSystem disabled:', this.physicsSystem.scrollEnabled);
+      this.physicsSystem.enabled = false;
+      console.log('🔒 PhysicsSystem disabled:', this.physicsSystem.enabled);
     }
     
     // Disable input
@@ -196,8 +195,8 @@ class TimelineController {
       console.log('🔒 AnimationChoreographer disabled');
     }
     
-    // Flag as paused
-    this.isPaused = true;
+    // ⚠️ DO NOT STOP THE ANIMATION LOOP HERE
+    // The loop must keep running to render the fullscreen plane
     
     console.log('✅ Timeline paused - all systems disabled');
   }
@@ -210,7 +209,7 @@ class TimelineController {
     
     // Re-enable physics
     if (this.physicsSystem) {
-      this.physicsSystem.scrollEnabled = true;
+      this.physicsSystem.enabled = true;
     }
     
     // Re-enable input
@@ -222,9 +221,6 @@ class TimelineController {
     if (this.animationChoreographer) {
       this.animationChoreographer.enabled = true;
     }
-    
-    // Flag as active
-    this.isPaused = false;
     
     console.log('✅ Timeline resumed');
   }

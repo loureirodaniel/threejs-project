@@ -42,13 +42,18 @@ class RenderSystem {
     this.raycaster = new THREE.Raycaster();
     this.mouseNDC = new THREE.Vector2();
     this.paused = false;
+    this.detailRenderInterval = null;
     this.currentAnimatingPlane = null;
     this.currentImageData = null;
     const app = typeof window !== 'undefined' ? (window.app || {}) : {};
     this.camera = app.camera;
 
     // Initialize expand animation system
-    this.rippleAnimation = new RippleAnimation(this.camera);
+    this.rippleAnimation = new RippleAnimation(
+      this.camera,
+      () => this.renderer || window.app?.renderer,
+      () => this.scene || window.app?.scene
+    );
 
     this.unsubscribeFns = [];
     this.init();
@@ -73,6 +78,7 @@ class RenderSystem {
       }),
       this.eventBus.on('timeline:resume', () => {
         this.paused = false;
+        this.stopDetailRenderLoop();
         console.log('▶️ Timeline rendering resumed');
       })
     );
@@ -149,7 +155,9 @@ class RenderSystem {
     });
 
     if (this.paused) {
-      return; // Skip rendering when detail page is open
+      // Still render the fullscreen plane when paused
+      this.render();
+      return; // Skip timeline updates but NOT rendering
     }
     void deltaTime;
 
@@ -170,36 +178,57 @@ class RenderSystem {
   }
 
   render() {
-    this.imagePlanes = this.imagePlanes || window.app?.imagePlanes;
     this.renderer = this.renderer || window.app?.renderer;
     this.scene = this.scene || window.app?.scene;
     this.camera = this.camera || window.app?.camera;
+    this.imagePlanes = this.imagePlanes || window.app?.imagePlanes;
 
-    const fullscreenPlane = this.imagePlanes.planes.find(p => p.userData.isFullscreen);
-    
+    if (!this.renderer || !this.scene || !this.camera) {
+      console.error('❌ Missing renderer/scene/camera:', {
+        renderer: !!this.renderer,
+        scene: !!this.scene,
+        camera: !!this.camera
+      });
+      return;
+    }
+
+    const fullscreenPlane = this.imagePlanes?.planes?.find(p => p.userData.isFullscreen);
+
     if (fullscreenPlane) {
-      // FORCE plane properties every frame
       fullscreenPlane.visible = true;
-      fullscreenPlane.renderOrder = 9999;
-      
-      // Ensure it's in the scene
-      if (!fullscreenPlane.parent) {
-        this.scene.add(fullscreenPlane);
-        console.warn('⚠️ Re-added fullscreen plane to scene!');
-      }
-      
-      // Ensure material is visible
+      fullscreenPlane.renderOrder = 10000;
+      fullscreenPlane.frustumCulled = false;
+
       if (fullscreenPlane.material) {
-        fullscreenPlane.material.opacity = 1;
-        fullscreenPlane.material.visible = true;
+        fullscreenPlane.material.opacity = 1.0;
+        fullscreenPlane.material.transparent = true;
+        fullscreenPlane.material.depthTest = false;
+        fullscreenPlane.material.depthWrite = false;
       }
-      
+
       this.renderer.setClearColor(0x000000, 1);
     } else {
       this.renderer.setClearColor(0x000000, 0);
     }
 
     this.renderer.render(this.scene, this.camera);
+  }
+
+  startDetailRenderLoop() {
+    if (this.detailRenderInterval) return;
+    
+    console.log('🔄 Starting continuous render loop for detail view');
+    this.detailRenderInterval = setInterval(() => {
+      this.render();
+    }, 16); // 60fps
+  }
+
+  stopDetailRenderLoop() {
+    if (this.detailRenderInterval) {
+      clearInterval(this.detailRenderInterval);
+      this.detailRenderInterval = null;
+      console.log('⏹️ Stopped continuous render loop');
+    }
   }
 
   /**
@@ -522,14 +551,46 @@ class RenderSystem {
                 console.log('👁️ Fullscreen plane render order:', p.renderOrder);
               }
             });
+
+            // CRITICAL: Force render the fullscreen plane
+            console.log('🔄 Forcing render after animation complete');
+            this.render();
+
+            // Start continuous rendering while detail page is open
+            this.startDetailRenderLoop();
             
             // Show detail page
             detailPage.open({
               plane: animatingPlane,
               imageData: this.currentImageData,
               reveal: true,
-              showImageOnly: true
+              showImageOnly: false,
+              onDOMImageReady: () => {
+                // Hide WebGL plane once DOM image takes over
+                console.log('🔄 Hiding WebGL plane, DOM image taking over');
+                animatingPlane.visible = false;
+              }
             });
+
+            // Verify canvas is visible
+            const canvas = this.renderer?.domElement;
+            if (canvas) {
+              console.log('🎨 Canvas state after detail opens:', {
+                display: canvas.style.display || 'not set',
+                visibility: canvas.style.visibility || 'not set',
+                opacity: canvas.style.opacity || 'not set',
+                width: canvas.width,
+                height: canvas.height,
+                inDOM: document.body.contains(canvas)
+              });
+              
+              // Force canvas to be visible
+              canvas.style.display = '';
+              canvas.style.visibility = 'visible';
+              canvas.style.opacity = '1';
+              
+              console.log('✅ Forced canvas to visible state');
+            }
           });
 
           // Optional: Listen for animation progress to hide plane earlier (more seamless)
@@ -639,6 +700,7 @@ class RenderSystem {
       window.removeEventListener('imageExpandHandoff', this.onImageExpandHandoff);
       this.onImageExpandHandoff = null;
     }
+    this.stopDetailRenderLoop();
     this.currentAnimatingPlane = null;
     this.currentImageData = null;
     this.rippleAnimation = null;

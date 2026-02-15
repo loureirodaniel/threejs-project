@@ -11,11 +11,8 @@ export const RippleShader = {
     uniform vec2 uMousePosition;
     uniform float uTime;
     uniform float uTransition;
-    
+
     void main() {
-      vUv = uv;
-      vPosition = position;
-      
       vec3 pos = position;
       
       // Convert transition from [0,1] to [0,1,0] for smooth in/out
@@ -38,6 +35,8 @@ export const RippleShader = {
       pos.x += (distortionEffect * transition * (uMousePosition.x - pos.x));
       pos.y += distortionEffect * transition * (uMousePosition.y - pos.y);
       
+      vUv = uv;
+      vPosition = position;
       gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
     }
   `,

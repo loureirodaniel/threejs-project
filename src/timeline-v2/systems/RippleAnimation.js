@@ -7,8 +7,10 @@ import { RippleShader } from '../shaders/RippleShader.js';
  * Inspired by CurtainsJS click-to-fullscreen example
  */
 export class RippleAnimation {
-  constructor(camera) {
+  constructor(camera, getRenderer, getScene) {
     this.camera = camera;
+    this.getRenderer = getRenderer || (() => window.app?.renderer);
+    this.getScene = getScene || (() => window.app?.scene);
     this.isAnimating = false;
     this.animationTween = null;
   }
@@ -91,7 +93,7 @@ export class RippleAnimation {
 
     // Animate with GSAP
     this.animationTween = gsap.to(animation, {
-      duration: 1.5,
+      duration: 1.2,
       scaleX: targetScale.x,
       scaleY: targetScale.y,
       posX: targetPosition.x,
@@ -100,7 +102,7 @@ export class RippleAnimation {
       time: 100,
       mouseX: 0,
       mouseY: 0,
-      ease: 'power3.inOut',
+      ease: 'power2.inOut',
       immediateRender: true,
       overwrite: 'auto',
       onStart: () => {
@@ -206,6 +208,45 @@ export class RippleAnimation {
         this.isAnimating = false;
         this.animationTween = null;
         
+        // DIAGNOSTIC: Check everything
+        setTimeout(() => {
+          // Get renderer and scene from window.app
+          const renderer = window.app?.renderer;
+          const scene = window.app?.scene;
+          const canvas = renderer?.domElement;
+
+          console.log('🔍 DIAGNOSTIC AFTER 2 SECONDS:');
+          console.log('  Renderer exists:', !!renderer);
+          console.log('  Scene exists:', !!scene);
+          console.log('  Camera exists:', !!this.camera);
+          console.log('  Canvas element:', !!canvas);
+          console.log('  Canvas visible:', canvas?.style.display || 'not set');
+          console.log('  Canvas size:', canvas?.width, 'x', canvas?.height);
+          console.log('  Plane in scene:', plane.parent !== null);
+          console.log('  Plane visible:', plane.visible);
+          console.log('  Plane position:', plane.position.toArray());
+          console.log('  Plane scale:', plane.scale.toArray());
+          console.log('  Plane renderOrder:', plane.renderOrder);
+          console.log('  Material opacity:', plane.material?.opacity);
+          console.log('  Material type:', plane.material?.type);
+          console.log('  Texture exists:', !!plane.material?.uniforms?.tDiffuse?.value);
+          console.log('  Scene children count:', scene?.children?.length);
+          console.log('  Scene has plane:', scene?.children?.includes(plane));
+
+          // Try forcing a render
+          if (renderer && scene && this.camera) {
+            console.log('  🔄 Forcing manual render...');
+            renderer.render(scene, this.camera);
+            console.log('  ✅ Manual render executed successfully');
+          } else {
+            console.error('  ❌ Cannot render - missing components:', {
+              hasRenderer: !!renderer,
+              hasScene: !!scene,
+              hasCamera: !!this.camera
+            });
+          }
+        }, 2000);
+
         if (onComplete) onComplete();
       }
     });
