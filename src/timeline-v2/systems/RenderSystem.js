@@ -80,7 +80,7 @@ class RenderSystem {
         this.paused = false;
         this.stopDetailRenderLoop();
         document.body.classList.remove('detail-view-open');
-        console.log('👁️ Timeline UI restored');
+        console.log('👁️ Title and year visible again');
         console.log('▶️ Timeline rendering resumed');
       })
     );
@@ -116,7 +116,7 @@ class RenderSystem {
           reveal: true
         });
         document.body.classList.add('detail-view-open');
-        console.log('🙈 Timeline UI hidden');
+        console.log('🙈 Title and year hidden');
         console.log('👁️ Detail page reveal triggered');
       }
     };
@@ -576,7 +576,7 @@ class RenderSystem {
               }
             });
             document.body.classList.add('detail-view-open');
-            console.log('🙈 Timeline UI hidden');
+            console.log('🙈 Title and year hidden');
 
             // Verify canvas is visible
             const canvas = this.renderer?.domElement;

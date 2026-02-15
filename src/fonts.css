@@ -32,22 +32,48 @@
   font-display: swap;
 }
 
-/* Timeline UI - visible by default */
-.timeline-ui,
-.year-display,
-.project-title,
-[class*="year"],
-[class*="title"] {
-  transition: opacity 0.4s ease-out, transform 0.4s ease-out;
+/* ===== Z-INDEX STRUCTURE ===== */
+
+/* Canvas - base layer */
+canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 1;
 }
 
-/* Hide when detail view is active */
-body.detail-view-open .timeline-ui,
+/* Timeline UI elements - above canvas on timeline */
+.timeline-title,
+.year-display,
+.project-title,
+h1:not(.detail-content h1),
+h2:not(.detail-content h2),
+[class*="title"]:not(.detail-content *),
+[class*="year"]:not(.detail-content *) {
+  z-index: 100;
+  transition: opacity 0.3s ease-out, visibility 0.3s ease-out;
+}
+
+/* Detail overlay - top layer */
+.detail-overlay {
+  z-index: 1000;
+}
+
+.close-button {
+  z-index: 1001;
+}
+
+/* ===== HIDE UI IN DETAIL VIEW ===== */
+body.detail-view-open .timeline-title,
 body.detail-view-open .year-display,
 body.detail-view-open .project-title,
-body.detail-view-open [class*="year"],
-body.detail-view-open [class*="title"] {
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(-10px);
+body.detail-view-open h1:not(.detail-content h1),
+body.detail-view-open h2:not(.detail-content h2),
+body.detail-view-open [class*="title"]:not(.detail-content *),
+body.detail-view-open [class*="year"]:not(.detail-content *) {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
