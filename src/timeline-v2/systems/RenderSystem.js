@@ -117,7 +117,28 @@ class RenderSystem {
           reveal: true
         });
         this.hideTimelineUI();
-        console.log('🙈 Title and year hidden');
+        console.log('🙈 Title and year hidden via CSS class');
+        console.log('📋 Body classes:', document.body.className);
+        console.log('🎨 Using safe CSS-only approach');
+
+        // Check if elements are actually hidden
+        setTimeout(() => {
+          const title = document.querySelector('h1');
+          const year = document.querySelector('[class*="year"]');
+
+          console.log('🔍 Title element:', {
+            exists: !!title,
+            text: title?.textContent.substring(0, 30),
+            opacity: title ? window.getComputedStyle(title).opacity : 'N/A',
+            visibility: title ? window.getComputedStyle(title).visibility : 'N/A'
+          });
+
+          console.log('🔍 Year element:', {
+            exists: !!year,
+            opacity: year ? window.getComputedStyle(year).opacity : 'N/A',
+            visibility: year ? window.getComputedStyle(year).visibility : 'N/A'
+          });
+        }, 100);
         console.log('👁️ Detail page reveal triggered');
       }
     };
@@ -577,7 +598,28 @@ class RenderSystem {
               }
             });
             this.hideTimelineUI();
-            console.log('🙈 Title and year hidden');
+            console.log('🙈 Title and year hidden via CSS class');
+            console.log('📋 Body classes:', document.body.className);
+            console.log('🎨 Using safe CSS-only approach');
+
+            // Check if elements are actually hidden
+            setTimeout(() => {
+              const title = document.querySelector('h1');
+              const year = document.querySelector('[class*="year"]');
+
+              console.log('🔍 Title element:', {
+                exists: !!title,
+                text: title?.textContent.substring(0, 30),
+                opacity: title ? window.getComputedStyle(title).opacity : 'N/A',
+                visibility: title ? window.getComputedStyle(title).visibility : 'N/A'
+              });
+
+              console.log('🔍 Year element:', {
+                exists: !!year,
+                opacity: year ? window.getComputedStyle(year).opacity : 'N/A',
+                visibility: year ? window.getComputedStyle(year).visibility : 'N/A'
+              });
+            }, 100);
 
             // Verify canvas is visible
             const canvas = this.renderer?.domElement;
