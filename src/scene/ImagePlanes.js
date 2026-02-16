@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { TIMELINE_PLANE_WIDTH } from '../config/timelineLayout.js';
+import { RippleShader } from '../timeline-v2/shaders/RippleShader.js';
 
 export class ImagePlanes {
     constructor(scene, camera, imageData) {
@@ -117,12 +118,23 @@ export class ImagePlanes {
     
     createImagePlane(index, imageUrl, x, y, z, width, height) {
         const texture = this.textureLoader.load(imageUrl);
-        const geometry = new THREE.PlaneGeometry(width, height);
-        const material = new THREE.MeshBasicMaterial({ 
-            map: texture,
+        const geometry = new THREE.PlaneGeometry(
+            width,
+            height,
+            32,  // Width segments (more = smoother wobble)
+            32   // Height segments
+        );
+        const material = new THREE.ShaderMaterial({
+            vertexShader: RippleShader.vertexShader,
+            fragmentShader: RippleShader.fragmentShader,
+            uniforms: {
+                tDiffuse: { value: texture },
+                uMousePosition: { value: new THREE.Vector2(0, 0) },
+                uTime: { value: 0 },
+                uTransition: { value: 0 }
+            },
             side: THREE.DoubleSide,
             transparent: true,
-            opacity: 0.9,
             depthTest: true,
             depthWrite: true
         });

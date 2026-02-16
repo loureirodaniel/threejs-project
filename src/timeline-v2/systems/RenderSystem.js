@@ -522,6 +522,7 @@ class RenderSystem {
           const event = data;
           // Store click position
           const clickPos = { x: event.clientX, y: event.clientY };
+          console.log('🖱️ Click position:', { x: event.clientX, y: event.clientY });
 
           // Store original transforms for restoration later
           animatingPlane.userData.originalScale = animatingPlane.scale.clone();

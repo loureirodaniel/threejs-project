@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import gsap from 'gsap';
-import { RippleShader } from '../shaders/RippleShader.js';
 
 /**
  * Handles ripple/wave animation effect when clicking images
@@ -13,6 +12,7 @@ export class RippleAnimation {
     this.getScene = getScene || (() => window.app?.scene);
     this.isAnimating = false;
     this.animationTween = null;
+    this.mouseTween = null;
   }
 
   /**
@@ -28,30 +28,39 @@ export class RippleAnimation {
     this.isAnimating = true;
     console.log('🌊 Starting ripple animation to fullscreen');
 
+    // Get plane's existing shader material
+    const material = plane.material;
+    if (!material?.uniforms) {
+      console.error('⚠️ Plane material is not a ShaderMaterial!');
+      this.isAnimating = false;
+      return;
+    }
+
     // Convert click position to plane coordinates
     const planeMousePos = this.screenToPlaneCoords(plane, clickPosition);
-    
-    // Store original material and transform
-    const originalMaterial = plane.material;
+
+    // Reset shader uniforms for animation
+    material.uniforms.uMousePosition.value.set(planeMousePos.x, planeMousePos.y);
+    material.uniforms.uTime.value = 0;
+    material.uniforms.uTransition.value = 0;
+
+    // CRITICAL: Force material update to apply uniforms immediately
+    material.uniformsNeedUpdate = true;
+    material.needsUpdate = true;
+
+    // Force renderer to update this plane NOW (before animation starts)
+    const renderer = this.getRenderer();
+    const scene = this.getScene();
+    if (renderer && scene && this.camera) {
+      renderer.setRenderTarget(null);
+      renderer.render(scene, this.camera);
+    }
+
+    console.log('✅ Shader initialized - wobble ready');
+
+    // Store original transform
     const originalScale = plane.scale.clone();
     const originalPosition = plane.position.clone();
-    const originalParent = plane.parent; // Store parent scene
-    
-    // Create shader material with ripple effect
-    const rippleMaterial = new THREE.ShaderMaterial({
-      vertexShader: RippleShader.vertexShader,
-      fragmentShader: RippleShader.fragmentShader,
-      uniforms: {
-        tDiffuse: { value: originalMaterial.map },
-        uMousePosition: { value: new THREE.Vector2(planeMousePos.x, planeMousePos.y) },
-        uTime: { value: 0 },
-        uTransition: { value: 0 }
-      },
-      transparent: true
-    });
-
-    // Apply ripple material
-    plane.material = rippleMaterial;
 
     // Calculate target scale and position for fullscreen
     const targetScale = this.calculateFullscreenScale(plane);
@@ -75,7 +84,7 @@ export class RippleAnimation {
       scaleY: originalScale.y,
       posX: originalPosition.x,
       posY: originalPosition.y,
-      transition: 0,
+      transition: 0.01,  // Start with tiny transition to trigger wobble immediately
       time: 0,
       mouseX: planeMousePos.x,
       mouseY: planeMousePos.y
@@ -85,6 +94,10 @@ export class RippleAnimation {
     if (this.animationTween) {
       this.animationTween.kill();
     }
+    if (this.mouseTween) {
+      this.mouseTween.kill();
+      this.mouseTween = null;
+    }
 
     console.log('🎬 Starting animation:', {
       from: { scale: originalScale.x.toFixed(2), pos: `(${originalPosition.x.toFixed(2)}, ${originalPosition.y.toFixed(2)})` },
@@ -93,7 +106,7 @@ export class RippleAnimation {
 
     // Animate with GSAP
     this.animationTween = gsap.to(animation, {
-      duration: 1.2,
+      duration: 1.8,  // Slower = smoother (was 1.2)
       scaleX: targetScale.x,
       scaleY: targetScale.y,
       posX: targetPosition.x,
@@ -102,11 +115,23 @@ export class RippleAnimation {
       time: 100,
       mouseX: 0,
       mouseY: 0,
-      ease: 'power2.inOut',
+      ease: 'power2.inOut',  // InOut creates peak in middle where wobble is strongest
       immediateRender: true,
       overwrite: 'auto',
       onStart: () => {
         console.log('🎬 Animation STARTED');
+
+        // FORCE first wobble frame
+        material.uniforms.uTransition.value = 0.2;  // Small value to start wobble
+        material.uniforms.uTime.value = 1;
+        material.uniformsNeedUpdate = true;
+
+        // Debug: Log shader values
+        console.log('🌊 Initial shader state:', {
+          mousePos: material.uniforms.uMousePosition.value,
+          transition: material.uniforms.uTransition.value,
+          time: material.uniforms.uTime.value
+        });
         
         // CRITICAL: Mark plane as fullscreen IMMEDIATELY
         plane.userData.isFullscreen = true;
@@ -114,18 +139,19 @@ export class RippleAnimation {
         plane.userData.animatingToFullscreen = true;
       },
       onUpdate: () => {
-        // FORCE update plane transforms every frame
+        // Update transforms
         plane.scale.set(animation.scaleX, animation.scaleY, 1);
         plane.position.set(animation.posX, animation.posY, plane.position.z);
         
-        // Update shader uniforms
-        if (rippleMaterial.uniforms) {
-          rippleMaterial.uniforms.uTransition.value = animation.transition;
-          rippleMaterial.uniforms.uTime.value = animation.time;
-          rippleMaterial.uniforms.uMousePosition.value.set(animation.mouseX, animation.mouseY);
-        }
+        // CRITICAL: Update shader uniforms EVERY frame
+        material.uniforms.uTransition.value = animation.transition;
+        material.uniforms.uTime.value = animation.time;
+        material.uniforms.uMousePosition.value.set(animation.mouseX, animation.mouseY);
         
-        // Prevent any other system from modifying this plane
+        // Force material update every frame
+        material.uniformsNeedUpdate = true;
+        
+        // Prevent other systems from modifying
         plane.userData.isFrozen = true;
         plane.userData.isFullscreen = true;
       },
@@ -142,7 +168,7 @@ export class RippleAnimation {
         const finalPosition = plane.position.clone();
         
         // Freeze uniforms
-        rippleMaterial.uniforms.uTransition.value = 1.0;
+        material.uniforms.uTransition.value = 1.0;
 
         // CRITICAL: Ensure plane stays visible
         plane.visible = true;
@@ -172,8 +198,6 @@ export class RippleAnimation {
         console.log('   Material opacity:', plane.material?.opacity);
         
         // Store everything for restoration
-        plane.userData.rippleMaterial = rippleMaterial;
-        plane.userData.originalMaterial = originalMaterial;
         plane.userData.originalScale = originalScale;
         plane.userData.originalPosition = originalPosition;
         plane.userData.fullscreenScale = finalScale;
@@ -353,12 +377,15 @@ export class RippleAnimation {
     this.isAnimating = true;
     console.log('🌊 Animating back from fullscreen to normal');
 
-    // Get stored materials
-    const rippleMaterial = plane.userData.rippleMaterial;
-    const originalMaterial = plane.userData.originalMaterial;
+    if (this.mouseTween) {
+      this.mouseTween.kill();
+      this.mouseTween = null;
+    }
 
-    if (!rippleMaterial) {
-      console.error('⚠️ No ripple material found on plane');
+    // Use the plane's existing shader material
+    const material = plane.material;
+    if (!material?.uniforms) {
+      console.error('⚠️ Plane material is not a ShaderMaterial!');
       this.isAnimating = false;
       if (onComplete) onComplete();
       return;
@@ -371,7 +398,7 @@ export class RippleAnimation {
       posX: plane.position.x,
       posY: plane.position.y,
       transition: 1,
-      time: rippleMaterial.uniforms.uTime.value
+      time: material.uniforms.uTime.value
     };
 
     // Animate back
@@ -388,21 +415,13 @@ export class RippleAnimation {
         plane.scale.set(animation.scaleX, animation.scaleY, 1);
         plane.position.set(animation.posX, animation.posY, plane.position.z);
         
-        if (rippleMaterial.uniforms) {
-          rippleMaterial.uniforms.uTransition.value = animation.transition;
-          rippleMaterial.uniforms.uTime.value = animation.time;
-        }
+        material.uniforms.uTransition.value = animation.transition;
+        material.uniforms.uTime.value = animation.time;
       },
       onComplete: () => {
-        console.log('✅ Back animation complete - restoring original material');
-        
-        // NOW restore original material
-        plane.material = originalMaterial;
-        rippleMaterial.dispose();
+        console.log('✅ Back animation complete');
         
         // Clean up userData
-        delete plane.userData.rippleMaterial;
-        delete plane.userData.originalMaterial;
         delete plane.userData.isFullscreen;
         
         this.isAnimating = false;
