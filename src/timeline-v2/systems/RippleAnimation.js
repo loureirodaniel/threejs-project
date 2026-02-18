@@ -61,6 +61,12 @@ export class RippleAnimation {
     // Store original transform
     const originalScale = plane.scale.clone();
     const originalPosition = plane.position.clone();
+    if (!plane.userData.originalScale) {
+      plane.userData.originalScale = originalScale.clone();
+      plane.userData.originalPosition = originalPosition.clone();
+      plane.userData.originalRenderOrder = plane.renderOrder;
+      console.log('💾 Stored original transform for reverse animation');
+    }
 
     // Calculate target scale and position for fullscreen
     const targetScale = this.calculateFullscreenScale(plane);
@@ -364,70 +370,138 @@ export class RippleAnimation {
   /**
    * Animate plane back from fullscreen to normal state
    * @param {THREE.Mesh} plane - The plane to animate back
-   * @param {Object} originalScale - Original scale to restore
-   * @param {Object} originalPosition - Original position to restore
-   * @param {Function} onComplete - Callback when complete
+   * @param {Object|Function} [originalScaleOrOnComplete] - Backward-compatible arg (ignored object) or callback
+   * @param {Object} [_originalPosition] - Backward-compatible arg (ignored)
+   * @param {Function} [onComplete] - Callback when complete
    */
-  animateFromFullscreen(plane, originalScale, originalPosition, onComplete) {
+  animateFromFullscreen(plane, originalScaleOrOnComplete, _originalPosition, onComplete) {
+    const done =
+      typeof originalScaleOrOnComplete === 'function'
+        ? originalScaleOrOnComplete
+        : onComplete;
+
     if (this.isAnimating) {
-      console.log('⚠️ Ripple animation already in progress');
+      console.log('⚠️ Animation already in progress');
       return;
     }
 
     this.isAnimating = true;
-    console.log('🌊 Animating back from fullscreen to normal');
+    console.log('🌊 Reverse animation - closing detail view');
 
     if (this.mouseTween) {
       this.mouseTween.kill();
       this.mouseTween = null;
     }
 
-    // Use the plane's existing shader material
+    // Get material
     const material = plane.material;
     if (!material?.uniforms) {
       console.error('⚠️ Plane material is not a ShaderMaterial!');
       this.isAnimating = false;
-      if (onComplete) onComplete();
+      if (done) done();
       return;
     }
 
-    // Animation object
+    // Get stored original values
+    const originalScale = plane.userData.originalScale;
+    const originalPosition = plane.userData.originalPosition;
+    if (!originalScale || !originalPosition) {
+      console.error('⚠️ No original transform data found!');
+      this.isAnimating = false;
+      if (done) done();
+      return;
+    }
+
+    // Current state
+    const currentScale = plane.scale.clone();
+    const currentPosition = plane.position.clone();
+
+    // Unlock transform overrides installed by lockPlaneTransform()
+    delete plane.scale.set;
+    delete plane.position.set;
+
+    // Animation object (reverse direction)
     const animation = {
-      scaleX: plane.scale.x,
-      scaleY: plane.scale.y,
-      posX: plane.position.x,
-      posY: plane.position.y,
-      transition: 1,
-      time: material.uniforms.uTime.value
+      scaleX: currentScale.x,
+      scaleY: currentScale.y,
+      posX: currentPosition.x,
+      posY: currentPosition.y,
+      transition: 1.0, // Start from fullscreen state
+      time: material.uniforms.uTime.value || 100,
+      mouseX: 0,
+      mouseY: 0
     };
 
-    // Animate back
+    // Kill existing tween
+    if (this.animationTween) {
+      this.animationTween.kill();
+    }
+
+    console.log('🎬 Starting reverse animation:', {
+      from: {
+        scale: currentScale.x.toFixed(2),
+        pos: `(${currentPosition.x.toFixed(2)}, ${currentPosition.y.toFixed(2)})`
+      },
+      to: {
+        scale: originalScale.x.toFixed(2),
+        pos: `(${originalPosition.x.toFixed(2)}, ${originalPosition.y.toFixed(2)})`
+      }
+    });
+
+    // Animate back to original state
     this.animationTween = gsap.to(animation, {
-      duration: 1.2,
+      duration: 1.5,
       scaleX: originalScale.x,
       scaleY: originalScale.y,
       posX: originalPosition.x,
       posY: originalPosition.y,
       transition: 0,
-      time: animation.time + 50,
-      ease: 'power3.inOut',
+      time: animation.time + 80,
+      ease: 'power3.in',
+      immediateRender: true,
+      overwrite: 'auto',
+      onStart: () => {
+        console.log('🎬 Reverse animation STARTED');
+        plane.userData.animatingFromFullscreen = true;
+      },
       onUpdate: () => {
+        // Update transforms
         plane.scale.set(animation.scaleX, animation.scaleY, 1);
-        plane.position.set(animation.posX, animation.posY, plane.position.z);
-        
+        plane.position.set(animation.posX, animation.posY, currentPosition.z);
+
+        // Update shader uniforms
         material.uniforms.uTransition.value = animation.transition;
         material.uniforms.uTime.value = animation.time;
+        material.uniforms.uMousePosition.value.set(animation.mouseX, animation.mouseY);
+        material.uniformsNeedUpdate = true;
       },
       onComplete: () => {
-        console.log('✅ Back animation complete');
-        
+        console.log('✅ Reverse animation COMPLETE - back to timeline');
+
         // Clean up userData
-        delete plane.userData.isFullscreen;
-        
+        plane.userData.isFullscreen = false;
+        plane.userData.isFrozen = false;
+        plane.userData.animatingFromFullscreen = false;
+        plane.userData.animatingToFullscreen = false;
+        delete plane.userData.fullscreenScale;
+        delete plane.userData.fullscreenPosition;
+
+        // Reset shader values
+        material.uniforms.uTransition.value = 0;
+        material.uniforms.uMousePosition.value.set(0, 0);
+        material.uniforms.uTime.value = 0;
+        material.uniformsNeedUpdate = true;
+        material.needsUpdate = true;
+
+        // Reset render order
+        plane.renderOrder = plane.userData.originalRenderOrder || 0;
+
         this.isAnimating = false;
         this.animationTween = null;
-        
-        if (onComplete) onComplete();
+
+        console.log('🔓 Plane unlocked and reset to timeline state');
+
+        if (done) done();
       }
     });
   }

@@ -46,6 +46,12 @@ class RenderSystem {
     this.currentAnimatingPlane = null;
     this.currentImageData = null;
     this.hiddenTimelineUIState = [];
+    this.timelineStateBeforeDetail = null;
+    this.savedTimelineState = null;
+    this.savedTimelineConfig = null;
+    this.boundHandleKeydown = null;
+    this.isHandlingImageClose = false;
+    this.suppressNextImageCloseEvent = false;
     const app = typeof window !== 'undefined' ? (window.app || {}) : {};
     this.camera = app.camera;
 
@@ -144,7 +150,22 @@ class RenderSystem {
     };
     window.addEventListener('imageExpandHandoff', this.onImageExpandHandoff);
 
+    this.setupKeyboardListeners();
+
     console.log('RenderSystem initialized');
+  }
+
+  setupKeyboardListeners() {
+    this.handleKeydown = this.handleKeydown.bind(this);
+    window.addEventListener('keydown', this.handleKeydown);
+    console.log('⌨️ ESC key listener added');
+  }
+
+  handleKeydown(event) {
+    if (event.key === 'Escape' || event.keyCode === 27) {
+      console.log('ESC pressed - closing detail');
+      this.onImageClose();
+    }
   }
 
   /**
@@ -218,7 +239,9 @@ class RenderSystem {
       return;
     }
 
-    const fullscreenPlane = this.imagePlanes?.planes?.find(p => p.userData.isFullscreen);
+    const fullscreenPlane = this.currentAnimatingPlane?.userData?.isFullscreen
+      ? this.currentAnimatingPlane
+      : null;
 
     if (fullscreenPlane) {
       fullscreenPlane.visible = true;
@@ -505,44 +528,99 @@ class RenderSystem {
         const startSeamlessHandoff = () => {
           const animatingPlane = closest.plane;
           const imageDataForDetail = closest.imageData;
+          // FIRST: Pause systems so we store a clean, settled state.
+          this.pauseTimelineSystems();
 
-          // STEP 1: Preload detail page (invisible) BEFORE animation starts
-          console.log('🔧 Step 1: Preloading detail page');
-          detailPage.open({
-            plane: animatingPlane,
-            imageData: imageDataForDetail,
-            preload: true // Sets up DOM but keeps invisible
-          });
+          requestAnimationFrame(() => {
+            this.physicsSystem = app.timelineController?.physicsSystem || this.physicsSystem;
 
-          // STEP 2: Start 3D plane animation
-          console.log('🎬 Step 2: Starting 3D plane animation');
-          this.currentAnimatingPlane = animatingPlane;
-          this.currentImageData = imageDataForDetail;
+            // === SAVE TIMELINE STATE FOR RESTORATION ===
+            console.log('💾 ========== SAVING TIMELINE STATE ==========');
 
-          const event = data;
-          // Store click position
-          const clickPos = { x: event.clientX, y: event.clientY };
-          console.log('🖱️ Click position:', { x: event.clientX, y: event.clientY });
+            this.savedTimelineState = {
+              physicsOffset: this.physicsSystem?.currentOffset || 0,
+              physicsVelocity: this.physicsSystem?.velocity || 0,
+              physicsEnabled: this.physicsSystem?.scrollEnabled !== false,
+              cameraPosition: this.camera.position.clone(),
+              cameraRotation: this.camera.rotation.clone(),
+              planesState: this.imagePlanes.planes.map((plane, index) => ({
+                index,
+                position: plane.position.clone(),
+                scale: plane.scale.clone(),
+                rotation: plane.rotation.clone(),
+                visible: plane.visible,
+                renderOrder: plane.renderOrder,
+                inScene: !!plane.parent
+              }))
+            };
 
-          // Store original transforms for restoration later
-          animatingPlane.userData.originalScale = animatingPlane.scale.clone();
-          animatingPlane.userData.originalPosition = animatingPlane.position.clone();
+            console.log('💾 SAVED:', {
+              offset: this.savedTimelineState.physicsOffset.toFixed(2),
+              planes: this.savedTimelineState.planesState.length,
+              visible: this.savedTimelineState.planesState.filter((p) => p.visible).length
+            });
 
-          console.log('💾 Stored original transforms:', {
-            scale: animatingPlane.userData.originalScale,
-            position: animatingPlane.userData.originalPosition
-          });
+            // Disable TitleScrollAnimation to prevent interference
+            if (window.app?.timelineController?.titleScrollAnimation) {
+              window.app.timelineController.titleScrollAnimation.disable?.();
+              console.log('📝 TitleScrollAnimation disabled');
+            }
 
-          this.physicsSystem = app.timelineController?.physicsSystem || this.physicsSystem;
+            // THEN: Store complete timeline state for restoration
+            this.timelineStateBeforeDetail = {
+              cameraPosition: camera.position.clone(),
+              cameraRotation: camera.rotation.clone(),
+              physicsOffset: this.physicsSystem?.currentOffset || 0,
+              physicsVelocity: 0,
+              allPlanesState: this.imagePlanes?.planes?.map((p) => ({
+                position: p.position.clone(),
+                scale: p.scale.clone(),
+                visible: p.visible,
+                userData: { ...p.userData }
+              }))
+            };
 
-          // NEW: Disable physics system to prevent interference
-          if (this.physicsSystem) {
-            this.physicsSystem.scrollEnabled = false;
-            console.log('🔒 Physics system DISABLED for fullscreen animation');
-          }
+            console.log('💾 Stored CLEAN timeline state', {
+              cameraPos: this.timelineStateBeforeDetail.cameraPosition,
+              physicsOffset: this.timelineStateBeforeDetail.physicsOffset,
+              planesCount: this.timelineStateBeforeDetail.allPlanesState?.length
+            });
 
-          // Start ripple animation
-          this.rippleAnimation.animateToFullscreen(animatingPlane, clickPos, () => {
+            // STEP 1: Preload detail page (invisible) BEFORE animation starts
+            console.log('🔧 Step 1: Preloading detail page');
+            detailPage.open({
+              plane: animatingPlane,
+              imageData: imageDataForDetail,
+              preload: true // Sets up DOM but keeps invisible
+            });
+
+            // STEP 2: Start 3D plane animation
+            console.log('🎬 Step 2: Starting 3D plane animation');
+            this.currentAnimatingPlane = animatingPlane;
+            this.currentImageData = imageDataForDetail;
+
+            const event = data;
+            // Store click position
+            const clickPos = { x: event.clientX, y: event.clientY };
+            console.log('🖱️ Click position:', { x: event.clientX, y: event.clientY });
+
+            // Store original transforms for restoration later
+            animatingPlane.userData.originalScale = animatingPlane.scale.clone();
+            animatingPlane.userData.originalPosition = animatingPlane.position.clone();
+
+            console.log('💾 Stored original transforms:', {
+              scale: animatingPlane.userData.originalScale,
+              position: animatingPlane.userData.originalPosition
+            });
+
+            // NEW: Disable physics system to prevent interference
+            if (this.physicsSystem) {
+              this.physicsSystem.scrollEnabled = false;
+              console.log('🔒 Physics system DISABLED for fullscreen animation');
+            }
+
+            // Start ripple animation
+            this.rippleAnimation.animateToFullscreen(animatingPlane, clickPos, () => {
             console.log('🌊 Ripple animation complete, showing detail page');
             
             // PAUSE ENTIRE TIMELINE
@@ -585,6 +663,45 @@ class RenderSystem {
 
             // Start continuous rendering while detail page is open
             this.startDetailRenderLoop();
+
+            // Save complete timeline configuration
+            console.log('💾 ========== SAVING TIMELINE STATE ==========');
+
+            this.savedTimelineConfig = {
+              // Physics state
+              physicsOffset: this.physicsSystem?.currentOffset || 0,
+              physicsVelocity: this.physicsSystem?.velocity || 0,
+              centeredImageIndex: this.physicsSystem?.centeredImageIndex || 0,
+
+              // Camera state
+              cameraPosition: this.camera.position.clone(),
+              cameraRotation: this.camera.rotation.clone(),
+
+              // EXACT plane positions and states
+              planesConfig: this.imagePlanes?.planes?.map((p, i) => ({
+                index: i,
+                position: p.position.clone(),
+                scale: p.scale.clone(),
+                rotation: p.rotation.clone(),
+                visible: p.visible,
+                renderOrder: p.renderOrder,
+                userData: { ...p.userData }
+              })),
+
+              // Timeline spacing configuration
+              imageSpacing: this.physicsSystem?.imageSpacing || 4.5,
+              scrollOffset: this.physicsSystem?.scrollOffset || 0
+            };
+
+            console.log('💾 SAVED CONFIG:', {
+              physicsOffset: this.savedTimelineConfig.physicsOffset.toFixed(2),
+              centeredImage: this.savedTimelineConfig.centeredImageIndex,
+              plane0Pos: this.savedTimelineConfig.planesConfig?.[0]?.position?.x?.toFixed?.(2),
+              plane1Pos: this.savedTimelineConfig.planesConfig?.[1]?.position?.x?.toFixed?.(2),
+              plane2Pos: this.savedTimelineConfig.planesConfig?.[2]?.position?.x?.toFixed?.(2)
+            });
+
+            console.log('💾 ========================================');
             
             // Show detail page
             detailPage.open({
@@ -641,6 +758,7 @@ class RenderSystem {
               
               console.log('✅ Forced canvas to visible state');
             }
+            });
           });
 
           // Optional: Listen for animation progress to hide plane earlier (more seamless)
@@ -701,9 +819,834 @@ class RenderSystem {
    * Handle close request from InputSystem/UI.
    */
   onImageClose() {
-    console.log('🔴 onImageClose called from RenderSystem');
-    // Just emit the close event, ImageDetailPage handles it
-    this.eventBus.emit('timeline:image:close');
+    if (this.suppressNextImageCloseEvent) {
+      this.suppressNextImageCloseEvent = false;
+      return;
+    }
+    if (this.isHandlingImageClose) {
+      return;
+    }
+    this.isHandlingImageClose = true;
+    this.imagePlanes = this.imagePlanes || window.app?.imagePlanes;
+
+    console.log('🔴 ========== CLOSING DETAIL ==========');
+
+    const fullscreenPlane =
+      this.currentAnimatingPlane ||
+      this.imagePlanes?.planes?.find((p) => p.userData.isFullscreen);
+
+    if (!fullscreenPlane) {
+      console.error('❌ No fullscreen plane');
+      if (this.savedTimelineState) {
+        console.log('🔄 No fullscreen plane; running direct restoration fallback');
+        this.restoreCompleteTimelineState();
+      }
+      this.isHandlingImageClose = false;
+      this.suppressNextImageCloseEvent = true;
+      this.eventBus.emit('timeline:image:close');
+      return;
+    }
+
+    const detailOverlay =
+      document.querySelector('.detail-overlay') ||
+      document.querySelector('.image-detail-page');
+
+    if (detailOverlay) {
+      detailOverlay.style.opacity = '0';
+      detailOverlay.style.pointerEvents = 'none';
+      setTimeout(() => {
+        detailOverlay.style.display = 'none';
+      }, 300);
+    }
+
+    console.log('🌊 Starting reverse animation');
+
+    this.rippleAnimation.animateFromFullscreen(fullscreenPlane, () => {
+      console.log('✅ Reverse animation complete');
+      this.currentAnimatingPlane = null;
+      this.currentImageData = null;
+      this.restoreCompleteTimelineState();
+      this.isHandlingImageClose = false;
+      this.suppressNextImageCloseEvent = true;
+      this.eventBus.emit('timeline:image:close');
+    });
+  }
+
+  closeDetailView(plane) {
+    if (plane && !plane.userData?.isFullscreen) {
+      console.log('⚠️ No fullscreen plane to close');
+      return;
+    }
+    this.onImageClose();
+  }
+
+  // When close button is clicked
+  handleCloseButton() {
+    this.onImageClose();
+  }
+
+  handleDetailClose() {
+    this.onImageClose();
+  }
+
+  restoreExactTimelineConfig() {
+    console.log('🔄 ========== RESTORING EXACT TIMELINE ==========');
+
+    // Remove ALL classes that might hide UI
+    document.body.classList.remove('detail-view-open');
+    document.body.classList.remove('is-fullscreen');
+    document.body.classList.remove('detail-active');
+    console.log('🎨 Removed detail classes from body');
+    console.log('  Remaining body classes:', document.body.className);
+
+    // Force remove any inline styles on body
+    document.body.style.removeProperty('overflow');
+    document.body.style.removeProperty('pointer-events');
+
+    if (!this.savedTimelineConfig) {
+      console.error('❌ NO SAVED TIMELINE CONFIG');
+      return;
+    }
+
+    const config = this.savedTimelineConfig;
+    this.physicsSystem = window.app?.timelineController?.physicsSystem || this.physicsSystem;
+    this.inputSystem = window.app?.timelineController?.inputSystem || this.inputSystem;
+    this.cameraSystem = window.app?.timelineController?.cameraSystem || this.cameraSystem;
+    this.animationChoreographer = window.app?.timelineController?.animationChoreographer || this.animationChoreographer;
+
+    console.log('📊 Restoring from config:', {
+      physicsOffset: config.physicsOffset.toFixed(2),
+      centeredImage: config.centeredImageIndex,
+      planesCount: config.planesConfig.length
+    });
+
+    // STEP 1: Restore camera
+    if (this.camera && config.cameraPosition && config.cameraRotation) {
+      console.log('📷 Step 1: Restoring camera');
+      this.camera.position.copy(config.cameraPosition);
+      this.camera.rotation.copy(config.cameraRotation);
+      this.camera.updateMatrixWorld(true);
+    }
+
+    // STEP 2: Restore physics system
+    console.log('⚙️ Step 2: Restoring physics system');
+    if (this.physicsSystem) {
+      // CRITICAL: Disable physics first to prevent overrides
+      this.physicsSystem.enabled = false;
+      this.physicsSystem.scrollEnabled = false;
+      this.physicsSystem.isBeingRestored = true;
+
+      // Restore exact values
+      this.physicsSystem.currentOffset = config.physicsOffset;
+      this.physicsSystem.targetOffset = config.physicsOffset;
+      this.physicsSystem.velocity = 0;
+      this.physicsSystem.centeredImageIndex = config.centeredImageIndex;
+      this.physicsSystem.imageSpacing = config.imageSpacing;
+
+      // Keep state store aligned with restored offset/index
+      this.state.setState({
+        timelineOffset: config.physicsOffset,
+        currentSnapIndex: config.centeredImageIndex,
+        targetOffset: config.physicsOffset,
+        scrollVelocity: 0
+      });
+
+      console.log('  Physics offset:', this.physicsSystem.currentOffset.toFixed(2));
+      console.log('  Centered image:', this.physicsSystem.centeredImageIndex);
+    }
+
+    // STEP 3: Restore ALL planes - AGGRESSIVE approach
+    console.log('🖼️ Step 3: Making ALL planes visible (aggressive)');
+
+    const totalPlanes = this.imagePlanes?.planes?.length || 0;
+    console.log(`  Total planes in scene: ${totalPlanes}`);
+
+    this.imagePlanes?.planes?.forEach((plane, index) => {
+      const savedPlane = config.planesConfig?.[index];
+
+      // Restore position from saved state if available
+      if (savedPlane) {
+        plane.position.copy(savedPlane.position);
+        plane.scale.copy(savedPlane.scale);
+      }
+
+      // FORCE visible - no exceptions
+      plane.visible = true;
+      plane.renderOrder = index;
+
+      // Ensure material is opaque
+      if (plane.material) {
+        plane.material.opacity = 1;
+        plane.material.transparent = true;
+        plane.material.needsUpdate = true;
+      }
+
+      // Clean up fullscreen userData
+      plane.userData.isFullscreen = false;
+      plane.userData.isFrozen = false;
+      delete plane.userData.animatingToFullscreen;
+      delete plane.userData.animatingFromFullscreen;
+
+      plane.updateMatrixWorld(true);
+
+      console.log(`  ✓ Plane ${index}: pos=(${plane.position.x.toFixed(1)}, ${plane.position.y.toFixed(1)}), visible=true`);
+    });
+
+    // Count visible planes
+    const visibleCount = this.imagePlanes?.planes?.filter((p) => p.visible).length || 0;
+    console.log(`  📊 Total visible planes: ${visibleCount}/${totalPlanes}`);
+
+    if (visibleCount < totalPlanes) {
+      console.error(`  ⚠️ WARNING: Only ${visibleCount} of ${totalPlanes} planes are visible!`);
+    }
+
+    // STEP 4: Force render to show restored state
+    console.log('🎨 Step 4: Forcing render');
+    requestAnimationFrame(() => {
+      if (this.renderer && this.scene) {
+        this.renderer.render(this.scene, this.camera);
+        console.log('  ✓ Rendered restored state');
+      }
+
+      // STEP 5: Re-enable systems
+      setTimeout(() => {
+        if (this.physicsSystem) {
+          this.physicsSystem.isBeingRestored = false;
+          this.physicsSystem.enabled = true;
+          this.physicsSystem.scrollEnabled = true;
+          console.log('⚙️ Step 5: Physics re-enabled');
+        }
+
+        // Re-enable other systems
+        if (this.inputSystem) {
+          this.inputSystem.enabled = true;
+        }
+        if (this.cameraSystem?.unfreeze) {
+          this.cameraSystem.unfreeze();
+        } else if (this.cameraSystem?.unfreezeCamera) {
+          this.cameraSystem.unfreezeCamera();
+        }
+        if (this.animationChoreographer) {
+          this.animationChoreographer.enabled = true;
+        }
+
+        // Re-enable canvas interaction and stop detail render loop
+        const canvas = this.renderer?.domElement;
+        if (canvas) {
+          canvas.style.pointerEvents = 'auto';
+        }
+        if (window.app?.enableCanvasInteraction) {
+          window.app.enableCanvasInteraction();
+        }
+        this.stopContinuousRender();
+
+        console.log('✅ All systems re-enabled');
+
+        // STEP 6: Restore "Three.js Project" title at top
+        console.log('📝 Step 6: Restoring title to top');
+
+        // Try multiple selectors
+        const title =
+          document.querySelector('.title-overlay') ||
+          document.querySelector('.title-div') ||
+          document.querySelector('.timeline-title') ||
+          document.querySelector('.project-title') ||
+          document.querySelector('h1');
+
+        if (title) {
+          console.log('  Found title element:', title.className || title.tagName);
+          console.log('  Current text:', title.textContent?.substring(0, 30));
+
+          // Force title to top with !important
+          title.style.cssText = `
+            position: fixed !important;
+            top: 32px !important;
+            left: 50% !important;
+            transform: translateX(-50%) scale(0.8) !important;
+            opacity: 1 !important;
+            visibility: visible !important;
+            display: block !important;
+            pointer-events: none !important;
+            z-index: 100 !important;
+          `;
+
+          // Also trigger TitleScrollAnimation to move it to top
+          if (window.app?.timelineController?.titleScrollAnimation) {
+            const titleAnim = window.app.timelineController.titleScrollAnimation;
+            if (titleAnim.isAtTop === false) {
+              console.log('  Triggering TitleScrollAnimation to move to top');
+              titleAnim.moveToTop();
+            }
+          }
+
+          console.log('  ✓ Title positioned at top');
+        } else {
+          console.error('  ❌ Title element NOT FOUND');
+          console.log('  Available h1 elements:', document.querySelectorAll('h1').length);
+          console.log(
+            '  Available title classes:',
+            Array.from(document.querySelectorAll('[class*="title"]')).map((el) => el.className)
+          );
+        }
+
+        // STEP 7: Show timeline navigation
+        console.log('🧭 Step 7: Showing timeline navigation');
+        const timelineNav = document.querySelector('.timeline-navigation');
+
+        if (timelineNav) {
+          timelineNav.style.display = 'flex';
+          timelineNav.style.opacity = '1';
+          timelineNav.style.visibility = 'visible';
+          timelineNav.style.pointerEvents = 'auto';
+
+          console.log('  ✓ Navigation visible');
+        } else {
+          console.warn('  ⚠️ Timeline navigation not found');
+        }
+
+        // Emit event for other components
+        if (window.EventBus?.emit) {
+          window.EventBus.emit('timeline:restored');
+        } else if (this.eventBus?.emit) {
+          this.eventBus.emit('timeline:restored', {});
+        }
+
+        // STEP 8: Restore year display
+        console.log('📅 Step 8: Restoring year display');
+
+        const yearDisplay =
+          document.querySelector('.year-display') ||
+          document.querySelector('.timeline-year') ||
+          document.querySelector('[class*="year"]');
+
+        if (yearDisplay) {
+          console.log('  Found year element:', yearDisplay.className);
+
+          yearDisplay.style.cssText = `
+            opacity: 1 !important;
+            visibility: visible !important;
+            display: block !important;
+            pointer-events: auto !important;
+          `;
+
+          console.log('  ✓ Year display visible');
+        } else {
+          console.error('  ❌ Year display NOT FOUND');
+          console.log(
+            '  Searching for year elements:',
+            Array.from(document.querySelectorAll('[class*="year"]')).map((el) => ({
+              class: el.className,
+              text: el.textContent?.substring(0, 20)
+            }))
+          );
+        }
+      }, 100); // Small delay to let positions settle
+    });
+
+    // Clean up
+    this.savedTimelineConfig = null;
+
+    console.log('✅ ========== TIMELINE FULLY RESTORED ==========');
+
+    // DIAGNOSTIC: Check what's still hidden
+    setTimeout(() => {
+      console.log('🔍 ========== VISIBILITY CHECK ==========');
+
+      // Check planes
+      const allPlanes = this.imagePlanes?.planes || [];
+      const visiblePlanes = allPlanes.filter((p) => p.visible);
+      const hiddenPlanes = allPlanes.filter((p) => !p.visible);
+
+      console.log(`📊 Planes: ${visiblePlanes.length} visible, ${hiddenPlanes.length} hidden`);
+      if (hiddenPlanes.length > 0) {
+        console.log(
+          '  Hidden plane indices:',
+          hiddenPlanes.map((p) => allPlanes.indexOf(p))
+        );
+      }
+
+      // Check title
+      const title =
+        document.querySelector('h1') ||
+        document.querySelector('[class*="title"]');
+      if (title) {
+        const styles = window.getComputedStyle(title);
+        console.log('📝 Title state:', {
+          exists: true,
+          text: title.textContent?.substring(0, 30),
+          display: styles.display,
+          opacity: styles.opacity,
+          visibility: styles.visibility,
+          top: styles.top
+        });
+      } else {
+        console.error('❌ Title element not found in DOM');
+      }
+
+      // Check year
+      const year = document.querySelector('[class*="year"]');
+      if (year) {
+        const styles = window.getComputedStyle(year);
+        console.log('📅 Year state:', {
+          exists: true,
+          text: year.textContent?.substring(0, 20),
+          display: styles.display,
+          opacity: styles.opacity,
+          visibility: styles.visibility
+        });
+      } else {
+        console.error('❌ Year element not found in DOM');
+      }
+
+      console.log('🔍 ====================================');
+    }, 1000);
+
+    // NUCLEAR OPTION: Force everything visible
+    setTimeout(() => {
+      console.log('🔥 FORCING VISIBILITY (nuclear option)');
+
+      // Force all planes
+      this.imagePlanes?.planes?.forEach((p, i) => {
+        p.visible = true;
+        if (p.material) {
+          p.material.opacity = 1;
+          p.material.transparent = true;
+        }
+        console.log(`  Plane ${i}: FORCED visible`);
+      });
+
+      // Force title
+      const title =
+        document.querySelector('.timeline-title') ||
+        document.querySelector('h1');
+      if (title) {
+        title.style.cssText = `
+          position: fixed !important;
+          top: 32px !important;
+          left: 50% !important;
+          transform: translateX(-50%) scale(0.8) !important;
+          opacity: 1 !important;
+          visibility: visible !important;
+          display: block !important;
+        `;
+        console.log('  Title: FORCED visible');
+      }
+
+      // Force navigation
+      const nav = document.querySelector('.timeline-navigation');
+      if (nav) {
+        nav.style.cssText = `
+          display: flex !important;
+          opacity: 1 !important;
+          visibility: visible !important;
+          pointer-events: auto !important;
+        `;
+        console.log('  Navigation: FORCED visible');
+      }
+
+      // Force render
+      if (this.renderer && this.scene) {
+        this.renderer.render(this.scene, this.camera);
+        console.log('  Forced final render');
+      }
+
+      console.log('✅ Everything forced visible with !important');
+    }, 500);
+
+    // NUCLEAR OPTION: Force everything visible over multiple frames
+    const forceVisibility = (attempt = 1) => {
+      if (attempt > 3) return; // Max 3 attempts
+
+      console.log(`🔥 Force visibility attempt ${attempt}/3`);
+
+      // Force all planes
+      this.imagePlanes?.planes?.forEach((p) => {
+        p.visible = true;
+        if (p.material) {
+          p.material.opacity = 1;
+        }
+      });
+
+      // Force title
+      const title =
+        document.querySelector('.title-overlay') ||
+        document.querySelector('h1');
+      if (title) {
+        title.style.display = 'block';
+        title.style.opacity = '1';
+        title.style.visibility = 'visible';
+      }
+
+      // Force year
+      const year = document.querySelector('[class*="year"]');
+      if (year) {
+        year.style.display = 'block';
+        year.style.opacity = '1';
+        year.style.visibility = 'visible';
+      }
+
+      // Force render
+      if (this.renderer && this.scene) {
+        this.renderer.render(this.scene, this.camera);
+      }
+
+      // Try again next frame
+      requestAnimationFrame(() => forceVisibility(attempt + 1));
+    };
+
+    // Start forcing
+    setTimeout(() => forceVisibility(), 200);
+  }
+
+  restoreCompleteTimelineState() {
+    console.log('🔄 ========== RESTORING TIMELINE ==========');
+
+    if (!this.savedTimelineState) {
+      console.error('❌ NO SAVED STATE');
+      return;
+    }
+
+    const state = this.savedTimelineState;
+
+    // Remove hiding classes
+    document.body.classList.remove('detail-view-open', 'is-fullscreen');
+
+    // Restore camera
+    console.log('📷 Restoring camera');
+    this.camera.position.copy(state.cameraPosition);
+    this.camera.rotation.copy(state.cameraRotation);
+    this.camera.updateMatrixWorld(true);
+
+    // Restore physics
+    console.log('⚙️ Restoring physics');
+    if (this.physicsSystem) {
+      this.physicsSystem.scrollEnabled = false;
+      this.physicsSystem.currentOffset = state.physicsOffset;
+      this.physicsSystem.targetOffset = state.physicsOffset;
+      this.physicsSystem.velocity = 0;
+    }
+
+    // Restore ALL planes
+    console.log('🖼️ Restoring ALL planes');
+    let restored = 0;
+
+    this.imagePlanes.planes.forEach((plane, index) => {
+      const saved = state.planesState[index];
+      if (saved) {
+        plane.position.copy(saved.position);
+        plane.scale.copy(saved.scale);
+        plane.rotation.copy(saved.rotation);
+        plane.visible = true;
+        plane.renderOrder = index;
+
+        if (!plane.parent && this.scene) this.scene.add(plane);
+        if (plane.material) {
+          plane.material.opacity = 1;
+          plane.material.needsUpdate = true;
+        }
+
+        plane.userData.isFullscreen = false;
+        plane.userData.isFrozen = false;
+        plane.updateMatrixWorld(true);
+        restored++;
+      }
+    });
+
+    console.log(`  ✓ ${restored}/${this.imagePlanes.planes.length} planes`);
+
+    // Restore title - FORCE to top and disable scroll animation
+    console.log('📝 Restoring title (forcing to top)');
+
+    // First, disable TitleScrollAnimation if it exists
+    let titleAnimation = null;
+    if (window.app?.timelineController?.titleScrollAnimation) {
+      titleAnimation = window.app.timelineController.titleScrollAnimation;
+      titleAnimation.disable?.();
+      console.log('  Disabled TitleScrollAnimation');
+    }
+
+    const titleSelectors = ['.title-overlay', '.title-div', '.project-title', '.timeline-title', 'h1'];
+    let title = null;
+    for (const selector of titleSelectors) {
+      title = document.querySelector(selector);
+      if (title) {
+        console.log(`  Found: ${selector}`);
+        break;
+      }
+    }
+
+    if (title) {
+      // Force title to top position
+      title.style.cssText = `
+        position: fixed !important;
+        top: 32px !important;
+        left: 50% !important;
+        transform: translateX(-50%) scale(0.8) !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+        display: block !important;
+        z-index: 100 !important;
+        pointer-events: none !important;
+      `;
+
+      // Force parent containers visible
+      let parent = title.parentElement;
+      while (parent && parent !== document.body) {
+        parent.style.opacity = '1';
+        parent.style.visibility = 'visible';
+        parent = parent.parentElement;
+      }
+
+      console.log('  ✓ Title forced to top');
+
+      // Re-enable TitleScrollAnimation AFTER positioning, and reset to top state
+      setTimeout(() => {
+        if (titleAnimation) {
+          // Reset animation to "already at top" state
+          titleAnimation.isAtTop = true;
+          titleAnimation.hasScrolled = false;
+
+          // Re-enable
+          titleAnimation.enable?.();
+          console.log('  ✓ TitleScrollAnimation re-enabled and reset');
+        }
+      }, 500);
+    } else {
+      console.error('  ❌ Title NOT FOUND');
+    }
+
+    console.log("RESTORING BIG YEAR OVERLAY");
+    const bigYearElement = document.querySelector('.year-overlay');
+    if (!bigYearElement) {
+      console.error("Big year overlay NOT FOUND");
+      return;
+    }
+
+    // Calculate current year from restored state
+    const calculatedSpacing = this.state?.get?.('calculatedSpacing') ?? 4.194;
+    const firstPosition = 0;
+    const startYear = 2010;
+    const yearCount = 10;
+    const relativeOffset = state.physicsOffset - firstPosition;
+    const yearIndex = Math.round(relativeOffset / calculatedSpacing);
+    const clampedIndex = Math.max(0, Math.min(yearIndex, yearCount - 1));
+    const currentYear = startYear + clampedIndex;
+
+    // Restore element through YearOverlay API to keep ticker DOM intact.
+    const yearOverlay = window.app?.yearOverlay;
+    if (yearOverlay) {
+      yearOverlay.setYear(currentYear);
+      yearOverlay.show();
+    } else {
+      // Fallback if overlay instance is unavailable.
+      const firstSlot = bigYearElement.querySelector('.year-overlay-slot');
+      if (firstSlot) {
+        firstSlot.textContent = currentYear.toString();
+      }
+    }
+    bigYearElement.classList.remove('hidden', 'fade-out', 'detail-active');
+    bigYearElement.style.cssText = `
+      opacity: 1 !important;
+      visibility: visible !important;
+      display: block !important;
+      pointer-events: none !important;
+      position: fixed !important;
+      top: 20% !important;
+      left: 50% !important;
+      transform: translateX(-50%) scale(1.2) !important;
+      z-index: 999999 !important;
+      font-size: clamp(120px, 20vw, 300px) !important;
+      color: white !important;
+    `;
+    let parent = bigYearElement.parentElement;
+    while (parent && parent !== document.body) {
+      parent.style.setProperty('opacity', '1', 'important');
+      parent.style.setProperty('visibility', 'visible', 'important');
+      parent.style.setProperty('z-index', '99999', 'important');
+      parent = parent.parentElement;
+    }
+    console.log(`Big year overlay restored to ${currentYear}`);
+
+    // === STEP 6: Restore Navigation ===
+    const nav = document.querySelector('.timeline-navigation');
+    if (nav) {
+      nav.style.cssText = `
+        display: flex !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+      `;
+      console.log('🧭 Navigation visible');
+    }
+
+    // Restore year display
+    console.log('📅 Restoring year (aggressive)');
+    const yearSelectors = ['.year-display', '.timeline-year', '.current-year', '[class*="year"]', '.timeline-navigation .year'];
+    let yearDisplay = null;
+    for (const selector of yearSelectors) {
+      yearDisplay = document.querySelector(selector);
+      if (yearDisplay) break;
+    }
+    if (yearDisplay) {
+      yearDisplay.style.cssText = 'opacity: 1 !important; visibility: visible !important; display: block !important;';
+      let parent = yearDisplay.parentElement;
+      while (parent && parent !== document.body) {
+        parent.style.opacity = '1';
+        parent.style.visibility = 'visible';
+        parent = parent.parentElement;
+      }
+      console.log('  ✓ Year visible');
+    } else {
+      console.error('  ❌ Year NOT FOUND');
+    }
+
+    // Force render
+    requestAnimationFrame(() => {
+      if (this.renderer && this.scene) {
+        this.renderer.render(this.scene, this.camera);
+      }
+
+      setTimeout(() => {
+        console.log('▶️ Re-enabling systems');
+        if (this.physicsSystem) {
+          this.physicsSystem.scrollEnabled = true;
+          this.physicsSystem.enabled = true;
+          this.physicsSystem.paused = false;
+          delete this.physicsSystem.isBeingRestored;
+          console.log('  ✓ Physics enabled:', this.physicsSystem.scrollEnabled);
+        }
+        if (this.state) {
+          this.state.setState({ isImageEnlarged: false, isDragging: false });
+        }
+        if (window.app?.timelineController) {
+          window.app.timelineController.resumeTimeline?.();
+          window.app.timelineController.cameraSystem?.unfreezeCamera?.();
+          if (window.app.timelineController.inputSystem) {
+            window.app.timelineController.inputSystem.enabled = true;
+            console.log('  ✓ InputSystem enabled');
+          }
+        }
+        if (window.app) {
+          window.app.enableCanvasInteraction?.();
+        }
+        const canvas = document.querySelector('canvas');
+        if (canvas) {
+          canvas.style.pointerEvents = 'auto';
+          canvas.style.touchAction = 'none';
+          canvas.focus?.();
+          console.log('  ✓ Canvas events enabled and focused');
+        }
+
+        for (let i = 0; i < 3; i++) {
+          requestAnimationFrame(() => {
+            if (this.renderer && this.scene) {
+              this.renderer.render(this.scene, this.camera);
+            }
+          });
+        }
+
+        console.log('✅ All systems enabled');
+      }, 100);
+    });
+
+    this.savedTimelineState = null;
+
+    setTimeout(() => {
+      console.log('🔍 POST-RESTORATION CHECK:');
+      const t = document.querySelector('h1');
+      const y = document.querySelector('[class*="year"]');
+      console.log('  Title:', t ? window.getComputedStyle(t).display : 'NOT FOUND');
+      console.log('  Year:', y ? window.getComputedStyle(y).display : 'NOT FOUND');
+      console.log('  Physics scrollEnabled:', this.physicsSystem?.scrollEnabled);
+      console.log('  Input enabled:', window.app?.timelineController?.inputSystem?.enabled);
+    }, 1000);
+    console.log('✅ ========== RESTORATION COMPLETE ==========');
+  }
+
+  restoreTimelineState() {
+    // Backward-compatible alias
+    this.restoreCompleteTimelineState();
+  }
+
+  pauseTimelineSystems() {
+    const timelineController = window.app?.timelineController;
+    this.physicsSystem = timelineController?.physicsSystem || this.physicsSystem;
+    this.inputSystem = timelineController?.inputSystem || this.inputSystem;
+    this.cameraSystem = timelineController?.cameraSystem || this.cameraSystem;
+    this.animationChoreographer = timelineController?.animationChoreographer || this.animationChoreographer;
+
+    if (this.physicsSystem) {
+      if ('enabled' in this.physicsSystem) {
+        this.physicsSystem.enabled = false;
+      }
+      if ('scrollEnabled' in this.physicsSystem) {
+        this.physicsSystem.scrollEnabled = false;
+      }
+      this.physicsSystem.velocity = 0;
+    }
+    if (this.inputSystem && 'enabled' in this.inputSystem) {
+      this.inputSystem.enabled = false;
+    }
+    if (this.animationChoreographer && 'enabled' in this.animationChoreographer) {
+      this.animationChoreographer.enabled = false;
+    }
+    if (this.cameraSystem?.freeze) {
+      this.cameraSystem.freeze();
+    } else if (this.cameraSystem?.freezeCamera) {
+      this.cameraSystem.freezeCamera();
+    }
+
+    console.log('⏸️ Timeline systems paused');
+  }
+
+  resumeTimelineSystems() {
+    console.log('▶️ Resuming timeline systems');
+
+    const timelineController = window.app?.timelineController;
+    this.physicsSystem = timelineController?.physicsSystem || this.physicsSystem;
+    this.inputSystem = timelineController?.inputSystem || this.inputSystem;
+    this.cameraSystem = timelineController?.cameraSystem || this.cameraSystem;
+    this.animationChoreographer = timelineController?.animationChoreographer || this.animationChoreographer;
+
+    // Re-enable physics
+    if (this.physicsSystem) {
+      if ('enabled' in this.physicsSystem) {
+        this.physicsSystem.enabled = true;
+      }
+      if ('scrollEnabled' in this.physicsSystem) {
+        this.physicsSystem.scrollEnabled = true;
+      }
+    }
+
+    // Re-enable input
+    if (this.inputSystem && 'enabled' in this.inputSystem) {
+      this.inputSystem.enabled = true;
+    }
+
+    // Unfreeze camera
+    if (this.cameraSystem?.unfreeze) {
+      this.cameraSystem.unfreeze();
+    } else if (this.cameraSystem?.unfreezeCamera) {
+      this.cameraSystem.unfreezeCamera();
+    }
+
+    // Resume animation choreographer
+    if (this.animationChoreographer && 'enabled' in this.animationChoreographer) {
+      this.animationChoreographer.enabled = true;
+    }
+
+    if (timelineController?.resumeTimeline) {
+      timelineController.resumeTimeline();
+    } else {
+      this.paused = false;
+      this.showTimelineUI();
+      this.eventBus.emit('timeline:resume', {});
+    }
+
+    console.log('✅ Timeline systems resumed');
+  }
+
+  stopContinuousRender() {
+    this.stopDetailRenderLoop();
   }
 
   /**
@@ -719,7 +1662,7 @@ class RenderSystem {
    */
   hideTimelineUI() {
     if (typeof document === 'undefined') return;
-    const selectors = ['.timeline-ui-wrapper', '.project-title', '#year-overlay'];
+    const selectors = ['.timeline-ui-wrapper', '.project-title', '.year-overlay'];
     const elements = selectors
       .map((selector) => document.querySelector(selector))
       .filter(Boolean);
@@ -792,6 +1735,13 @@ class RenderSystem {
     if (this.onImageExpandHandoff) {
       window.removeEventListener('imageExpandHandoff', this.onImageExpandHandoff);
       this.onImageExpandHandoff = null;
+    }
+    if (this.handleKeydown) {
+      window.removeEventListener('keydown', this.handleKeydown);
+    }
+    if (this.boundHandleKeydown) {
+      window.removeEventListener('keydown', this.boundHandleKeydown);
+      this.boundHandleKeydown = null;
     }
     this.stopDetailRenderLoop();
     this.currentAnimatingPlane = null;

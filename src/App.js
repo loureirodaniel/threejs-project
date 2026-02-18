@@ -96,7 +96,7 @@ export class App {
         this.renderer.domElement.style.position = 'fixed';
         this.renderer.domElement.style.top = '0';
         this.renderer.domElement.style.left = '0';
-        this.renderer.domElement.style.zIndex = '50';
+        this.renderer.domElement.style.zIndex = '0';
         this.renderer.domElement.style.width = '100vw';
         this.renderer.domElement.style.height = '100vh';
         this.renderer.domElement.style.pointerEvents = 'auto';

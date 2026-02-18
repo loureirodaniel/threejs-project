@@ -26,6 +26,7 @@ export class YearOverlay {
         this.activeSlot = 0;
         this.isAnimating = false;
         this.showDelayId = null;
+        this.hideTimeoutId = null;
         this.boundOnYearChange = this.onYearChange.bind(this);
         this.boundOnSceneChange = this.onSceneChange.bind(this);
         this.boundOnTransitionComplete = this.onTransitionComplete.bind(this);
@@ -36,7 +37,7 @@ export class YearOverlay {
     init() {
         this.container = document.createElement('div');
         this.container.id = 'year-overlay';
-        this.container.className = 'year-display';
+        this.container.className = 'year-display year-overlay';
         this.container.setAttribute('aria-hidden', 'true');
         this.container.style.cssText = `
             position: fixed;
@@ -166,13 +167,18 @@ export class YearOverlay {
     }
 
     show() {
+        if (this.hideTimeoutId) {
+            clearTimeout(this.hideTimeoutId);
+            this.hideTimeoutId = null;
+        }
         this.container.style.visibility = 'visible';
         this.container.style.opacity = '1';
     }
 
     hide() {
         this.container.style.opacity = '0';
-        setTimeout(() => {
+        this.hideTimeoutId = setTimeout(() => {
+            this.hideTimeoutId = null;
             this.container.style.visibility = 'hidden';
         }, 300);
     }

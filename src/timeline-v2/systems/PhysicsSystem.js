@@ -27,6 +27,7 @@ class PhysicsSystem {
     this.eventBus = eventBus;
 
     // CRITICAL: Initialize as a writable property
+    this.enabled = true;
     this.scrollEnabled = true;
     this.imagePlanes = null;
     // console.log('✅ PhysicsSystem initialized with scrollEnabled:', this.scrollEnabled);
@@ -34,6 +35,8 @@ class PhysicsSystem {
     // Physics state (local to this system)
     this.velocity = 0;
     this.targetVelocity = 0;
+    this.isBeingRestored = false;
+    this.isRestoring = false;
     this.isSnapping = false;
     this.snapAnimation = null;
 
@@ -59,7 +62,10 @@ class PhysicsSystem {
    * @param {number} timestamp - High-res timestamp from requestAnimationFrame
    */
   update(deltaTime, timestamp) {
+    if (!this.enabled) return;
     if (!this.scrollEnabled) return;
+    if (this.isBeingRestored) return;
+    if (this.isRestoring) return;
 
     // NEW: Don't update planes if one is fullscreen
     if (!this.imagePlanes) {

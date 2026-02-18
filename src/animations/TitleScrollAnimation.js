@@ -6,6 +6,7 @@ export class TitleScrollAnimation {
     this.isAtTop = false;
     this.scrollThreshold = 50; // Small scroll to trigger
     this.hasScrolled = false;
+    this.disabled = false;
     this.onFirstScroll = null;
     this.init();
   }
@@ -67,6 +68,7 @@ export class TitleScrollAnimation {
     this.hasScrolled = false;
 
     this.onFirstScroll = () => {
+      if (this.disabled) return;
       if (!this.hasScrolled) {
         this.hasScrolled = true;
         this.moveToTop();
@@ -86,21 +88,28 @@ export class TitleScrollAnimation {
   }
   
   moveToTop() {
-    if (!this.title || this.isAtTop) return;
-    
-    this.isAtTop = true;
+    if (!this.title) return;
     
     gsap.to(this.title, {
-      top: 32,
-      yPercent: 0,      // Remove vertical centering
-      xPercent: -50,    // KEEP horizontal centering
+      top: '32px',
       scale: 0.8,
-      duration: 0.8,
+      duration: 0.6,
       ease: 'power2.out',
       onComplete: () => {
-        console.log('✅ Title at top, horizontally centered');
+        this.isAtTop = true;
+        console.log('✅ Title moved to top');
       }
     });
+  }
+
+  disable() {
+    this.disabled = true;
+    console.log('🔒 TitleScrollAnimation disabled');
+  }
+
+  enable() {
+    this.disabled = false;
+    console.log('🔓 TitleScrollAnimation enabled');
   }
   
   moveToCenter() {

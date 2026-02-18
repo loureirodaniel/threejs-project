@@ -74,7 +74,10 @@ class ImageDetailPage {
     this.closeButton.setAttribute('aria-label', 'Close detail view');
     this.closeButton.textContent = '✕';
 
-    this.closeButton.addEventListener('click', () => this.close());
+    this.closeButton.addEventListener('click', () => {
+      console.log('🔴 ========== CLOSE BUTTON CLICKED ==========');
+      this.handleCloseButton();
+    });
     
     // Full-screen image (100% viewport)
     this.fullscreenImage = document.createElement('img');
@@ -606,6 +609,24 @@ class ImageDetailPage {
         />
       </div>
     `).join('');
+  }
+
+  handleCloseButton() {
+    const renderSystem = window.app?.timelineController?.renderSystem;
+    const imagePlanes = renderSystem?.imagePlanes || window.app?.imagePlanes;
+    const fullscreenPlane = imagePlanes?.planes?.find((p) => p.userData.isFullscreen);
+
+    if (renderSystem?.handleCloseButton && fullscreenPlane) {
+      renderSystem.handleCloseButton();
+      return;
+    }
+
+    if (renderSystem?.closeDetailView && fullscreenPlane) {
+      renderSystem.closeDetailView(fullscreenPlane);
+      return;
+    }
+
+    this.close();
   }
   
   /**
