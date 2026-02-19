@@ -36,6 +36,7 @@ class CameraSystem {
     this.pullbackCheckRafId = null;
     this.cameraFrozen = false;
     this.frozenPosition = null;
+    this.debugCameraConfig = null;
 
     this.unsubscribeFns = [];
     this.init();
@@ -100,11 +101,17 @@ class CameraSystem {
    * @param {number} deltaTime
    */
   updateLookAt(deltaTime) {
-    // Calculate target look-at X based on timeline offset
-    const offset = this.state.get('timelineOffset');
-    this.lookAtTarget.x = -offset; // Camera looks at where images are
-    this.lookAtTarget.y = 0;
-    this.lookAtTarget.z = 0;
+    const debugConfig = this.debugCameraConfig;
+    if (debugConfig?.enabled) {
+      const target = debugConfig.target || { x: 0, y: 0, z: 0 };
+      this.lookAtTarget.set(target.x, target.y, target.z);
+    } else {
+      // Calculate target look-at X based on timeline offset
+      const offset = this.state.get('timelineOffset');
+      this.lookAtTarget.x = -offset; // Camera looks at where images are
+      this.lookAtTarget.y = 0;
+      this.lookAtTarget.z = 0;
+    }
 
     // Exponential smoothing for frame-rate independence
     const lookAtLerpSpeed = CAMERA_CONFIG?.LOOK_AT_LERP_SPEED ?? 5.0;
@@ -113,8 +120,71 @@ class CameraSystem {
 
     this.lookAtCurrent.lerp(this.lookAtTarget, t);
 
+    if (debugConfig?.enabled && debugConfig.position) {
+      this.camera.position.set(
+        debugConfig.position.x,
+        debugConfig.position.y,
+        debugConfig.position.z
+      );
+    }
+
+    if (debugConfig?.enabled && Number.isFinite(debugConfig.fov)) {
+      this.camera.fov = debugConfig.fov;
+    }
+
+    if (debugConfig?.enabled && Number.isFinite(debugConfig.near)) {
+      this.camera.near = debugConfig.near;
+    }
+
+    if (debugConfig?.enabled && Number.isFinite(debugConfig.far)) {
+      this.camera.far = debugConfig.far;
+    }
+
+    if (debugConfig?.enabled && Number.isFinite(debugConfig.zoom)) {
+      this.camera.zoom = debugConfig.zoom;
+    }
+
+    if (debugConfig?.enabled) {
+      this.camera.updateProjectionMatrix();
+    }
+
     // Update camera orientation
     this.camera.lookAt(this.lookAtCurrent);
+
+    if (debugConfig?.enabled && debugConfig.rotationOffset) {
+      const { x = 0, y = 0, z = 0 } = debugConfig.rotationOffset;
+      const baseQuaternion = this.camera.quaternion.clone();
+      const rotationOffset = new THREE.Euler(
+        THREE.MathUtils.degToRad(x),
+        THREE.MathUtils.degToRad(y),
+        THREE.MathUtils.degToRad(z),
+        'XYZ'
+      );
+      const rotationOffsetQuat = new THREE.Quaternion().setFromEuler(rotationOffset);
+      this.camera.quaternion.copy(baseQuaternion).multiply(rotationOffsetQuat);
+    }
+  }
+
+  /**
+   * Apply debug camera overrides from the debug panel.
+   * @param {object|null} config
+   */
+  setDebugCameraConfig(config) {
+    if (!config || config.enabled === false) {
+      this.debugCameraConfig = null;
+      return;
+    }
+
+    this.debugCameraConfig = {
+      enabled: true,
+      position: config.position || null,
+      target: config.target || null,
+      rotationOffset: config.rotationOffset || null,
+      fov: config.fov,
+      near: config.near,
+      far: config.far,
+      zoom: config.zoom
+    };
   }
 
   /**

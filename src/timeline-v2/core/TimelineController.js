@@ -338,6 +338,19 @@ class TimelineController {
     // No-op: RenderSystem handles this automatically via state
   }
 
+  /**
+   * Compatibility: Update timeline camera debug configuration.
+   * @param {Object} config
+   */
+  updateTimelineCameraConfig(config) {
+    if (this.cameraSystem?.setDebugCameraConfig) {
+      this.cameraSystem.setDebugCameraConfig({
+        enabled: true,
+        ...config
+      });
+    }
+  }
+
   // ============================================
   // CLEANUP
   // ============================================

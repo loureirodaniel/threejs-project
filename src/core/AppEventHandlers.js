@@ -81,11 +81,43 @@ export class AppEventHandlers {
             this.updateTimelineCamera();
         });
         
+        controls.targetXSlider.addEventListener('input', (e) => {
+            this.updateTimelineCamera();
+        });
+
         controls.targetYSlider.addEventListener('input', (e) => {
+            this.updateTimelineCamera();
+        });
+
+        controls.targetZSlider.addEventListener('input', (e) => {
+            this.updateTimelineCamera();
+        });
+
+        controls.cameraRotXSlider.addEventListener('input', (e) => {
+            this.updateTimelineCamera();
+        });
+
+        controls.cameraRotYSlider.addEventListener('input', (e) => {
+            this.updateTimelineCamera();
+        });
+
+        controls.cameraRotZSlider.addEventListener('input', (e) => {
             this.updateTimelineCamera();
         });
         
         controls.cameraFovSlider.addEventListener('input', (e) => {
+            this.updateTimelineCamera();
+        });
+
+        controls.cameraNearSlider.addEventListener('input', (e) => {
+            this.updateTimelineCamera();
+        });
+
+        controls.cameraFarSlider.addEventListener('input', (e) => {
+            this.updateTimelineCamera();
+        });
+
+        controls.cameraZoomSlider.addEventListener('input', (e) => {
             this.updateTimelineCamera();
         });
 
@@ -162,6 +194,7 @@ export class AppEventHandlers {
             this.updateLiquidDistortion();
         });
         
+        this.syncCameraControlsFromCamera();
     }
 
     /**
@@ -398,24 +431,52 @@ export class AppEventHandlers {
         const cameraX = parseFloat(controls.cameraXSlider.value);
         const cameraY = parseFloat(controls.cameraYSlider.value);
         const cameraZ = parseFloat(controls.cameraZSlider.value);
+        const targetX = parseFloat(controls.targetXSlider.value);
         const targetY = parseFloat(controls.targetYSlider.value);
+        const targetZ = parseFloat(controls.targetZSlider.value);
+        const rotX = parseFloat(controls.cameraRotXSlider.value);
+        const rotY = parseFloat(controls.cameraRotYSlider.value);
+        const rotZ = parseFloat(controls.cameraRotZSlider.value);
         const fov = parseFloat(controls.cameraFovSlider.value);
+        const near = parseFloat(controls.cameraNearSlider.value);
+        const far = parseFloat(controls.cameraFarSlider.value);
+        const zoom = parseFloat(controls.cameraZoomSlider.value);
+        const clampedNear = Math.max(0.01, Math.min(near, far - 0.01));
+        const clampedFar = Math.max(clampedNear + 0.01, far);
         
         // Update state
         this.stateManager.updateCamera({
             x: cameraX,
             y: cameraY,
             z: cameraZ,
+            targetX,
             targetY,
-            fov
+            targetZ,
+            rotX,
+            rotY,
+            rotZ,
+            fov,
+            near: clampedNear,
+            far: clampedFar,
+            zoom
         });
         
         // Update displays
-        controls.cameraXDisplay.textContent = cameraX;
-        controls.cameraYDisplay.textContent = cameraY;
-        controls.cameraZDisplay.textContent = cameraZ;
-        controls.targetYDisplay.textContent = targetY;
-        controls.cameraFovDisplay.textContent = fov;
+        controls.cameraXDisplay.textContent = cameraX.toFixed(1);
+        controls.cameraYDisplay.textContent = cameraY.toFixed(1);
+        controls.cameraZDisplay.textContent = cameraZ.toFixed(1);
+        controls.targetXDisplay.textContent = targetX.toFixed(1);
+        controls.targetYDisplay.textContent = targetY.toFixed(1);
+        controls.targetZDisplay.textContent = targetZ.toFixed(1);
+        controls.cameraRotXDisplay.textContent = rotX.toFixed(0);
+        controls.cameraRotYDisplay.textContent = rotY.toFixed(0);
+        controls.cameraRotZDisplay.textContent = rotZ.toFixed(0);
+        controls.cameraFovDisplay.textContent = fov.toFixed(0);
+        controls.cameraNearDisplay.textContent = clampedNear.toFixed(2);
+        controls.cameraFarDisplay.textContent = clampedFar.toFixed(0);
+        controls.cameraZoomDisplay.textContent = zoom.toFixed(2);
+        controls.cameraNearSlider.value = clampedNear;
+        controls.cameraFarSlider.value = clampedFar;
         
         // Directly update the camera position and properties
         const camera = this.app.sceneManager.getCamera();
@@ -423,22 +484,66 @@ export class AppEventHandlers {
         camera.position.y = cameraY;
         camera.position.z = cameraZ;
         camera.fov = fov;
+        camera.near = clampedNear;
+        camera.far = clampedFar;
+        camera.zoom = zoom;
         camera.updateProjectionMatrix();
         
-        // Update camera target
-        camera.lookAt(new THREE.Vector3(cameraX, targetY, 0));
+        // Compose orientation from target + user rotation offsets.
+        camera.lookAt(new THREE.Vector3(targetX, targetY, targetZ));
+        const baseQuaternion = camera.quaternion.clone();
+        const rotationOffset = new THREE.Euler(
+            THREE.MathUtils.degToRad(rotX),
+            THREE.MathUtils.degToRad(rotY),
+            THREE.MathUtils.degToRad(rotZ),
+            'XYZ'
+        );
+        const rotationOffsetQuat = new THREE.Quaternion().setFromEuler(rotationOffset);
+        camera.quaternion.copy(baseQuaternion).multiply(rotationOffsetQuat);
         
         // Update timeline camera configuration for future transitions
-        this.app.timelineController.updateTimelineCameraConfig({
-            position: { x: cameraX, y: cameraY, z: cameraZ },
-            target: { x: cameraX, y: targetY, z: 0 },
-            fov: fov
-        });
+        if (typeof this.app.timelineController.updateTimelineCameraConfig === 'function') {
+            this.app.timelineController.updateTimelineCameraConfig({
+                position: { x: cameraX, y: cameraY, z: cameraZ },
+                target: { x: targetX, y: targetY, z: targetZ },
+                rotationOffset: { x: rotX, y: rotY, z: rotZ },
+                fov,
+                near: clampedNear,
+                far: clampedFar,
+                zoom
+            });
+        }
         
         // Update year display if in timeline scene
         if (this.app.timelineController.getCurrentSceneIndex() === 1) {
             this.app.timelineController.updateCurrentYear();
         }
+    }
+
+    /**
+     * Seed camera debug controls from current camera values.
+     */
+    syncCameraControlsFromCamera() {
+        const controls = this.app.debugPanel.getControls();
+        const camera = this.app.sceneManager.getCamera();
+        if (!camera || !controls) return;
+
+        const stateCamera = this.stateManager.getState().camera || {};
+        controls.cameraXSlider.value = camera.position.x.toFixed(1);
+        controls.cameraYSlider.value = camera.position.y.toFixed(1);
+        controls.cameraZSlider.value = camera.position.z.toFixed(1);
+        controls.targetXSlider.value = (stateCamera.targetX ?? 0).toFixed(1);
+        controls.targetYSlider.value = (stateCamera.targetY ?? 0).toFixed(1);
+        controls.targetZSlider.value = (stateCamera.targetZ ?? 0).toFixed(1);
+        controls.cameraRotXSlider.value = (stateCamera.rotX ?? 0).toFixed(0);
+        controls.cameraRotYSlider.value = (stateCamera.rotY ?? 0).toFixed(0);
+        controls.cameraRotZSlider.value = (stateCamera.rotZ ?? 0).toFixed(0);
+        controls.cameraFovSlider.value = camera.fov.toFixed(0);
+        controls.cameraNearSlider.value = camera.near.toFixed(2);
+        controls.cameraFarSlider.value = camera.far.toFixed(0);
+        controls.cameraZoomSlider.value = camera.zoom.toFixed(2);
+
+        this.updateTimelineCamera();
     }
 
     /**
@@ -476,6 +581,22 @@ export class AppEventHandlers {
         controls.smoothScrollFrictionSlider.value = state.smoothScroll.friction;
         this.updateSmoothScroll();
         
+        // Reset camera settings
+        controls.cameraXSlider.value = state.camera.x;
+        controls.cameraYSlider.value = state.camera.y;
+        controls.cameraZSlider.value = state.camera.z;
+        controls.targetXSlider.value = state.camera.targetX;
+        controls.targetYSlider.value = state.camera.targetY;
+        controls.targetZSlider.value = state.camera.targetZ;
+        controls.cameraRotXSlider.value = state.camera.rotX;
+        controls.cameraRotYSlider.value = state.camera.rotY;
+        controls.cameraRotZSlider.value = state.camera.rotZ;
+        controls.cameraFovSlider.value = state.camera.fov;
+        controls.cameraNearSlider.value = state.camera.near;
+        controls.cameraFarSlider.value = state.camera.far;
+        controls.cameraZoomSlider.value = state.camera.zoom;
+        this.updateTimelineCamera();
+
         // Reset liquid distortion settings
         controls.distortionStrengthSlider.value = state.effects.liquid.strength;
         controls.rippleSpeedSlider.value = state.effects.liquid.rippleSpeed;

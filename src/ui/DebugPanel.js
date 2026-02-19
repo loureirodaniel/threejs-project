@@ -113,17 +113,50 @@ export class DebugPanel {
                     
                     <div style="margin-bottom: 10px;">
                         <label style="display: block; margin-bottom: 5px;">Camera Z: <span id="cameraZ">8</span></label>
-                        <input type="range" id="cameraZSlider" min="5" max="20" step="0.5" value="8" style="width: 100%;">
+                        <input type="range" id="cameraZSlider" min="-20" max="20" step="0.5" value="8" style="width: 100%;">
                     </div>
                     
                     <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Target X: <span id="targetX">0</span></label>
+                        <input type="range" id="targetXSlider" min="-20" max="20" step="0.5" value="0" style="width: 100%;">
+                    </div>
+                    <div style="margin-bottom: 10px;">
                         <label style="display: block; margin-bottom: 5px;">Target Y: <span id="targetY">0</span></label>
                         <input type="range" id="targetYSlider" min="-10" max="10" step="0.5" value="0" style="width: 100%;">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Target Z: <span id="targetZ">0</span></label>
+                        <input type="range" id="targetZSlider" min="-20" max="20" step="0.5" value="0" style="width: 100%;">
+                    </div>
+                    
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Rotation X (deg): <span id="cameraRotX">0</span></label>
+                        <input type="range" id="cameraRotXSlider" min="-180" max="180" step="1" value="0" style="width: 100%;">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Rotation Y (deg): <span id="cameraRotY">0</span></label>
+                        <input type="range" id="cameraRotYSlider" min="-180" max="180" step="1" value="0" style="width: 100%;">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Rotation Z (deg): <span id="cameraRotZ">0</span></label>
+                        <input type="range" id="cameraRotZSlider" min="-180" max="180" step="1" value="0" style="width: 100%;">
                     </div>
                     
                     <div style="margin-bottom: 10px;">
                         <label style="display: block; margin-bottom: 5px;">FOV: <span id="cameraFov">30</span></label>
                         <input type="range" id="cameraFovSlider" min="30" max="90" step="1" value="30" style="width: 100%;">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Near: <span id="cameraNear">0.1</span></label>
+                        <input type="range" id="cameraNearSlider" min="0.01" max="10" step="0.01" value="0.1" style="width: 100%;">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Far: <span id="cameraFar">1000</span></label>
+                        <input type="range" id="cameraFarSlider" min="50" max="3000" step="10" value="1000" style="width: 100%;">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Zoom: <span id="cameraZoom">1.00</span></label>
+                        <input type="range" id="cameraZoomSlider" min="0.1" max="4" step="0.01" value="1" style="width: 100%;">
                     </div>
                     
                     <div style="margin-bottom: 10px;">
@@ -271,13 +304,29 @@ export class DebugPanel {
         this.controls.cameraXSlider = document.getElementById('cameraXSlider');
         this.controls.cameraYSlider = document.getElementById('cameraYSlider');
         this.controls.cameraZSlider = document.getElementById('cameraZSlider');
+        this.controls.targetXSlider = document.getElementById('targetXSlider');
         this.controls.targetYSlider = document.getElementById('targetYSlider');
+        this.controls.targetZSlider = document.getElementById('targetZSlider');
+        this.controls.cameraRotXSlider = document.getElementById('cameraRotXSlider');
+        this.controls.cameraRotYSlider = document.getElementById('cameraRotYSlider');
+        this.controls.cameraRotZSlider = document.getElementById('cameraRotZSlider');
         this.controls.cameraFovSlider = document.getElementById('cameraFovSlider');
+        this.controls.cameraNearSlider = document.getElementById('cameraNearSlider');
+        this.controls.cameraFarSlider = document.getElementById('cameraFarSlider');
+        this.controls.cameraZoomSlider = document.getElementById('cameraZoomSlider');
         this.controls.cameraXDisplay = document.getElementById('cameraX');
         this.controls.cameraYDisplay = document.getElementById('cameraY');
         this.controls.cameraZDisplay = document.getElementById('cameraZ');
+        this.controls.targetXDisplay = document.getElementById('targetX');
         this.controls.targetYDisplay = document.getElementById('targetY');
+        this.controls.targetZDisplay = document.getElementById('targetZ');
+        this.controls.cameraRotXDisplay = document.getElementById('cameraRotX');
+        this.controls.cameraRotYDisplay = document.getElementById('cameraRotY');
+        this.controls.cameraRotZDisplay = document.getElementById('cameraRotZ');
         this.controls.cameraFovDisplay = document.getElementById('cameraFov');
+        this.controls.cameraNearDisplay = document.getElementById('cameraNear');
+        this.controls.cameraFarDisplay = document.getElementById('cameraFar');
+        this.controls.cameraZoomDisplay = document.getElementById('cameraZoom');
         this.controls.goToInitialBtn = document.getElementById('goToInitialBtn');
         this.controls.goToTimelineBtn = document.getElementById('goToTimelineBtn');
         this.controls.testVibrationBtn = document.getElementById('testVibrationBtn');

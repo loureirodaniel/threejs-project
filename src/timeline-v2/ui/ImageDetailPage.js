@@ -433,6 +433,11 @@ class ImageDetailPage {
         this.contentContainer.style.opacity = '1';
       }
       this.setupContentRevealObserver();
+      this.isOpen = true;
+      this.state.setState({
+        isImageEnlarged: true,
+        enlargedImageId: this.currentImageData?.id || this.currentImageData?.year
+      });
       
       return;
     }
@@ -634,6 +639,7 @@ class ImageDetailPage {
    */
   close() {
     // console.log('📖 ImageDetailPage.close() called');
+    this.state.setState({ isImageEnlarged: false, enlargedImageId: null });
     
     if (!this.isOpen) {
       return;

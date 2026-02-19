@@ -285,13 +285,13 @@ class RenderSystem {
    * @returns {{timelinePlanes: Array, transitionedPlanes: Array, allPlanes: Array}}
    */
   getPlaneCollections() {
-    const timelinePlanes = this.timelineScene?.getTimelinePlanes?.() || [];
-    const initialPlanes = typeof window !== 'undefined' ? window.app?.imagePlanes?.getPlanes?.() || [] : [];
-    const transitionedPlanes = initialPlanes.filter((p) => p?.userData?.isTimelineTransitioned);
+    const allPlanes = window.app?.imagePlanes?.planes || [];
+    // All planes are treated as a flat sequence — no split between
+    // transitionedPlanes and timelinePlanes anymore.
     return {
-      timelinePlanes,
-      transitionedPlanes,
-      allPlanes: [...transitionedPlanes, ...timelinePlanes]
+      timelinePlanes: [],
+      transitionedPlanes: allPlanes,
+      allPlanes
     };
   }
 
@@ -301,27 +301,16 @@ class RenderSystem {
    */
   updateImagePositions(offset) {
     const safeOffset = Number.isFinite(offset) ? offset : 0;
-    const { timelinePlanes, transitionedPlanes } = this.getPlaneCollections();
+    const allPlanes = window.app?.imagePlanes?.planes || [];
 
-    const spacing = this.state.get('calculatedSpacing') || 1.8; // Use dynamic spacing
+    const spacing = this.state.get('calculatedSpacing') || 1.8;
     const firstPosition = TIMELINE_CONFIG.FIRST_POSITION || -4.5;
     const cullDistance = 15;
 
-    // Update transitioned initial planes (first sequence: 0..)
-    transitionedPlanes.forEach((plane, index) => {
+    allPlanes.forEach((plane, index) => {
       if (!plane) return;
       if (plane.userData?.isFrozen && plane.userData?.isFullscreen) return;
       const originalX = firstPosition + index * spacing;
-      plane.position.x = originalX - safeOffset;
-      plane.visible = Math.abs(plane.position.x) < cullDistance;
-    });
-
-    // Update timeline planes (additional planes that continue sequence, usually from 2018+)
-    timelinePlanes.forEach((plane, index) => {
-      if (!plane) return;
-      if (plane.userData?.isFrozen && plane.userData?.isFullscreen) return;
-      const imageIndex = 8 + index;
-      const originalX = firstPosition + imageIndex * spacing;
       plane.position.x = originalX - safeOffset;
       plane.visible = Math.abs(plane.position.x) < cullDistance;
     });
@@ -508,11 +497,14 @@ class RenderSystem {
           distance,
           imageData: imageData[index]
         };
-      });
+      }).filter(Boolean);
       
-      // Find closest plane within 150px radius
+      const clickRadius = Math.min(window.innerWidth, window.innerHeight) * 0.2; // 20% of shortest viewport dimension
+      console.log(`🎯 Click radius: ${clickRadius.toFixed(0)}px, checking ${screenPositions.length} planes`);
+
+      // Find closest plane within click radius
       const closest = screenPositions
-        .filter(p => p.distance < 150)
+        .filter(p => p.distance < clickRadius)
         .sort((a, b) => a.distance - b.distance)[0];
       
       if (closest) {
@@ -955,6 +947,16 @@ class RenderSystem {
       console.log('  Centered image:', this.physicsSystem.centeredImageIndex);
     }
 
+    const cameraSystem = window.app?.timelineController?.cameraSystem;
+    if (cameraSystem) {
+      const restoredOffset = config.physicsOffset;
+      cameraSystem.lookAtTarget.set(-restoredOffset, 0, 0);
+      cameraSystem.lookAtCurrent.set(-restoredOffset, 0, 0);
+      cameraSystem.camera.lookAt(cameraSystem.lookAtCurrent);
+      cameraSystem.camera.updateMatrixWorld(true);
+      console.log('📷 Camera lookAt synced to offset:', restoredOffset);
+    }
+
     // STEP 3: Restore ALL planes - AGGRESSIVE approach
     console.log('🖼️ Step 3: Making ALL planes visible (aggressive)');
 
@@ -1310,6 +1312,8 @@ class RenderSystem {
 
     // Remove hiding classes
     document.body.classList.remove('detail-view-open', 'is-fullscreen');
+    this.state.setState({ isImageEnlarged: false, enlargedImageId: null });
+    this.effects.backgroundBlurEffect?.deactivate?.();
 
     // Restore camera
     console.log('📷 Restoring camera');
@@ -1333,24 +1337,36 @@ class RenderSystem {
     this.imagePlanes.planes.forEach((plane, index) => {
       const saved = state.planesState[index];
       if (saved) {
-        plane.position.copy(saved.position);
         plane.scale.copy(saved.scale);
         plane.rotation.copy(saved.rotation);
-        plane.visible = true;
-        plane.renderOrder = index;
-
-        if (!plane.parent && this.scene) this.scene.add(plane);
-        if (plane.material) {
-          plane.material.opacity = 1;
-          plane.material.needsUpdate = true;
-        }
-
-        plane.userData.isFullscreen = false;
-        plane.userData.isFrozen = false;
-        plane.updateMatrixWorld(true);
         restored++;
       }
+
+      plane.visible = true;
+      plane.renderOrder = index;
+
+      if (!plane.parent && this.scene) this.scene.add(plane);
+      if (plane.material) {
+        plane.material.opacity = 1;
+        plane.material.needsUpdate = true;
+      }
+
+      plane.userData.isFullscreen = false;
+      plane.userData.isFrozen = false;
+      plane.updateMatrixWorld(true);
     });
+
+    // Force immediate position update with restored offset
+    this.updateImagePositions(state.physicsOffset);
+    const cameraSystem = window.app?.timelineController?.cameraSystem;
+    if (cameraSystem) {
+      const restoredOffset = state.physicsOffset;
+      cameraSystem.lookAtTarget.set(-restoredOffset, 0, 0);
+      cameraSystem.lookAtCurrent.set(-restoredOffset, 0, 0);
+      cameraSystem.camera.lookAt(cameraSystem.lookAtCurrent);
+      cameraSystem.camera.updateMatrixWorld(true);
+      console.log('📷 Camera lookAt synced to offset:', restoredOffset);
+    }
 
     console.log(`  ✓ ${restored}/${this.imagePlanes.planes.length} planes`);
 

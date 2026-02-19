@@ -34,8 +34,16 @@ export class AppStateManager {
                 x: 0,
                 y: 0,
                 z: 5,
+                targetX: 0,
                 targetY: 0,
-                fov: 75
+                targetZ: 0,
+                rotX: 0,
+                rotY: 0,
+                rotZ: 0,
+                fov: 75,
+                near: 0.1,
+                far: 1000,
+                zoom: 1
             },
             smoothScroll: {
                 sensitivity: 0.25,
@@ -120,8 +128,16 @@ export class AppStateManager {
                 x: 0,
                 y: 0,
                 z: 5,
+                targetX: 0,
                 targetY: 0,
-                fov: 75
+                targetZ: 0,
+                rotX: 0,
+                rotY: 0,
+                rotZ: 0,
+                fov: 75,
+                near: 0.1,
+                far: 1000,
+                zoom: 1
             },
             smoothScroll: {
                 sensitivity: 0.25,

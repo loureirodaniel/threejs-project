@@ -335,15 +335,31 @@ export class App {
         controls.cameraXSlider.value = cameraData.cameraX;
         controls.cameraYSlider.value = cameraData.cameraY;
         controls.cameraZSlider.value = cameraData.cameraZ;
+        controls.targetXSlider.value = cameraData.targetX ?? cameraData.cameraX ?? 0;
         controls.targetYSlider.value = cameraData.targetY;
+        controls.targetZSlider.value = cameraData.targetZ ?? 0;
+        controls.cameraRotXSlider.value = cameraData.rotX ?? 0;
+        controls.cameraRotYSlider.value = cameraData.rotY ?? 0;
+        controls.cameraRotZSlider.value = cameraData.rotZ ?? 0;
         controls.cameraFovSlider.value = cameraData.fov;
+        controls.cameraNearSlider.value = cameraData.near ?? controls.cameraNearSlider.value;
+        controls.cameraFarSlider.value = cameraData.far ?? controls.cameraFarSlider.value;
+        controls.cameraZoomSlider.value = cameraData.zoom ?? controls.cameraZoomSlider.value;
         
         // Update displays
         controls.cameraXDisplay.textContent = cameraData.cameraX.toFixed(1);
         controls.cameraYDisplay.textContent = cameraData.cameraY.toFixed(1);
         controls.cameraZDisplay.textContent = cameraData.cameraZ.toFixed(1);
+        controls.targetXDisplay.textContent = (cameraData.targetX ?? cameraData.cameraX ?? 0).toFixed(1);
         controls.targetYDisplay.textContent = cameraData.targetY.toFixed(1);
+        controls.targetZDisplay.textContent = (cameraData.targetZ ?? 0).toFixed(1);
+        controls.cameraRotXDisplay.textContent = (cameraData.rotX ?? 0).toFixed(0);
+        controls.cameraRotYDisplay.textContent = (cameraData.rotY ?? 0).toFixed(0);
+        controls.cameraRotZDisplay.textContent = (cameraData.rotZ ?? 0).toFixed(0);
         controls.cameraFovDisplay.textContent = cameraData.fov.toFixed(0);
+        controls.cameraNearDisplay.textContent = (cameraData.near ?? 0.1).toFixed(2);
+        controls.cameraFarDisplay.textContent = (cameraData.far ?? 1000).toFixed(0);
+        controls.cameraZoomDisplay.textContent = (cameraData.zoom ?? 1).toFixed(2);
     }
     
 
