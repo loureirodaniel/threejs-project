@@ -553,7 +553,7 @@ class CameraSystem {
 
     // Return to timeline camera Z by default
     const timelineSceneConfig = SCENE_CONFIG.timeline;
-    const targetZ = timelineSceneConfig?.position?.z ?? 8;
+    const targetZ = timelineSceneConfig?.position?.z ?? 2.5;
 
     this.pullbackAnimation = gsap.to(this.camera.position, {
       z: targetZ,

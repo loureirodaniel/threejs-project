@@ -20,7 +20,7 @@ export class SceneManager {
         document.body.appendChild(this.renderer.domElement);
         
         // Setup camera
-        this.camera.position.z = 5;
+        this.camera.position.z = 2.5;
         
         // Setup controls
         this.controls = new OrbitControls(this.camera, this.renderer.domElement);

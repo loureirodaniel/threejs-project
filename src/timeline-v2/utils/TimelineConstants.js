@@ -25,7 +25,7 @@ export const SCENE_CONFIG = Object.freeze({
   }),
   /** Timeline scene (index 1): camera closer (z=5) to match AnimationChoreographer; narrow FOV for timeline view. */
   timeline: Object.freeze({
-    position: Object.freeze({ x: 0, y: 0, z: 5 }),
+    position: Object.freeze({ x: 0, y: 0, z: 2.5 }),
     target: Object.freeze({ x: 0, y: 0, z: 0 }),
     fov: 30
   })

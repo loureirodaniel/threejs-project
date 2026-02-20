@@ -309,7 +309,7 @@ class RenderSystem {
 
     allPlanes.forEach((plane, index) => {
       if (!plane) return;
-      if (plane.userData?.isFrozen && plane.userData?.isFullscreen) return;
+      if (plane.userData?.isFrozen || plane.userData?.animatingFromFullscreen) return;
       const originalX = firstPosition + index * spacing;
       plane.position.x = originalX - safeOffset;
       plane.visible = Math.abs(plane.position.x) < cullDistance;
@@ -426,11 +426,9 @@ class RenderSystem {
    * @param {{newValue: boolean}} payload
    */
   onImageEnlargedChange({ newValue }) {
-    if (newValue) {
-      this.effects.backgroundBlurEffect?.activate?.();
-      return;
+    if (!newValue) {
+      this.effects.backgroundBlurEffect?.deactivate?.();
     }
-    this.effects.backgroundBlurEffect?.deactivate?.();
   }
 
   /**
@@ -1314,6 +1312,25 @@ class RenderSystem {
     document.body.classList.remove('detail-view-open', 'is-fullscreen');
     this.state.setState({ isImageEnlarged: false, enlargedImageId: null });
     this.effects.backgroundBlurEffect?.deactivate?.();
+
+    // Re-add hidden planes to scene FIRST
+    if (this.hiddenPlanes) {
+      this.hiddenPlanes.forEach(p => {
+        if (p && !p.parent && this.scene) {
+          this.scene.add(p);
+        }
+        if (p) {
+          p.visible = true;
+          p.userData.isFullscreen = false;
+          p.userData.isFrozen = false;
+        }
+      });
+      this.hiddenPlanes = [];
+    }
+
+    // Restore physics offset into state
+    const offset = this.state.get('timelineOffset');
+    this.updateImagePositions(offset);
 
     // Restore camera
     console.log('📷 Restoring camera');

@@ -450,19 +450,22 @@ export class RippleAnimation {
 
     // Animate back to original state
     this.animationTween = gsap.to(animation, {
-      duration: 1.5,
+      duration: 1.8,
       scaleX: originalScale.x,
       scaleY: originalScale.y,
       posX: originalPosition.x,
       posY: originalPosition.y,
       transition: 0,
       time: animation.time + 80,
-      ease: 'power3.in',
+      ease: 'power2.inOut',
       immediateRender: true,
       overwrite: 'auto',
       onStart: () => {
         console.log('🎬 Reverse animation STARTED');
         plane.userData.animatingFromFullscreen = true;
+        plane.userData.isFrozen = true;
+        plane.userData.isFullscreen = true;
+        plane.visible = true;
       },
       onUpdate: () => {
         // Update transforms
