@@ -151,6 +151,20 @@ class CameraSystem {
     // Update camera orientation
     this.camera.lookAt(this.lookAtCurrent);
 
+    // Scroll zoom - camera pulls back slightly while scrolling
+    if (CAMERA_CONFIG.SCROLL_ZOOM_ENABLED) {
+      const scrollVelocity = Math.abs(this.state.get('scrollVelocity') || 0);
+      const baseZ = SCENE_CONFIG.timeline.position.z; // 2.5
+      const maxPullback = CAMERA_CONFIG.SCROLL_ZOOM_MAX_PULLBACK;
+      const velocityScale = CAMERA_CONFIG.SCROLL_ZOOM_VELOCITY_SCALE;
+      const lerpSpeed = CAMERA_CONFIG.SCROLL_ZOOM_LERP_SPEED;
+
+      const targetZ = baseZ + Math.min(scrollVelocity * velocityScale, maxPullback);
+      const safeDeltaZ = Math.max(0, Number.isFinite(deltaTime) ? deltaTime : 0);
+      const tZ = 1 - Math.exp(-lerpSpeed * safeDeltaZ);
+      this.camera.position.z += (targetZ - this.camera.position.z) * tZ;
+    }
+
     if (debugConfig?.enabled && debugConfig.rotationOffset) {
       const { x = 0, y = 0, z = 0 } = debugConfig.rotationOffset;
       const baseQuaternion = this.camera.quaternion.clone();

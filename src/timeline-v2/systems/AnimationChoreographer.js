@@ -4,7 +4,7 @@
  */
 
 import { gsap } from 'gsap';
-import { TIMELINE_CONFIG } from '../utils/TimelineConstants.js';
+import { TIMELINE_CONFIG, SCENE_CONFIG } from '../utils/TimelineConstants.js';
 
 class AnimationChoreographer {
   constructor(state, eventBus, camera, scene) {
@@ -30,7 +30,7 @@ class AnimationChoreographer {
    * Calculate 130px margin spacing dynamically
    */
   calculateSpacing() {
-    const cameraZ = 5; // Initial scene camera Z position
+    const cameraZ = 3.0; // Initial scene camera Z position
     const fov = 75; // Camera field of view in degrees
     
     // Calculate visible height at z=0
@@ -47,7 +47,7 @@ class AnimationChoreographer {
     const imageWidthPx = 0.75 * pixelsPerUnit;
     
     // Desired margin between images
-    const marginPx = 430;
+    const marginPx = 410;
     
     // Total spacing (center to center) in pixels
     const totalSpacingPx = imageWidthPx + marginPx;
@@ -145,7 +145,7 @@ class AnimationChoreographer {
     
     // ===== CAMERA SEQUENCE: Smooth zoom-out, then dolly in =====
     const startCameraZ = 10; // Far view during gathering
-    const endCameraZ = 5;    // Close view at timeline
+    const endCameraZ = SCENE_CONFIG.timeline.position.z; // reads 3.0 from constants
 
     console.log(`📷 Camera sequence: ${this.camera.position.z.toFixed(2)} -> ${startCameraZ} -> ${endCameraZ}`);
 
@@ -193,6 +193,15 @@ class AnimationChoreographer {
     });
     
     this.eventBus.emit('images:gather:complete');
+  
+    // Dispatch native DOM event that YearOverlay listens for
+    const year = this.state.get('currentYear') || 2010;
+    
+    window.dispatchEvent(new CustomEvent('sceneTransitionComplete', {
+      detail: { sceneName: 'timeline', year }
+    }));
+  
+    console.log('📅 sceneTransitionComplete dispatched, year:', year);
   }
   
   /**

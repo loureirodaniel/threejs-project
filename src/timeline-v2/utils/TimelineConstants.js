@@ -19,7 +19,7 @@
 export const SCENE_CONFIG = Object.freeze({
   /** Initial scene (index 0): camera close, wide FOV. Position and target in world units; fov in degrees. */
   initial: Object.freeze({
-    position: Object.freeze({ x: 0, y: 0, z: 5 }),
+    position: Object.freeze({ x: 0, y: 0, z: 8 }),
     target: Object.freeze({ x: 0, y: 0, z: 0 }),
     fov: 75
   }),
@@ -187,7 +187,13 @@ export const CAMERA_CONFIG = Object.freeze({
   PULLBACK_RETURN_DURATION: 0.3,
 
   /** Scene transition duration in seconds. */
-  TRANSITION_DURATION: 1.5
+  TRANSITION_DURATION: 1.5,
+
+  // Scroll zoom
+  SCROLL_ZOOM_ENABLED: true,
+  SCROLL_ZOOM_MAX_PULLBACK: 0.6,   // max extra z added while scrolling (world units)
+  SCROLL_ZOOM_VELOCITY_SCALE: 0.7, // how much velocity maps to zoom (tune this)
+  SCROLL_ZOOM_LERP_SPEED: 8.0      // how fast camera returns to base z
 });
 
 // -----------------------------------------------------------------------------
