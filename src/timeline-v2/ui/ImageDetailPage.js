@@ -19,6 +19,8 @@ class ImageDetailPage {
     this.descriptionElement = null;
     this.metadataContainer = null;
     this.contentRevealObserver = null;
+    this.parallaxItems = [];
+    this.parallaxScrollHandler = null;
     
     this.init();
   }
@@ -242,6 +244,69 @@ class ImageDetailPage {
 
       .detail-body p {
         margin-bottom: 1.5rem;
+      }
+
+      .detail-lead {
+        font-size: 1.18rem;
+        font-weight: 500;
+        color: rgba(255, 255, 255, 0.96);
+      }
+
+      .detail-metadata {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin: 1rem 0 2rem;
+      }
+
+      .detail-chip {
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: rgba(255, 255, 255, 0.88);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        border-radius: 999px;
+        padding: 0.35rem 0.7rem;
+        background: rgba(0, 0, 0, 0.15);
+      }
+
+      .detail-gallery {
+        margin-top: 2.5rem;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 1rem;
+      }
+
+      .detail-gallery-item {
+        position: relative;
+        overflow: hidden;
+        border-radius: 14px;
+        background: rgba(10, 10, 10, 0.55);
+        min-height: 240px;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+      }
+
+      .detail-gallery-media {
+        position: absolute;
+        inset: -8%;
+        width: 116%;
+        height: 116%;
+        object-fit: cover;
+        transform: translate3d(0, 0, 0) scale(1.02);
+        will-change: transform;
+      }
+
+      .detail-gallery-caption {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 2;
+        background: linear-gradient(to top, rgba(0, 0, 0, 0.82), rgba(0, 0, 0, 0));
+        padding: 1rem 0.9rem 0.7rem;
+        color: rgba(255, 255, 255, 0.95);
+        font-size: 0.88rem;
+        line-height: 1.35;
       }
     `;
     document.head.appendChild(style);
@@ -522,18 +587,38 @@ class ImageDetailPage {
       this.fullscreenImage.alt = `Year ${imageData.year}`;
     }
     
+    const relatedImages = this.getRelatedImages(imageData);
+    const longDescription = this.buildNarrativeParagraphs(imageData);
+    const chips = this.buildMetadataChips(imageData);
+
     // Build HTML content
     contentContainer.innerHTML = `
       <div class="detail-header">
-        <h1 data-role="detail-title">${imageData.year}</h1>
-        <p class="event-subtitle">Timeline Event</p>
+        <h1 data-role="detail-title">${imageData.year || 'Timeline Event'}</h1>
+        <p class="event-subtitle">${imageData.title || 'Timeline Event'}</p>
       </div>
 
       <div class="detail-body">
-        <p>
-          Event details and description for ${imageData.year} go here...
-        </p>
-        ${imageData?.description ? `<p data-role="detail-description">${imageData.description}</p>` : ''}
+        <p class="detail-lead" data-role="detail-description">${imageData?.description || 'A defining moment in the timeline.'}</p>
+        ${chips}
+        ${longDescription.map((paragraph) => `<p>${paragraph}</p>`).join('')}
+      </div>
+
+      <div class="detail-gallery">
+        ${relatedImages.map((item, index) => `
+          <article class="detail-gallery-item" data-parallax-speed="${(0.08 + (index % 3) * 0.04).toFixed(2)}">
+            <img
+              class="detail-gallery-media"
+              src="${item.url}"
+              alt="${item.title || `Timeline image ${index + 1}`}"
+              loading="lazy"
+            />
+            <div class="detail-gallery-caption">
+              <strong>${item.year || imageData.year || ''}</strong>
+              ${item.title ? ` - ${item.title}` : ''}
+            </div>
+          </article>
+        `).join('')}
       </div>
     `;
 
@@ -575,6 +660,9 @@ class ImageDetailPage {
       this.fullscreenImage.style.opacity = '0';
       this.fullscreenImage.style.transform = 'scale(0.95)';
     }
+
+    this.setupParallaxScroll();
+    this.updateParallaxScroll();
     
     // console.log('✅ Content updated for year:', imageData.year);
   }
@@ -616,6 +704,140 @@ class ImageDetailPage {
     `).join('');
   }
 
+  setupParallaxScroll() {
+    this.teardownParallaxScroll();
+    this.parallaxItems = Array.from(this.container.querySelectorAll('.detail-gallery-item'));
+    this.parallaxScrollHandler = this.updateParallaxScroll.bind(this);
+    this.container.addEventListener('scroll', this.parallaxScrollHandler, { passive: true });
+  }
+
+  updateParallaxScroll() {
+    if (!this.parallaxItems.length) return;
+    const viewportHeight = this.container.clientHeight || window.innerHeight || 1;
+    const centerY = viewportHeight * 0.5;
+
+    this.parallaxItems.forEach((item) => {
+      const media = item.querySelector('.detail-gallery-media');
+      if (!media) return;
+
+      const speed = Number(item.dataset.parallaxSpeed) || 0.1;
+      const rect = item.getBoundingClientRect();
+      const itemCenter = rect.top + (rect.height * 0.5);
+      const distance = itemCenter - centerY;
+      const offsetY = Math.max(-22, Math.min(22, -distance * speed * 0.12));
+      media.style.transform = `translate3d(0, ${offsetY}px, 0) scale(1.04)`;
+    });
+  }
+
+  teardownParallaxScroll() {
+    if (this.parallaxScrollHandler && this.container) {
+      this.container.removeEventListener('scroll', this.parallaxScrollHandler);
+    }
+    this.parallaxScrollHandler = null;
+    this.parallaxItems = [];
+  }
+
+  buildMetadataChips(imageData) {
+    const tags = Array.isArray(imageData?.metadata?.tags) ? imageData.metadata.tags : [];
+    const chips = [];
+
+    if (imageData?.metadata?.location) chips.push(imageData.metadata.location);
+    if (imageData?.metadata?.event) chips.push(imageData.metadata.event);
+    chips.push(...tags.slice(0, 4));
+
+    if (!chips.length) return '';
+
+    return `
+      <div class="detail-metadata" data-role="detail-metadata">
+        ${chips.map((chip) => `<span class="detail-chip">${chip}</span>`).join('')}
+      </div>
+    `;
+  }
+
+  buildNarrativeParagraphs(imageData) {
+    const year = imageData?.year || 'this period';
+    const title = imageData?.title || 'the timeline event';
+    const location = imageData?.metadata?.location || 'the country';
+    const event = imageData?.metadata?.event || 'a key national milestone';
+
+    return [
+      `In ${year}, ${location} became the stage for ${event}. This moment changed the rhythm of daily life and marked a clear transition in public sentiment.`,
+      `Viewed through ${title}, the scene captures how institutions, citizens, and international observers reacted in real time. The timeline around this year shows a chain of causes and effects rather than a single isolated event.`,
+      `As you continue scrolling, these supporting images reveal parallel stories from the same period, helping connect policy, street-level experience, and long-term impact in a single visual narrative.`
+    ];
+  }
+
+  getRelatedImages(imageData) {
+    const timelineImages = Array.isArray(window.app?.imagePlanes?.imageData)
+      ? window.app.imagePlanes.imageData
+      : [];
+
+    const normalized = timelineImages
+      .map((item, index) => {
+        if (typeof item === 'string') {
+          return {
+            id: `timeline-${index}`,
+            year: imageData?.year,
+            title: `Timeline image ${index + 1}`,
+            url: item
+          };
+        }
+
+        const url = item?.url || item?.imageUrl || item?.image || item?.src;
+        if (!url) return null;
+        return { ...item, url };
+      })
+      .filter(Boolean);
+
+    const currentYear = imageData?.year;
+    const sameYear = normalized.filter((item) => item.year === currentYear);
+    const currentId = imageData?.id;
+
+    const ordered = [
+      imageData,
+      ...sameYear.filter((item) => item.id !== currentId)
+    ];
+
+    if (ordered.length < 4 && normalized.length > 0) {
+      const currentIndex = Math.max(
+        0,
+        normalized.findIndex((item) => item.id === currentId || item.year === currentYear)
+      );
+      const neighborhood = [
+        normalized[currentIndex - 2],
+        normalized[currentIndex - 1],
+        normalized[currentIndex + 1],
+        normalized[currentIndex + 2],
+        normalized[currentIndex + 3]
+      ].filter(Boolean);
+      ordered.push(...neighborhood);
+    }
+
+    const deduped = [];
+    const seen = new Set();
+    ordered.forEach((item) => {
+      const url = item?.url || item?.imageUrl || item?.image || item?.src;
+      if (!url || seen.has(url)) return;
+      seen.add(url);
+      deduped.push({
+        ...item,
+        url
+      });
+    });
+
+    if (!deduped.length) {
+      const fallbackUrl = imageData?.url || imageData?.imageUrl || imageData?.image || imageData?.src;
+      if (fallbackUrl) {
+        deduped.push({
+          ...imageData,
+          url: fallbackUrl
+        });
+      }
+    }
+
+    return deduped.slice(0, 7);
+  }
+
   handleCloseButton() {
     const renderSystem = window.app?.timelineController?.renderSystem;
     const imagePlanes = renderSystem?.imagePlanes || window.app?.imagePlanes;
@@ -646,6 +868,7 @@ class ImageDetailPage {
     }
     
     this.isOpen = false;
+    this.teardownParallaxScroll();
     if (this.contentRevealObserver) {
       this.contentRevealObserver.disconnect();
       this.contentRevealObserver = null;
@@ -737,6 +960,7 @@ class ImageDetailPage {
       this.contentRevealObserver.disconnect();
       this.contentRevealObserver = null;
     }
+    this.teardownParallaxScroll();
     
     document.body.style.overflow = '';
     

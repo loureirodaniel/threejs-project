@@ -27,7 +27,7 @@ class AnimationChoreographer {
   }
   
   /**
-   * Calculate 130px margin spacing dynamically
+   * Calculate timeline spacing dynamically
    */
   calculateSpacing() {
     const cameraZ = 3.0; // Initial scene camera Z position
@@ -46,8 +46,8 @@ class AnimationChoreographer {
     // Image width in pixels (0.75 three.js units at scale 0.75)
     const imageWidthPx = 0.75 * pixelsPerUnit;
     
-    // Desired margin between images
-    const marginPx = 410;
+    // Desired margin between images (increased to open up the timeline layout)
+    const marginPx = 520;
     
     // Total spacing (center to center) in pixels
     const totalSpacingPx = imageWidthPx + marginPx;

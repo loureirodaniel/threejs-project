@@ -12,6 +12,7 @@ export class TimelineNavigation {
         this.yearIndicator = null;
         this.previousYearValue = 2010; // Track previous year for direction detection
         this.showTimeout = null; // Timeout for delayed show
+        this.lastSceneName = 'initial';
         
         this.init();
     }
@@ -38,14 +39,11 @@ export class TimelineNavigation {
         }, 1000);
         
         // Continuous monitoring to ensure it stays hidden in initial scene
+        // (use event-driven scene state, because controller index can lag briefly)
         setInterval(() => {
-            const app = window.app;
-            if (app && app.timelineController) {
-                const currentSceneIndex = app.timelineController.getCurrentSceneIndex();
-                if (currentSceneIndex === 0 && this.isVisible) {
-                    console.log('TimelineNavigation: Detected visible in initial scene, forcing hide');
-                    this.hide();
-                }
+            if (this.lastSceneName === 'initial' && this.isVisible) {
+                console.log('TimelineNavigation: Detected visible in initial scene, forcing hide');
+                this.hide();
             }
         }, 1000);
     }
@@ -342,9 +340,14 @@ export class TimelineNavigation {
         
         // Listen for scene changes to show/hide navigation
         window.addEventListener('sceneChange', (event) => {
-            console.log('TimelineNavigation: Scene change detected:', event.detail.sceneName);
-            if (event.detail.sceneName === 'timeline') {
-                // Don't show immediately, wait for images to load
+            const sceneName = event?.detail?.sceneName || event?.detail?.scene;
+            if (!sceneName) return;
+
+            this.lastSceneName = sceneName;
+            console.log('TimelineNavigation: Scene change detected:', sceneName);
+
+            if (sceneName === 'timeline') {
+                // Show after 1s when timeline scene becomes active
                 this.scheduleShowAfterImagesLoad();
             } else {
                 this.hide();
@@ -353,16 +356,25 @@ export class TimelineNavigation {
         
         // Listen for scene transition completion
         window.addEventListener('sceneTransitionComplete', (event) => {
-            if (event.detail.sceneName === 'timeline') {
-                // Don't show immediately, wait for images to load
+            const sceneName = event?.detail?.sceneName || event?.detail?.scene;
+            if (!sceneName) return;
+
+            this.lastSceneName = sceneName;
+
+            if (sceneName === 'timeline') {
+                // Ensure delayed show also runs when transition fully completes
                 this.scheduleShowAfterImagesLoad();
+            } else if (sceneName === 'initial') {
+                this.hide();
             }
         });
         
         // Listen for timeline images loaded event
         window.addEventListener('timelineImagesLoaded', (event) => {
             if (event.detail.scene === 'timeline') {
-                this.show();
+                this.lastSceneName = 'timeline';
+                // Keep timing consistent: appear 1s after timeline is active
+                this.scheduleShowAfterImagesLoad();
             }
         });
         
@@ -486,16 +498,11 @@ export class TimelineNavigation {
     }
     
     show() {
-        // Check if we're in initial scene - if so, don't show
-        const app = window.app;
-        if (app && app.timelineController) {
-            const currentSceneIndex = app.timelineController.getCurrentSceneIndex();
-            if (currentSceneIndex === 0) {
-                console.log('TimelineNavigation: Attempted to show in initial scene, blocking');
-                return;
-            }
+        // Most reliable scene source for this component is transition events
+        if (this.lastSceneName !== 'timeline') {
+            return;
         }
-        
+
         // Clear any pending timeout since we're showing now
         if (this.showTimeout) {
             clearTimeout(this.showTimeout);
@@ -538,16 +545,16 @@ export class TimelineNavigation {
     }
     
     scheduleShowAfterImagesLoad() {
-        // Clear any existing timeout (fallback in case event doesn't fire)
+        // Clear any existing timeout to avoid duplicate delayed shows
         if (this.showTimeout) {
             clearTimeout(this.showTimeout);
         }
         
-        // Fallback timeout in case the timelineImagesLoaded event doesn't fire
-        // This ensures the navigation shows even if there's an issue with the event
+        // Show 1s after entering timeline scene.
+        // This removes dependency on user scroll to trigger visibility.
         this.showTimeout = setTimeout(() => {
             this.show();
-        }, 5000); // 5 second fallback
+        }, 1000);
     }
     
     isNavigationVisible() {

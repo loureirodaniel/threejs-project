@@ -52,15 +52,15 @@ export const PHYSICS_CONFIG = Object.freeze({
   /** Drag momentum friction per frame (0–1; higher = more damping). */
   DRAG_FRICTION: 0.96,
   /** Multiplier applied to drag release velocity for momentum. */
-  DRAG_TO_SCROLL_MULTIPLIER: 0.5,
+  DRAG_TO_SCROLL_MULTIPLIER: 0.12,
 
   // Scroll physics
   /** Scroll-to-offset sensitivity (multiplier on scroll delta). */
-  SCROLL_SENSITIVITY: 0.5,
+  SCROLL_SENSITIVITY: 0.28,
   /** Scroll momentum friction (0–1). */
-  SCROLL_FRICTION: 0.92,
+  SCROLL_FRICTION: 0.72,
   /** Maximum scroll/drag velocity magnitude in offset units per frame. */
-  MAX_SCROLL_VELOCITY: 0.9,
+  MAX_SCROLL_VELOCITY: 0.45,
 
   // Snapping
   /** Distance threshold for snapping. */

@@ -1091,7 +1091,7 @@ class RenderSystem {
 
         // STEP 7: Show timeline navigation
         console.log('🧭 Step 7: Showing timeline navigation');
-        const timelineNav = document.querySelector('.timeline-navigation');
+        const timelineNav = document.querySelector('#timeline-navigation, .timeline-navigation');
 
         if (timelineNav) {
           timelineNav.style.display = 'flex';
@@ -1230,18 +1230,6 @@ class RenderSystem {
           display: block !important;
         `;
         console.log('  Title: FORCED visible');
-      }
-
-      // Force navigation
-      const nav = document.querySelector('.timeline-navigation');
-      if (nav) {
-        nav.style.cssText = `
-          display: flex !important;
-          opacity: 1 !important;
-          visibility: visible !important;
-          pointer-events: auto !important;
-        `;
-        console.log('  Navigation: FORCED visible');
       }
 
       // Force render
@@ -1501,13 +1489,12 @@ class RenderSystem {
     console.log(`Big year overlay restored to ${currentYear}`);
 
     // === STEP 6: Restore Navigation ===
-    const nav = document.querySelector('.timeline-navigation');
+    const nav = document.querySelector('#timeline-navigation, .timeline-navigation');
     if (nav) {
-      nav.style.cssText = `
-        display: flex !important;
-        opacity: 1 !important;
-        visibility: visible !important;
-      `;
+      nav.style.display = 'flex';
+      nav.style.opacity = '1';
+      nav.style.visibility = 'visible';
+      nav.style.pointerEvents = 'auto';
       console.log('🧭 Navigation visible');
     }
 
@@ -1695,7 +1682,7 @@ class RenderSystem {
    */
   hideTimelineUI() {
     if (typeof document === 'undefined') return;
-    const selectors = ['.timeline-ui-wrapper', '.project-title', '.year-overlay'];
+    const selectors = ['.timeline-ui-wrapper', '.project-title', '.year-overlay', '#timeline-navigation'];
     const elements = selectors
       .map((selector) => document.querySelector(selector))
       .filter(Boolean);

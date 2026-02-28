@@ -8,6 +8,8 @@
  * @module timeline-v2/core
  */
 
+import { PHYSICS_CONFIG } from '../utils/TimelineConstants.js';
+
 const INITIAL_STATE = Object.freeze({
   // Scene state
   currentSceneIndex: 0,
@@ -36,8 +38,8 @@ const INITIAL_STATE = Object.freeze({
   isDetailViewOpen: false,
 
   // Physics state
-  friction: 0.92,
-  sensitivity: 0.5,
+  friction: PHYSICS_CONFIG.SCROLL_FRICTION,
+  sensitivity: PHYSICS_CONFIG.SCROLL_SENSITIVITY,
 });
 
 const VALID_PROPERTIES = new Set(Object.keys(INITIAL_STATE));

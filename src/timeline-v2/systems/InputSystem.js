@@ -287,9 +287,9 @@ class InputSystem {
 
     const isTrackpad = Math.abs(delta) < 50;
     if (isTrackpad) {
-      return delta * 0.01;
+      return delta * 0.007;
     }
-    return delta * 0.02;
+    return delta * 0.012;
   }
 
   /**
