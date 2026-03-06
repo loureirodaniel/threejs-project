@@ -193,8 +193,26 @@ export class AppEventHandlers {
         controls.noiseStrengthSlider.addEventListener('input', (e) => {
             this.updateLiquidDistortion();
         });
+
+        // Glitch controls
+        controls.glitchNavPeakSlider.addEventListener('input', () => {
+            this.updateGlitchControls();
+        });
+        controls.glitchScrollPeakSlider.addEventListener('input', () => {
+            this.updateGlitchControls();
+        });
+        controls.glitchLerpSlider.addEventListener('input', () => {
+            this.updateGlitchControls();
+        });
+        controls.glitchDecaySlider.addEventListener('input', () => {
+            this.updateGlitchControls();
+        });
+        controls.glitchTimeStepSlider.addEventListener('input', () => {
+            this.updateGlitchControls();
+        });
         
         this.syncCameraControlsFromCamera();
+        this.updateGlitchControls();
     }
 
     /**
@@ -228,7 +246,7 @@ export class AppEventHandlers {
         
         this.eventBus.on('checkCurrentScene', () => {
             if (this.app.timelineController.getCurrentSceneIndex() === 1) {
-                if (this.app.eventsPanel) {
+                if (this.app.eventsPanel?.toggleButton) {
                     this.app.eventsPanel.toggleButton.style.display = 'flex';
                 }
             }
@@ -421,6 +439,40 @@ export class AppEventHandlers {
         }
     }
 
+    /**
+     * Update glitch controls
+     */
+    updateGlitchControls() {
+        const controls = this.app.debugPanel.getControls();
+
+        const navPeak = parseFloat(controls.glitchNavPeakSlider.value);
+        const scrollPeak = parseFloat(controls.glitchScrollPeakSlider.value);
+        const lerp = parseFloat(controls.glitchLerpSlider.value);
+        const decay = parseFloat(controls.glitchDecaySlider.value);
+        const timeStep = parseFloat(controls.glitchTimeStepSlider.value);
+
+        this.stateManager.updateEffect('glitch', {
+            navPeak,
+            scrollPeak,
+            lerp,
+            decay,
+            timeStep
+        });
+
+        controls.glitchNavPeakDisplay.textContent = navPeak.toFixed(2);
+        controls.glitchScrollPeakDisplay.textContent = scrollPeak.toFixed(2);
+        controls.glitchLerpDisplay.textContent = lerp.toFixed(2);
+        controls.glitchDecayDisplay.textContent = decay.toFixed(2);
+        controls.glitchTimeStepDisplay.textContent = timeStep.toFixed(3);
+
+        if (this.app.glitchController?.setConfig) {
+            this.app.glitchController.setConfig({ navPeak, scrollPeak, lerp, decay });
+        }
+        if (this.app.timelineController?.renderSystem?.setGlitchTimeStep) {
+            this.app.timelineController.renderSystem.setGlitchTimeStep(timeStep);
+        }
+    }
+
 
     /**
      * Update timeline camera settings
@@ -605,6 +657,14 @@ export class AppEventHandlers {
         controls.noiseScaleSlider.value = state.effects.liquid.noiseScale;
         controls.noiseStrengthSlider.value = state.effects.liquid.noiseStrength;
         this.updateLiquidDistortion();
+
+        // Reset glitch settings
+        controls.glitchNavPeakSlider.value = state.effects.glitch.navPeak;
+        controls.glitchScrollPeakSlider.value = state.effects.glitch.scrollPeak;
+        controls.glitchLerpSlider.value = state.effects.glitch.lerp;
+        controls.glitchDecaySlider.value = state.effects.glitch.decay;
+        controls.glitchTimeStepSlider.value = state.effects.glitch.timeStep;
+        this.updateGlitchControls();
         
     }
 }

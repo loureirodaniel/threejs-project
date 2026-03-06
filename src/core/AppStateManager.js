@@ -28,6 +28,13 @@ export class AppStateManager {
                     opacity: 0.8,
                     leftWidth: 4,
                     rightWidth: 4
+                },
+                glitch: {
+                    navPeak: 1.0,
+                    scrollPeak: 0.85,
+                    lerp: 0.18,
+                    decay: 0.85,
+                    timeStep: 0.016
                 }
             },
             camera: {
@@ -122,6 +129,13 @@ export class AppStateManager {
                     opacity: 0.8,
                     leftWidth: 4,
                     rightWidth: 4
+                },
+                glitch: {
+                    navPeak: 1.0,
+                    scrollPeak: 0.85,
+                    lerp: 0.18,
+                    decay: 0.85,
+                    timeStep: 0.016
                 }
             },
             camera: {

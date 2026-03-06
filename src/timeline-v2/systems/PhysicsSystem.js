@@ -18,7 +18,6 @@
  */
 
 import { gsap } from 'gsap';
-import { offsetToSnapIndex, snapIndexToOffset } from '../utils/TimelineUtils.js';
 import { PHYSICS_CONFIG, TIMING_CONFIG, TIMELINE_CONFIG } from '../utils/TimelineConstants.js';
 
 class PhysicsSystem {
@@ -39,6 +38,10 @@ class PhysicsSystem {
     this.isRestoring = false;
     this.isSnapping = false;
     this.snapAnimation = null;
+    this.pendingScrollSteps = [];
+    this.lastWheelEventAt = 0;
+    this.lastGestureAt = 0;
+    this.burstCount = 0;
 
     // Timers
     this.scrollStopTimeout = null;
@@ -136,11 +139,38 @@ class PhysicsSystem {
 
     console.debug('PhysicsSystem: Scroll event, delta:', delta);
 
-    const sensitivity = this.state.get('sensitivity');
-    this.velocity += delta * sensitivity;
+    const threshold = PHYSICS_CONFIG.SCROLL_STEP_THRESHOLD ?? 0.9;
+    const deadzone = threshold * 0.08;
+    if (Math.abs(delta) < deadzone) {
+      return;
+    }
 
-    const maxVelocity = PHYSICS_CONFIG.MAX_SCROLL_VELOCITY ?? 0.9;
-    this.velocity = Math.max(-maxVelocity, Math.min(maxVelocity, this.velocity));
+    const now = performance.now();
+    const gestureGapMs = 18;
+    const burstWindowMs = 700;
+    const isNewGesture = (now - this.lastWheelEventAt) > gestureGapMs;
+    this.lastWheelEventAt = now;
+
+    if (isNewGesture) {
+      const direction = Math.sign(delta);
+      if (direction !== 0) {
+        // Burst acceleration applies to rapid repeated gestures in either direction.
+        if ((now - this.lastGestureAt) <= burstWindowMs) {
+          this.burstCount = Math.min(14, this.burstCount + 1);
+        } else {
+          this.burstCount = 1;
+        }
+        this.lastGestureAt = now;
+
+        // Always move one adjacent image per gesture (no skipping).
+        // Burst speed is handled by shorter snap duration, not multi-step queuing.
+        if (this.pendingScrollSteps.length < 24) {
+          this.pendingScrollSteps.push(direction);
+        }
+
+        this.processNextScrollStep();
+      }
+    }
 
     this.state.setState({ isScrolling: true });
 
@@ -151,6 +181,41 @@ class PhysicsSystem {
       this.state.setState({ isScrolling: false });
       this.checkSnapAfterScroll();
     }, TIMING_CONFIG.SCROLL_STOP_DELAY ?? 400);
+  }
+
+  processNextScrollStep() {
+    if (this.isSnapping) return;
+    if (this.pendingScrollSteps.length === 0) return;
+
+    this.velocity = 0;
+
+    const currentOffset = this.state.get('timelineOffset');
+    const calculatedSpacing = this.state.get('calculatedSpacing') || 1.8;
+    const firstPosition = TIMELINE_CONFIG.FIRST_POSITION || -4.5;
+    const yearCount = TIMELINE_CONFIG.YEAR_COUNT || 10;
+    const relativeOffset = currentOffset - firstPosition;
+    const nearestIndex = Math.max(0, Math.min(yearCount - 1, Math.round(relativeOffset / calculatedSpacing)));
+    const stateIndex = this.state.get('currentSnapIndex');
+    const baseIndex = Number.isInteger(stateIndex) ? stateIndex : nearestIndex;
+    const direction = this.pendingScrollSteps.shift();
+    const targetIndex = Math.max(0, Math.min(yearCount - 1, baseIndex + direction));
+    const targetOffset = firstPosition + (targetIndex * calculatedSpacing);
+
+    if (targetIndex === baseIndex) {
+      this.processNextScrollStep();
+      return;
+    }
+
+    const baseDuration = PHYSICS_CONFIG.SCROLL_STEP_DURATION ?? 0.4;
+    const queueBoost = Math.min(0.45, this.pendingScrollSteps.length * 0.10);
+    const burstBoost = Math.min(0.55, Math.max(0, this.burstCount - 1) * 0.12);
+    const dynamicDuration = Math.max(0.12, baseDuration * (1 - queueBoost - burstBoost));
+
+    this.snapToOffset(
+      targetOffset,
+      targetIndex,
+      dynamicDuration
+    );
   }
 
   /**
@@ -215,8 +280,12 @@ class PhysicsSystem {
     console.debug('PhysicsSystem: Navigate to index', targetIndex);
 
     this.velocity = 0;
-    const targetOffset = snapIndexToOffset(targetIndex);
-    this.snapToOffset(targetOffset, targetIndex, 0.5);
+    const calculatedSpacing = this.state.get('calculatedSpacing') || 1.8;
+    const firstPosition = TIMELINE_CONFIG.FIRST_POSITION || -4.5;
+    const yearCount = TIMELINE_CONFIG.YEAR_COUNT || 10;
+    const clampedIndex = Math.max(0, Math.min(yearCount - 1, Number.isFinite(targetIndex) ? Math.round(targetIndex) : 0));
+    const targetOffset = firstPosition + (clampedIndex * calculatedSpacing);
+    this.snapToOffset(targetOffset, clampedIndex, 0.5);
   }
 
   /**
@@ -296,6 +365,14 @@ class PhysicsSystem {
    * Check if should snap after scroll stops
    */
   checkSnapAfterScroll() {
+    if (this.isSnapping) return;
+    if (this.pendingScrollSteps.length > 0) {
+      this.processNextScrollStep();
+      return;
+    }
+
+    this.burstCount = 0;
+
     const snapVelocityThreshold = PHYSICS_CONFIG.SNAP_VELOCITY_THRESHOLD ?? 0.05;
     if (Math.abs(this.velocity) < snapVelocityThreshold) {
       this.snapToNearest();
@@ -387,7 +464,7 @@ class PhysicsSystem {
     this.snapAnimation = gsap.to(animTarget, {
       value: targetOffset,
       duration,
-      ease: 'power2.out',
+      ease: 'sine.inOut',
       onUpdate: () => {
         this.state.setState({ timelineOffset: animTarget.value });
       },
@@ -407,6 +484,9 @@ class PhysicsSystem {
 
         this.triggerHaptic('snap');
         console.debug('PhysicsSystem: Snap complete to index', targetIndex);
+
+        // Continue queued wheel/trackpad steps smoothly, one image at a time.
+        this.processNextScrollStep();
       }
     });
   }

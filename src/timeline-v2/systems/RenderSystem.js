@@ -18,9 +18,13 @@
 
 import * as THREE from 'three';
 import { gsap } from 'gsap';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { RippleAnimation } from './RippleAnimation.js';
 import * as TimelineUtils from '../utils/TimelineUtils.js';
-import { EFFECTS_CONFIG, TIMELINE_CONFIG } from '../utils/TimelineConstants.js';
+import { EFFECTS_CONFIG, TIMELINE_CONFIG, TIMELINE_LAYOUT_CONFIG, getTimelineLayoutSlot } from '../utils/TimelineConstants.js';
+import { GlitchShader } from '../../shaders/GlitchShader.js';
 
 class RenderSystem {
   constructor(state, eventBus, timelineScene, effects = {}) {
@@ -52,6 +56,7 @@ class RenderSystem {
     this.boundHandleKeydown = null;
     this.isHandlingImageClose = false;
     this.suppressNextImageCloseEvent = false;
+    this._glitchTimeStep = 0.016;
     const app = typeof window !== 'undefined' ? (window.app || {}) : {};
     this.camera = app.camera;
 
@@ -239,6 +244,11 @@ class RenderSystem {
       return;
     }
 
+    // Init composer once all three are ready
+    if (!this._composer && this.renderer && this.scene && this.camera) {
+      this.initComposer(this.renderer, this.scene, this.camera);
+    }
+
     const fullscreenPlane = this.currentAnimatingPlane?.userData?.isFullscreen
       ? this.currentAnimatingPlane
       : null;
@@ -260,7 +270,44 @@ class RenderSystem {
       this.renderer.setClearColor(0x000000, 0);
     }
 
-    this.renderer.render(this.scene, this.camera);
+    if (this._composer) {
+      this._glitchPass.uniforms.uTime.value += this._glitchTimeStep;
+      this._composer.render();
+    } else {
+      this.renderer.render(this.scene, this.camera);
+    }
+  }
+
+  initComposer(renderer, scene, camera) {
+    if (this._composer) return; // already initialized
+    this._composer = new EffectComposer(renderer);
+    this._renderPass = new RenderPass(scene, camera);
+    this._composer.addPass(this._renderPass);
+    this._glitchPass = new ShaderPass(GlitchShader);
+    this._glitchPass.uniforms.uGlitchIntensity.value = 0;
+    this._glitchPass.uniforms.uResolution.value.x = window.innerWidth;
+    this._glitchPass.uniforms.uResolution.value.y = window.innerHeight;
+    this._composer.addPass(this._glitchPass);
+    this._composer.setSize(window.innerWidth, window.innerHeight);
+    window.addEventListener('resize', () => {
+      this._composer?.setSize(window.innerWidth, window.innerHeight);
+      if (this._glitchPass?.uniforms?.uResolution?.value) {
+        this._glitchPass.uniforms.uResolution.value.x = window.innerWidth;
+        this._glitchPass.uniforms.uResolution.value.y = window.innerHeight;
+      }
+    });
+  }
+
+  setGlitchIntensity(value) {
+    if (this._glitchPass) {
+      this._glitchPass.uniforms.uGlitchIntensity.value = Math.max(0, Math.min(1, value));
+    }
+  }
+
+  setGlitchTimeStep(value) {
+    if (Number.isFinite(value)) {
+      this._glitchTimeStep = Math.max(0.001, Math.min(0.1, value));
+    }
   }
 
   startDetailRenderLoop() {
@@ -296,6 +343,107 @@ class RenderSystem {
   }
 
   /**
+   * Compute world-space X shift so the focused image starts with a fixed
+   * left viewport padding in pixels.
+   * @param {Array<THREE.Mesh>} allPlanes
+   * @returns {number}
+   */
+  getViewportAnchorShift(allPlanes) {
+    const camera = this.camera || window.app?.camera;
+    if (!camera || !Array.isArray(allPlanes) || allPlanes.length === 0) return 0;
+
+    const firstPlane = allPlanes[0];
+    const viewportWidth = Math.max(1, window.innerWidth || 1);
+    const slotZ = getTimelineLayoutSlot(0).z;
+    const visibleWidth = this.getVisibleWidthAtDepth(slotZ);
+    const unitsPerPixel = visibleWidth / viewportWidth;
+
+    const configuredPaddingPx = TIMELINE_LAYOUT_CONFIG.FIRST_IMAGE_LEFT_PADDING_PX ?? 50;
+    const firstScale = this.getSlotScaleForIndex(0, firstPlane);
+    const geometryWidth = firstPlane?.geometry?.parameters?.width ?? 2.5;
+    const planeWidthWorld = geometryWidth * firstScale;
+
+    return (-visibleWidth / 2) + (configuredPaddingPx * unitsPerPixel) + (planeWidthWorld / 2);
+  }
+
+  getVisibleWidthAtDepth(zDepth) {
+    const camera = this.camera || window.app?.camera;
+    if (!camera) return 1;
+    const viewportWidth = Math.max(1, window.innerWidth || 1);
+    const viewportHeight = Math.max(1, window.innerHeight || 1);
+    const fovRad = THREE.MathUtils.degToRad(camera.fov || 30);
+    const distance = Math.max(0.001, Math.abs((camera.position?.z ?? 2.5) - zDepth));
+    const visibleHeight = 2 * Math.tan(fovRad / 2) * distance;
+    return visibleHeight * ((camera.aspect && Number.isFinite(camera.aspect)) ? camera.aspect : (viewportWidth / viewportHeight));
+  }
+
+  getSlotWidthPercentage(slotIndex) {
+    const percentages = TIMELINE_LAYOUT_CONFIG.IMAGE_WIDTH_PERCENTAGES || [0.3, 0.2, 0.15];
+    return percentages[slotIndex] ?? percentages[0] ?? 0.3;
+  }
+
+  getSlotScaleForIndex(index, plane) {
+    const slot = getTimelineLayoutSlot(index);
+    const slotIndex = Math.abs(index) % 3;
+    const geometryWidth = plane?.geometry?.parameters?.width ?? 2.5;
+    const visibleWidth = this.getVisibleWidthAtDepth(slot.z);
+    const targetWorldWidth = visibleWidth * this.getSlotWidthPercentage(slotIndex);
+    return Math.max(0.001, targetWorldWidth / Math.max(0.001, geometryWidth));
+  }
+
+  /**
+   * Convert a screen Y (px) to world Y for a specific z depth.
+   * @param {number} pixelY
+   * @param {number} zDepth
+   * @param {THREE.PerspectiveCamera} camera
+   * @returns {number}
+   */
+  pixelYToWorldY(pixelY, zDepth, camera) {
+    const viewportHeight = Math.max(1, window.innerHeight || 1);
+    const fovRad = THREE.MathUtils.degToRad(camera.fov || 30);
+    const distance = Math.max(0.001, Math.abs((camera.position?.z ?? 2.5) - zDepth));
+    const visibleHeight = 2 * Math.tan(fovRad / 2) * distance;
+    const normalizedY = 0.5 - (pixelY / viewportHeight);
+    return normalizedY * visibleHeight;
+  }
+
+  /**
+   * Compute world-space Y for each layout slot so:
+   * - first image top = 80px from viewport top
+   * - second is 15% smaller and bottom-aligned with first
+   * - third top-aligned with second
+   * @param {Array<THREE.Mesh>} allPlanes
+   * @returns {number[]}
+   */
+  getLayoutSlotWorldY(allPlanes) {
+    const camera = this.camera || window.app?.camera;
+    if (!camera || !Array.isArray(allPlanes) || allPlanes.length === 0) return [0, 0, 0];
+
+    const viewportWidth = Math.max(1, window.innerWidth || 1);
+    const firstSlot = getTimelineLayoutSlot(0);
+    const secondSlot = getTimelineLayoutSlot(1);
+    const thirdSlot = getTimelineLayoutSlot(2);
+    const firstHeightPx = viewportWidth * this.getSlotWidthPercentage(0) * 0.75;
+    const secondHeightPx = viewportWidth * this.getSlotWidthPercentage(1) * 0.75;
+    const thirdHeightPx = viewportWidth * this.getSlotWidthPercentage(2) * 0.75;
+
+    const firstTopPx = TIMELINE_LAYOUT_CONFIG.FIRST_IMAGE_TOP_PX ?? 80;
+    const firstBottomPx = firstTopPx + firstHeightPx;
+    // Diagram layout:
+    // - image2 top aligned to image1 bottom
+    // - image3 bottom aligned to image1 bottom
+    const secondCenterPx = firstBottomPx + (secondHeightPx / 2);
+    const thirdCenterPx = firstBottomPx - (thirdHeightPx / 2);
+    const firstCenterPx = firstTopPx + (firstHeightPx / 2);
+
+    const slot0Y = this.pixelYToWorldY(firstCenterPx, firstSlot.z, camera);
+    const slot1Y = this.pixelYToWorldY(secondCenterPx, secondSlot.z, camera);
+    const slot2Y = this.pixelYToWorldY(thirdCenterPx, thirdSlot.z, camera);
+
+    return [slot0Y, slot1Y, slot2Y];
+  }
+
+  /**
    * Update all image positions based on timeline offset.
    * @param {number} offset - Current timeline offset
    */
@@ -306,12 +454,18 @@ class RenderSystem {
     const spacing = this.state.get('calculatedSpacing') || 1.8;
     const firstPosition = TIMELINE_CONFIG.FIRST_POSITION || -4.5;
     const cullDistance = 15;
+    const anchorShiftX = this.getViewportAnchorShift(allPlanes);
+    const slotWorldY = this.getLayoutSlotWorldY(allPlanes);
 
     allPlanes.forEach((plane, index) => {
       if (!plane) return;
-      if (plane.userData?.isFrozen || plane.userData?.animatingFromFullscreen) return;
+      if (plane.userData?.isFrozen || plane.userData?.animatingFromFullscreen || plane.userData?.isTransitioning) return;
       const originalX = firstPosition + index * spacing;
-      plane.position.x = originalX - safeOffset;
+      const slot = getTimelineLayoutSlot(index);
+      const slotIndex = Math.abs(index) % slotWorldY.length;
+      plane.position.x = originalX - safeOffset + anchorShiftX;
+      plane.position.y = slotWorldY[slotIndex] ?? slot.y;
+      plane.position.z = slot.z;
       plane.visible = Math.abs(plane.position.x) < cullDistance;
     });
   }
@@ -328,12 +482,8 @@ class RenderSystem {
     const focusWidth = EFFECTS_CONFIG.VIGNETTE_FOCUS_WIDTH ?? EFFECTS_CONFIG.VIGNETTE_WIDTH ?? 2.0;
     const falloffWidth = EFFECTS_CONFIG.VIGNETTE_FALLOFF_WIDTH ?? 4.0;
     const minOpacity = EFFECTS_CONFIG.VIGNETTE_MIN_OPACITY ?? (1 - (EFFECTS_CONFIG.VIGNETTE_STRENGTH ?? 0.7));
-    const focusScale = EFFECTS_CONFIG.FOCUS_SCALE ?? 0.85;
-    const normalScale = EFFECTS_CONFIG.NORMAL_SCALE ?? 0.75;
 
-    const imagesToUnfocus = [];
-
-    allPlanes.forEach((plane) => {
+    allPlanes.forEach((plane, index) => {
       if (!plane || !plane.visible || !plane.material) return;
       if (plane.userData?.isFrozen && plane.userData?.isFullscreen) return;
 
@@ -353,42 +503,22 @@ class RenderSystem {
       plane.material.transparent = true;
       plane.material.needsUpdate = true;
 
-      const isFocused = distance < 1.0;
-      const targetScale = isFocused ? focusScale : normalScale;
+      const baseScale = this.getSlotScaleForIndex(index, plane);
+      const targetScale = baseScale;
       const needsScaleChange = Math.abs(plane.scale.x - targetScale) > 0.01;
       if (!needsScaleChange) return;
 
       gsap.killTweensOf(plane.scale);
 
-      if (isFocused) {
-        gsap.to(plane.scale, {
-          x: targetScale,
-          y: targetScale,
-          z: targetScale,
-          duration: 0.4,
-          ease: 'back.out(1.2)',
-          overwrite: 'auto'
-        });
-      } else {
-        imagesToUnfocus.push(plane.scale);
-      }
-    });
-
-    if (imagesToUnfocus.length > 0) {
-      gsap.to(imagesToUnfocus, {
-        x: normalScale,
-        y: normalScale,
-        z: normalScale,
-        duration: 0.3,
+      gsap.to(plane.scale, {
+        x: targetScale,
+        y: targetScale,
+        z: targetScale,
+        duration: 0.35,
         ease: 'power2.out',
-        stagger: {
-          amount: 0.1,
-          from: 'center',
-          ease: 'power1.inOut'
-        },
         overwrite: 'auto'
       });
-    }
+    });
   }
 
   /**
@@ -1436,10 +1566,10 @@ class RenderSystem {
       console.error('  ❌ Title NOT FOUND');
     }
 
-    console.log("RESTORING BIG YEAR OVERLAY");
+    console.log('RESTORING YEAR OVERLAY');
     const bigYearElement = document.querySelector('.year-overlay');
     if (!bigYearElement) {
-      console.error("Big year overlay NOT FOUND");
+      console.error('Year overlay NOT FOUND');
       return;
     }
 
@@ -1466,27 +1596,18 @@ class RenderSystem {
       }
     }
     bigYearElement.classList.remove('hidden', 'fade-out', 'detail-active');
-    bigYearElement.style.cssText = `
-      opacity: 1 !important;
-      visibility: visible !important;
-      display: block !important;
-      pointer-events: none !important;
-      position: fixed !important;
-      top: 20% !important;
-      left: 50% !important;
-      transform: translateX(-50%) scale(1.2) !important;
-      z-index: 999999 !important;
-      font-size: clamp(120px, 20vw, 300px) !important;
-      color: white !important;
-    `;
+    bigYearElement.style.opacity = '1';
+    bigYearElement.style.visibility = 'visible';
+    bigYearElement.style.display = 'block';
+    bigYearElement.style.pointerEvents = 'none';
     let parent = bigYearElement.parentElement;
     while (parent && parent !== document.body) {
-      parent.style.setProperty('opacity', '1', 'important');
-      parent.style.setProperty('visibility', 'visible', 'important');
-      parent.style.setProperty('z-index', '99999', 'important');
+      parent.style.opacity = '1';
+      parent.style.visibility = 'visible';
       parent = parent.parentElement;
     }
-    console.log(`Big year overlay restored to ${currentYear}`);
+    yearOverlay?.positionBelowActiveImage?.();
+    console.log(`Year overlay restored to ${currentYear}`);
 
     // === STEP 6: Restore Navigation ===
     const nav = document.querySelector('#timeline-navigation, .timeline-navigation');
@@ -1682,7 +1803,7 @@ class RenderSystem {
    */
   hideTimelineUI() {
     if (typeof document === 'undefined') return;
-    const selectors = ['.timeline-ui-wrapper', '.project-title', '.year-overlay', '#timeline-navigation'];
+    const selectors = ['.timeline-ui-wrapper', '.project-title', '.year-overlay', '#timeline-navigation', '#timeline-meta-overlay'];
     const elements = selectors
       .map((selector) => document.querySelector(selector))
       .filter(Boolean);

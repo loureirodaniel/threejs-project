@@ -1,416 +1,449 @@
+import { TimelineMetaBox } from './TimelineMetaBox.js';
+
+const PRIMARY_COMMENT_ITEMS = [
+  { date: '24/06/26', text: 'Comment1' },
+  { date: '24/06/26', text: 'Comment 2' },
+  { date: '24/06/26', text: 'Comment3' }
+];
+const META_BOX_OFFSET_PX = 14;
+
+function projectToScreen(position, camera, viewportWidth, viewportHeight) {
+  const projected = position.clone().project(camera);
+  return {
+    x: (projected.x * 0.5 + 0.5) * viewportWidth,
+    y: (-projected.y * 0.5 + 0.5) * viewportHeight
+  };
+}
+
+function planePixelSize(plane, camera, viewportHeight) {
+  const geometryWidth = plane?.geometry?.parameters?.width ?? 2.5;
+  const geometryHeight = plane?.geometry?.parameters?.height ?? (geometryWidth * 0.75);
+  const scaleX = plane?.scale?.x ?? 1;
+  const scaleY = plane?.scale?.y ?? 1;
+  const worldWidth = geometryWidth * scaleX;
+  const worldHeight = geometryHeight * scaleY;
+
+  const distance = Math.max(0.001, Math.abs((camera.position?.z ?? 2.5) - (plane.position?.z ?? 0)));
+  const fovRad = ((camera.fov || 30) * Math.PI) / 180;
+  const visibleHeight = 2 * Math.tan(fovRad / 2) * distance;
+  const pixelsPerUnit = viewportHeight / visibleHeight;
+
+  return {
+    width: Math.max(1, worldWidth * pixelsPerUnit),
+    height: Math.max(1, worldHeight * pixelsPerUnit)
+  };
+}
+
 export class EventsPanel {
-    constructor() {
-        this.currentYear = 2010;
-        this.isVisible = false;
-        this.panel = null;
-        this.eventsContainer = null;
-        
-        // Sample events data for each year (2010-2019)
-        this.eventsData = {
-            2010: [
-                { title: 'First Major Event', description: 'A significant milestone that marked the beginning of a new era.', category: 'Technology' },
-                { title: 'Innovation Launch', description: 'Groundbreaking technology that changed the industry landscape.', category: 'Innovation' },
-                { title: 'Global Initiative', description: 'Worldwide collaboration that brought together diverse communities.', category: 'Collaboration' }
-            ],
-            2011: [
-                { title: 'Breakthrough Discovery', description: 'Revolutionary findings that opened new possibilities.', category: 'Research' },
-                { title: 'Market Expansion', description: 'Strategic growth that reached new markets and audiences.', category: 'Business' },
-                { title: 'Community Building', description: 'Creating connections and fostering meaningful relationships.', category: 'Community' }
-            ],
-            2012: [
-                { title: 'Digital Transformation', description: 'Complete overhaul of digital infrastructure and processes.', category: 'Technology' },
-                { title: 'Sustainability Project', description: 'Environmental initiatives that made a lasting impact.', category: 'Environment' },
-                { title: 'Creative Revolution', description: 'Artistic and creative breakthroughs that inspired millions.', category: 'Art' }
-            ],
-            2013: [
-                { title: 'Mobile Revolution', description: 'The shift to mobile-first experiences and applications.', category: 'Technology' },
-                { title: 'Data Analytics', description: 'Advanced analytics that provided unprecedented insights.', category: 'Analytics' },
-                { title: 'User Experience', description: 'Redefining how users interact with digital products.', category: 'UX' }
-            ],
-            2014: [
-                { title: 'Cloud Computing', description: 'Migration to cloud-based solutions and infrastructure.', category: 'Technology' },
-                { title: 'Security Enhancement', description: 'Advanced security measures to protect user data.', category: 'Security' },
-                { title: 'Performance Optimization', description: 'Significant improvements in speed and efficiency.', category: 'Performance' }
-            ],
-            2015: [
-                { title: 'AI Integration', description: 'Introduction of artificial intelligence and machine learning.', category: 'AI' },
-                { title: 'Automation Systems', description: 'Streamlining processes through intelligent automation.', category: 'Automation' },
-                { title: 'Predictive Analytics', description: 'Using data to predict future trends and behaviors.', category: 'Analytics' }
-            ],
-            2016: [
-                { title: 'Virtual Reality', description: 'Exploring immersive experiences and virtual environments.', category: 'VR' },
-                { title: 'Blockchain Technology', description: 'Implementing decentralized and secure systems.', category: 'Blockchain' },
-                { title: 'IoT Development', description: 'Connecting devices and creating smart ecosystems.', category: 'IoT' }
-            ],
-            2017: [
-                { title: 'Machine Learning', description: 'Advanced algorithms that learn and adapt over time.', category: 'ML' },
-                { title: 'Natural Language Processing', description: 'Understanding and processing human language.', category: 'NLP' },
-                { title: 'Computer Vision', description: 'Teaching machines to see and interpret visual data.', category: 'Vision' }
-            ],
-            2018: [
-                { title: 'Edge Computing', description: 'Processing data closer to the source for faster results.', category: 'Edge' },
-                { title: '5G Networks', description: 'Next-generation connectivity and communication.', category: '5G' },
-                { title: 'Quantum Computing', description: 'Exploring the future of computational power.', category: 'Quantum' }
-            ],
-            2019: [
-                { title: 'Future Vision', description: 'Setting the stage for the next decade of innovation.', category: 'Future' },
-                { title: 'Global Impact', description: 'Creating positive change on a worldwide scale.', category: 'Impact' },
-                { title: 'Legacy Building', description: 'Establishing foundations for future generations.', category: 'Legacy' }
-            ]
-        };
-        
-        this.init();
-    }
-    
-    init() {
-        this.createPanel();
-        this.setupEventListeners();
-    }
-    
-    createPanel() {
-        // Create main panel container
-        this.panel = document.createElement('div');
-        this.panel.id = 'events-panel';
-        this.panel.style.cssText = `
-            position: fixed;
-            top: 0;
-            right: -400px;
-            width: 400px;
-            height: 100vh;
-            background: linear-gradient(135deg, rgba(0, 0, 0, 0.95) 0%, rgba(20, 20, 20, 0.95) 100%);
-            backdrop-filter: blur(10px);
-            border-left: 1px solid rgba(255, 255, 255, 0.1);
-            z-index: 1000;
-            transition: right 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-            overflow-y: auto;
-            overflow-x: hidden;
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-        `;
-        
-        // Create header
-        const header = document.createElement('div');
-        header.style.cssText = `
-            padding: 30px 30px 20px 30px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            position: sticky;
-            top: 0;
-            background: inherit;
-            z-index: 10;
-        `;
-        
-        const title = document.createElement('h2');
-        title.textContent = 'Timeline Events';
-        title.style.cssText = `
-            margin: 0 0 10px 0;
-            font-size: 28px;
-            font-weight: 700;
-            color: #ffffff;
-            letter-spacing: -0.5px;
-        `;
-        
-        const yearDisplay = document.createElement('div');
-        yearDisplay.id = 'current-year-display';
-        yearDisplay.textContent = '2010';
-        yearDisplay.style.cssText = `
-            font-size: 18px;
-            color: #64b5f6;
-            font-weight: 600;
-            margin-bottom: 15px;
-        `;
-        
-        const subtitle = document.createElement('p');
-        subtitle.textContent = 'Explore the key events and milestones for each year';
-        subtitle.style.cssText = `
-            margin: 0;
-            font-size: 14px;
-            color: rgba(255, 255, 255, 0.7);
-            line-height: 1.5;
-        `;
-        
-        header.appendChild(title);
-        header.appendChild(yearDisplay);
-        header.appendChild(subtitle);
-        
-        // Create events container
-        this.eventsContainer = document.createElement('div');
-        this.eventsContainer.id = 'events-container';
-        this.eventsContainer.style.cssText = `
-            padding: 20px 30px 30px 30px;
-        `;
-        
-        // Create toggle button
-        this.toggleButton = document.createElement('div');
-        this.toggleButton.id = 'events-panel-toggle';
-        this.toggleButton.innerHTML = '📅';
-        this.toggleButton.style.cssText = `
-            position: fixed;
-            top: 50%;
-            right: 20px;
-            transform: translateY(-50%);
-            width: 50px;
-            height: 50px;
-            background: rgba(0, 0, 0, 0.8);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            z-index: 1001;
-            font-size: 20px;
-            transition: all 0.3s ease;
-            backdrop-filter: blur(10px);
-        `;
-        
-        // Add hover effects
-        this.toggleButton.addEventListener('mouseenter', () => {
-            this.toggleButton.style.background = 'rgba(100, 181, 246, 0.9)';
-            this.toggleButton.style.transform = 'translateY(-50%) scale(1.1)';
-        });
-        
-        this.toggleButton.addEventListener('mouseleave', () => {
-            this.toggleButton.style.background = 'rgba(0, 0, 0, 0.8)';
-            this.toggleButton.style.transform = 'translateY(-50%) scale(1)';
-        });
-        
-        // Assemble panel
-        this.panel.appendChild(header);
-        this.panel.appendChild(this.eventsContainer);
-        
-        // Add to DOM
-        document.body.appendChild(this.panel);
-        document.body.appendChild(this.toggleButton);
-        
-        // Initially populate with 2010 events
-        this.updateEvents(2010);
-    }
-    
-    setupEventListeners() {
-        // Toggle button click
-        this.toggleButton.addEventListener('click', () => {
-            this.toggle();
-        });
-        
-        // Listen for timeline year changes
-        window.addEventListener('timelineYearChange', (event) => {
-            this.updateEvents(event.detail.year);
-        });
-        
-        // Listen for scene changes to show/hide panel
-        window.addEventListener('sceneChange', (event) => {
-            if (event.detail.sceneName === 'timeline') {
-                // Show the toggle button but keep panel hidden initially
-                this.toggleButton.style.display = 'flex';
-            } else {
-                this.hide();
-                this.toggleButton.style.display = 'none';
-            }
-        });
-        
-        // Initially hide the toggle button until we're in timeline scene
-        this.toggleButton.style.display = 'none';
-        
-        // Check if we're already in timeline scene on initialization
-        setTimeout(() => {
-            // Dispatch a custom event to check current scene
-            const checkSceneEvent = new CustomEvent('checkCurrentScene');
-            window.dispatchEvent(checkSceneEvent);
-        }, 100);
-        
-        // Close panel when clicking outside (optional)
-        document.addEventListener('click', (event) => {
-            if (this.isVisible && 
-                !this.panel.contains(event.target) && 
-                !this.toggleButton.contains(event.target)) {
-                this.hide();
-            }
-        });
-    }
-    
-    updateEvents(year) {
-        this.currentYear = year;
-        
-        // Update year display
-        const yearDisplay = document.getElementById('current-year-display');
-        if (yearDisplay) {
-            yearDisplay.textContent = year.toString();
+  constructor(imageData = []) {
+    this.imageData = Array.isArray(imageData) ? imageData : [];
+    this.currentYear = 2010;
+    this.minYear = 2010;
+    this.maxYear = 2019;
+    this.isVisible = false;
+    this.rafId = null;
+
+    this.panel = null;
+    this.header = null;
+    this.primaryMetaBox = null;
+    this.secondaryMetaBox = null;
+    this.tertiaryMetaBox = null;
+
+    this.boundOnYearChange = this.onYearChange.bind(this);
+    this.boundOnSceneChange = this.onSceneChange.bind(this);
+    this.boundOnTransitionComplete = this.onTransitionComplete.bind(this);
+
+    this.init();
+  }
+
+  init() {
+    this.createPanel();
+    this.injectStyles();
+    this.setupEventListeners();
+    this.updateEvents(this.currentYear);
+    this.hide();
+  }
+
+  createPanel() {
+    this.panel = document.createElement('div');
+    this.panel.id = 'timeline-meta-overlay';
+    this.panel.setAttribute('aria-hidden', 'true');
+
+    const dividerOne = document.createElement('div');
+    dividerOne.className = 'timeline-meta-divider timeline-meta-divider-one';
+    this.dividerOne = dividerOne;
+
+    const dividerTwo = document.createElement('div');
+    dividerTwo.className = 'timeline-meta-divider timeline-meta-divider-two';
+    this.dividerTwo = dividerTwo;
+
+    this.header = document.createElement('div');
+    this.header.className = 'timeline-meta-header';
+    this.header.textContent = 'Archivo memoria';
+
+    this.primaryMetaBox = new TimelineMetaBox({
+      variant: 'primary',
+      includeGhostAndComments: true,
+      comments: PRIMARY_COMMENT_ITEMS
+    });
+    this.secondaryMetaBox = new TimelineMetaBox({ variant: 'secondary' });
+    this.tertiaryMetaBox = new TimelineMetaBox({ variant: 'tertiary' });
+
+    this.panel.appendChild(dividerOne);
+    this.panel.appendChild(dividerTwo);
+    this.panel.appendChild(this.header);
+    this.panel.appendChild(this.primaryMetaBox.getElement());
+    this.panel.appendChild(this.secondaryMetaBox.getElement());
+    this.panel.appendChild(this.tertiaryMetaBox.getElement());
+
+    document.body.appendChild(this.panel);
+  }
+
+  injectStyles() {
+    if (document.getElementById('timeline-meta-overlay-styles')) return;
+
+    const style = document.createElement('style');
+    style.id = 'timeline-meta-overlay-styles';
+    style.textContent = `
+      #timeline-meta-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 130;
+        --timeline-divider-one: 42vw;
+        --timeline-divider-two: 69vw;
+        pointer-events: none;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 240ms ease;
+        font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        color: rgba(255, 255, 255, 0.96);
+      }
+
+      body.timeline-meta-active #timeline-meta-overlay {
+        opacity: 1;
+        visibility: visible;
+      }
+
+      body.detail-view-open #timeline-meta-overlay {
+        opacity: 0 !important;
+        visibility: hidden !important;
+      }
+
+      #timeline-meta-overlay .timeline-meta-divider {
+        position: absolute;
+        top: 8px;
+        bottom: 8px;
+        width: 1px;
+        background: rgba(244, 244, 244, 0.12);
+      }
+
+      #timeline-meta-overlay .timeline-meta-divider-one {
+        left: var(--timeline-divider-one);
+      }
+
+      #timeline-meta-overlay .timeline-meta-divider-two {
+        left: var(--timeline-divider-two);
+      }
+
+      #timeline-meta-overlay .timeline-meta-header {
+        position: absolute;
+        top: 22px;
+        left: calc(var(--timeline-divider-one) + 16px);
+        font-size: 24px;
+        font-weight: 300;
+        letter-spacing: 0.01em;
+      }
+
+      #timeline-meta-overlay .timeline-meta-card {
+        position: fixed;
+        background: transparent;
+        border-top: 1px solid rgba(255, 255, 255, 0.07);
+        padding: 8px 10px 10px;
+        box-sizing: border-box;
+        overflow: hidden;
+      }
+
+      #timeline-meta-overlay .timeline-meta-content {
+        position: relative;
+      }
+
+      #timeline-meta-overlay .timeline-meta-card-primary {
+        min-height: 150px;
+      }
+
+      #timeline-meta-overlay .timeline-meta-year {
+        font-size: clamp(12px, 0.95vw, 14px);
+        color: rgba(255, 255, 255, 0.52);
+        line-height: 1;
+        margin-bottom: 7px;
+      }
+
+      #timeline-meta-overlay .timeline-meta-title {
+        margin: 0;
+        font-weight: 300;
+        letter-spacing: -0.01em;
+        font-size: clamp(22px, 1.7vw, 35px);
+      }
+
+      #timeline-meta-overlay .timeline-meta-card-secondary .timeline-meta-title,
+      #timeline-meta-overlay .timeline-meta-card-tertiary .timeline-meta-title {
+        font-size: clamp(18px, 1.4vw, 28px);
+      }
+
+      #timeline-meta-overlay .timeline-meta-ghost-year {
+        position: absolute;
+        left: -6px;
+        top: 44%;
+        transform: translateY(-50%);
+        font-size: clamp(96px, 15vw, 260px);
+        line-height: 0.9;
+        letter-spacing: -0.04em;
+        color: rgba(255, 255, 255, 0.045);
+        font-weight: 200;
+      }
+
+      #timeline-meta-overlay .timeline-meta-comments {
+        position: relative;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 6px;
+      }
+
+      #timeline-meta-overlay .timeline-meta-comments-container {
+        margin-top: max(8.5vh, 68px);
+        background: rgba(214, 214, 214, 0.16);
+        padding: 12px;
+        box-sizing: border-box;
+      }
+
+      #timeline-meta-overlay .timeline-meta-comment-date {
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.46);
+      }
+
+      #timeline-meta-overlay .timeline-meta-comment-text {
+        margin-top: 4px;
+        font-size: clamp(17px, 1.45vw, 30px);
+        font-weight: 300;
+      }
+
+      @media (max-width: 980px) {
+        #timeline-meta-overlay .timeline-meta-divider {
+          display: none;
         }
-        
-        // Clear existing events
-        this.eventsContainer.innerHTML = '';
-        
-        // Get events for current year
-        const events = this.eventsData[year] || [];
-        
-        if (events.length === 0) {
-            // Show no events message
-            const noEvents = document.createElement('div');
-            noEvents.style.cssText = `
-                text-align: center;
-                padding: 40px 20px;
-                color: rgba(255, 255, 255, 0.5);
-                font-style: italic;
-            `;
-            noEvents.textContent = 'No events recorded for this year';
-            this.eventsContainer.appendChild(noEvents);
-            return;
+
+        #timeline-meta-overlay .timeline-meta-header {
+          top: 16px;
+          left: 18px;
+          font-size: 18px;
         }
-        
-        // Create event cards
-        events.forEach((event, index) => {
-            const eventCard = this.createEventCard(event, index);
-            this.eventsContainer.appendChild(eventCard);
-        });
-    }
-    
-    createEventCard(event, index) {
-        const card = document.createElement('div');
-        card.style.cssText = `
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 16px;
-            transition: all 0.3s ease;
-            cursor: pointer;
-            position: relative;
-            overflow: hidden;
-        `;
-        
-        // Add hover effects
-        card.addEventListener('mouseenter', () => {
-            card.style.background = 'rgba(255, 255, 255, 0.08)';
-            card.style.transform = 'translateY(-2px)';
-            card.style.boxShadow = '0 8px 25px rgba(0, 0, 0, 0.3)';
-        });
-        
-        card.addEventListener('mouseleave', () => {
-            card.style.background = 'rgba(255, 255, 255, 0.05)';
-            card.style.transform = 'translateY(0)';
-            card.style.boxShadow = 'none';
-        });
-        
-        // Category badge
-        const categoryBadge = document.createElement('div');
-        categoryBadge.textContent = event.category;
-        categoryBadge.style.cssText = `
-            display: inline-block;
-            background: linear-gradient(135deg, #64b5f6, #1976d2);
-            color: white;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 12px;
-        `;
-        
-        // Event title
-        const title = document.createElement('h3');
-        title.textContent = event.title;
-        title.style.cssText = `
-            margin: 0 0 8px 0;
-            font-size: 18px;
-            font-weight: 600;
-            color: #ffffff;
-            line-height: 1.3;
-        `;
-        
-        // Event description
-        const description = document.createElement('p');
-        description.textContent = event.description;
-        description.style.cssText = `
-            margin: 0;
-            font-size: 14px;
-            color: rgba(255, 255, 255, 0.7);
-            line-height: 1.5;
-        `;
-        
-        // Add animation delay for staggered appearance
-        card.style.opacity = '0';
-        card.style.transform = 'translateY(20px)';
-        
-        setTimeout(() => {
-            card.style.transition = 'all 0.4s ease';
-            card.style.opacity = '1';
-            card.style.transform = 'translateY(0)';
-        }, index * 100);
-        
-        // Assemble card
-        card.appendChild(categoryBadge);
-        card.appendChild(title);
-        card.appendChild(description);
-        
-        return card;
-    }
-    
-    show() {
-        if (!this.isVisible) {
-            this.panel.style.right = '0';
-            this.isVisible = true;
-            this.toggleButton.innerHTML = '✕';
-            this.toggleButton.style.right = '420px';
+
+        #timeline-meta-overlay .timeline-meta-comments {
+          margin-top: 40px;
         }
+      }
+    `;
+
+    document.head.appendChild(style);
+  }
+
+  setupEventListeners() {
+    window.addEventListener('timelineYearChange', this.boundOnYearChange);
+    window.addEventListener('sceneChange', this.boundOnSceneChange);
+    window.addEventListener('sceneTransitionComplete', this.boundOnTransitionComplete);
+  }
+
+  setImageData(imageData = []) {
+    this.imageData = Array.isArray(imageData) ? imageData : [];
+    this.updateEvents(this.currentYear);
+  }
+
+  onYearChange(event) {
+    const year = event?.detail?.year;
+    if (typeof year === 'number') {
+      this.updateEvents(Math.max(this.minYear, Math.min(this.maxYear, Math.round(year))));
     }
-    
-    hide() {
-        if (this.isVisible) {
-            this.panel.style.right = '-400px';
-            this.isVisible = false;
-            this.toggleButton.innerHTML = '📅';
-            this.toggleButton.style.right = '20px';
-        }
+  }
+
+  onSceneChange(event) {
+    const sceneName = event?.detail?.sceneName;
+    if (sceneName === 'timeline') {
+      this.show();
+      this.updateEvents(this.currentYear);
+    } else if (sceneName === 'initial') {
+      this.hide();
     }
-    
-    toggle() {
-        if (this.isVisible) {
-            this.hide();
-        } else {
-            this.show();
-        }
+  }
+
+  onTransitionComplete(event) {
+    const sceneName = event?.detail?.sceneName;
+    if (sceneName === 'timeline') {
+      this.show();
+      this.updateEvents(this.currentYear);
     }
-    
-    isPanelVisible() {
-        return this.isVisible;
+  }
+
+  getCardDataForYear(year) {
+    const byYear = this.imageData.filter((item) => Number(item.year) === Number(year));
+    if (byYear.length > 0) {
+      return byYear.sort((a, b) => (a.order || 0) - (b.order || 0))[0];
     }
-    
-    getCurrentYear() {
-        return this.currentYear;
+
+    return {
+      year,
+      title: 'Event name',
+      description: ''
+    };
+  }
+
+  updateEvents(year) {
+    this.currentYear = year;
+
+    const year1 = this.currentYear;
+    const year2 = Math.min(this.maxYear, year1 + 1);
+    const year3 = Math.min(this.maxYear, year1 + 2);
+
+    const primaryEntry = this.getCardDataForYear(year1);
+    const secondaryEntry = this.getCardDataForYear(year2);
+    const tertiaryEntry = this.getCardDataForYear(year3);
+
+    this.primaryMetaBox?.setContent({ year: year1, title: primaryEntry.title, ghostYear: year1 });
+    this.secondaryMetaBox?.setContent({ year: year2, title: secondaryEntry.title });
+    this.tertiaryMetaBox?.setContent({ year: year3, title: tertiaryEntry.title });
+
+    this.updateAnchoredLayout();
+  }
+
+  getAllTimelinePlanes() {
+    const initialPlanes = window.app?.imagePlanes?.getPlanes?.() || [];
+    const additionalPlanes = window.app?.timelineScene?.timelinePlanes || [];
+    return [...initialPlanes, ...additionalPlanes];
+  }
+
+  updateAnchoredLayout() {
+    if (!this.isVisible) return;
+
+    const camera = window.app?.camera;
+    if (!camera) return;
+
+    const allPlanes = this.getAllTimelinePlanes();
+    if (!Array.isArray(allPlanes) || allPlanes.length === 0) return;
+
+    const viewportWidth = Math.max(1, window.innerWidth || 1);
+    const viewportHeight = Math.max(1, window.innerHeight || 1);
+
+    const index1 = Math.max(0, Math.min(allPlanes.length - 1, this.currentYear - this.minYear));
+    const index2 = Math.max(0, Math.min(allPlanes.length - 1, index1 + 1));
+    const index3 = Math.max(0, Math.min(allPlanes.length - 1, index1 + 2));
+
+    const primaryBounds = this.placeMetaUnderPlane(this.primaryMetaBox, allPlanes[index1], camera, viewportWidth, viewportHeight, true);
+    const secondaryBounds = this.placeMetaUnderPlane(this.secondaryMetaBox, allPlanes[index2], camera, viewportWidth, viewportHeight, false);
+    const tertiaryBounds = this.placeMetaUnderPlane(this.tertiaryMetaBox, allPlanes[index3], camera, viewportWidth, viewportHeight, false);
+
+    this.updateColumnGuides(viewportWidth, primaryBounds, secondaryBounds, tertiaryBounds);
+  }
+
+  placeMetaUnderPlane(metaBox, plane, camera, viewportWidth, viewportHeight, isPrimary) {
+    if (!metaBox || !plane || !plane.visible) {
+      if (metaBox) metaBox.setLayout({ visible: false });
+      return null;
     }
-    
-    // Method to add custom events (can be called externally)
-    addEvent(year, event) {
-        if (!this.eventsData[year]) {
-            this.eventsData[year] = [];
-        }
-        this.eventsData[year].push(event);
-        
-        // Update display if this is the current year
-        if (year === this.currentYear) {
-            this.updateEvents(year);
-        }
+
+    const center = projectToScreen(plane.position, camera, viewportWidth, viewportHeight);
+    const size = planePixelSize(plane, camera, viewportHeight);
+
+    const left = Math.round(center.x - (size.width / 2));
+    const top = Math.round(center.y + (size.height / 2));
+
+    if (isPrimary) {
+      const minHeight = Math.max(120, Math.min(230, Math.round(size.height * 0.8)));
+      metaBox.setLayout({
+        left,
+        top: Math.round(top + META_BOX_OFFSET_PX),
+        width: Math.round(size.width),
+        minHeight,
+        visible: true
+      });
+    } else {
+      metaBox.setLayout({
+        left,
+        top: Math.round(top + META_BOX_OFFSET_PX),
+        width: Math.round(size.width),
+        minHeight: 96,
+        visible: true
+      });
     }
-    
-    // Method to remove events
-    removeEvent(year, eventTitle) {
-        if (this.eventsData[year]) {
-            this.eventsData[year] = this.eventsData[year].filter(event => event.title !== eventTitle);
-            
-            // Update display if this is the current year
-            if (year === this.currentYear) {
-                this.updateEvents(year);
-            }
-        }
+
+    return {
+      left,
+      right: left + Math.round(size.width),
+      top,
+      bottom: top + Math.round(size.height)
+    };
+  }
+
+  updateColumnGuides(viewportWidth, primaryBounds, secondaryBounds, tertiaryBounds) {
+    if (!this.panel || !Number.isFinite(viewportWidth) || viewportWidth <= 0) return;
+
+    const fallbackDividerOne = Math.round(viewportWidth * 0.42);
+    const fallbackDividerTwo = Math.round(viewportWidth * 0.69);
+
+    const dividerOnePx = primaryBounds?.right ?? fallbackDividerOne;
+    const dividerTwoSource = (
+      (secondaryBounds?.right && tertiaryBounds?.left)
+        ? Math.round((secondaryBounds.right + tertiaryBounds.left) / 2)
+        : (secondaryBounds?.right ?? tertiaryBounds?.left ?? fallbackDividerTwo)
+    );
+    const dividerTwoPx = Math.max(dividerOnePx + 1, dividerTwoSource);
+
+    this.panel.style.setProperty('--timeline-divider-one', `${dividerOnePx}px`);
+    this.panel.style.setProperty('--timeline-divider-two', `${dividerTwoPx}px`);
+  }
+
+  startTracking() {
+    if (this.rafId) return;
+    const loop = () => {
+      if (!this.isVisible) {
+        this.rafId = null;
+        return;
+      }
+      this.updateAnchoredLayout();
+      this.rafId = requestAnimationFrame(loop);
+    };
+    this.rafId = requestAnimationFrame(loop);
+  }
+
+  stopTracking() {
+    if (this.rafId) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
     }
-    
-    // Method to clear all events for a year
-    clearEvents(year) {
-        this.eventsData[year] = [];
-        
-        // Update display if this is the current year
-        if (year === this.currentYear) {
-            this.updateEvents(year);
-        }
+  }
+
+  show() {
+    if (this.isVisible) return;
+    this.isVisible = true;
+    this.panel?.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('timeline-meta-active');
+    this.startTracking();
+  }
+
+  hide() {
+    this.isVisible = false;
+    this.panel?.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('timeline-meta-active');
+    this.stopTracking();
+  }
+
+  destroy() {
+    window.removeEventListener('timelineYearChange', this.boundOnYearChange);
+    window.removeEventListener('sceneChange', this.boundOnSceneChange);
+    window.removeEventListener('sceneTransitionComplete', this.boundOnTransitionComplete);
+
+    this.hide();
+
+    if (this.panel && this.panel.parentNode) {
+      this.panel.parentNode.removeChild(this.panel);
     }
-} 
+  }
+}

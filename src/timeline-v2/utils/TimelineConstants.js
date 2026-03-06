@@ -61,6 +61,10 @@ export const PHYSICS_CONFIG = Object.freeze({
   SCROLL_FRICTION: 0.72,
   /** Maximum scroll/drag velocity magnitude in offset units per frame. */
   MAX_SCROLL_VELOCITY: 0.45,
+  /** Accumulated wheel/trackpad delta required to move exactly one timeline step. */
+  SCROLL_STEP_THRESHOLD: 0.9,
+  /** Duration (seconds) for each wheel/trackpad step snap. */
+  SCROLL_STEP_DURATION: 0.4,
 
   // Snapping
   /** Distance threshold for snapping. */
@@ -114,6 +118,16 @@ export const TIMELINE_CONFIG = Object.freeze({
   YEAR_COUNT: TIMELINE_YEAR_COUNT
 });
 
+/** Right padding (px) between viewport edge and first timeline image. */
+export const TIMELINE_LAYOUT_CONFIG = Object.freeze({
+  FIRST_IMAGE_RIGHT_PADDING_PX: 50,
+  // Backward-compat fallback for older call sites.
+  FIRST_IMAGE_LEFT_PADDING_PX: 50,
+  FIRST_IMAGE_TOP_PX: 76,
+  IMAGE_WIDTH_PERCENTAGES: Object.freeze([0.38, 0.345, 0.235]),
+  IMAGE_WIDTHS_PX: Object.freeze([490, 436, 348])
+});
+
 /**
  * Get the world X position for a timeline image by index (0..YEAR_COUNT-1).
  * @param {number} index - Image index 0..TIMELINE_CONFIG.YEAR_COUNT-1
@@ -138,6 +152,27 @@ export function getTimelineAdditionalPlaneX(additionalIndex) {
  */
 export function getTimelineSnapPositions() {
   return [...TIMELINE_CONFIG.SNAP_POSITIONS];
+}
+
+/**
+ * Layered timeline layout slots to create a staggered collage rhythm.
+ * X placement is still driven by timeline offset/spacing; this only affects
+ * vertical/depth placement for the visual composition.
+ */
+const TIMELINE_LAYOUT_SLOTS = Object.freeze([
+  Object.freeze({ y: -0.08, z: 0.12, scaleMultiplier: 1.0 }), // Main foreground card
+  Object.freeze({ y: 0.92, z: -0.22, scaleMultiplier: 436 / 490 }), // Top secondary card
+  Object.freeze({ y: -0.62, z: -0.08, scaleMultiplier: 348 / 490 }) // Lower secondary card
+]);
+
+/**
+ * Get layered layout slot for a timeline index.
+ * @param {number} index - Timeline image index
+ * @returns {{ y: number, z: number, scaleMultiplier: number }}
+ */
+export function getTimelineLayoutSlot(index) {
+  const slotIndex = Number.isFinite(index) ? Math.abs(index) % TIMELINE_LAYOUT_SLOTS.length : 0;
+  return TIMELINE_LAYOUT_SLOTS[slotIndex];
 }
 
 // -----------------------------------------------------------------------------

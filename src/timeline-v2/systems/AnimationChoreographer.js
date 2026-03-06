@@ -4,7 +4,7 @@
  */
 
 import { gsap } from 'gsap';
-import { TIMELINE_CONFIG, SCENE_CONFIG } from '../utils/TimelineConstants.js';
+import { EFFECTS_CONFIG, TIMELINE_CONFIG, TIMELINE_LAYOUT_CONFIG, SCENE_CONFIG, getTimelineLayoutSlot } from '../utils/TimelineConstants.js';
 
 class AnimationChoreographer {
   constructor(state, eventBus, camera, scene) {
@@ -71,6 +71,86 @@ class AnimationChoreographer {
   }
   
   /**
+   * Compute world-space X shift so the first focused image lands with
+   * a fixed left viewport padding.
+   * @param {Array} planes
+   * @returns {number}
+   */
+  getVisibleWidthAtDepth(zDepth) {
+    if (!this.camera) return 1;
+    const viewportWidth = Math.max(1, window.innerWidth || 1);
+    const viewportHeight = Math.max(1, window.innerHeight || 1);
+    const fovRad = ((this.camera.fov || 30) * Math.PI) / 180;
+    const distance = Math.max(0.001, Math.abs((this.camera.position?.z ?? 2.5) - zDepth));
+    const visibleHeight = 2 * Math.tan(fovRad / 2) * distance;
+    return visibleHeight * ((this.camera.aspect && Number.isFinite(this.camera.aspect)) ? this.camera.aspect : (viewportWidth / viewportHeight));
+  }
+
+  getSlotWidthPercentage(slotIndex) {
+    const percentages = TIMELINE_LAYOUT_CONFIG.IMAGE_WIDTH_PERCENTAGES || [0.3, 0.2, 0.15];
+    return percentages[slotIndex] ?? percentages[0] ?? 0.3;
+  }
+
+  getSlotScale(slotIndex, planeWidth = 2.5, slotZ = 0) {
+    const visibleWidth = this.getVisibleWidthAtDepth(slotZ);
+    const targetWorldWidth = visibleWidth * this.getSlotWidthPercentage(slotIndex);
+    return Math.max(0.001, targetWorldWidth / Math.max(0.001, planeWidth));
+  }
+
+  getViewportAnchorShift(planes) {
+    if (!this.camera || !Array.isArray(planes) || planes.length === 0) return 0;
+
+    const firstPlane = planes[0];
+    const viewportWidth = Math.max(1, window.innerWidth || 1);
+    const slotZ = getTimelineLayoutSlot(0).z;
+    const visibleWidth = this.getVisibleWidthAtDepth(slotZ);
+    const unitsPerPixel = visibleWidth / viewportWidth;
+
+    const configuredPaddingPx = TIMELINE_LAYOUT_CONFIG.FIRST_IMAGE_LEFT_PADDING_PX ?? 50;
+    const baseScale = this.getSlotScale(0, firstPlane?.geometry?.parameters?.width ?? 2.5, slotZ);
+    const geometryWidth = firstPlane?.geometry?.parameters?.width ?? 2.5;
+    const planeWidthWorld = geometryWidth * baseScale;
+
+    return (-visibleWidth / 2) + (configuredPaddingPx * unitsPerPixel) + (planeWidthWorld / 2);
+  }
+
+  pixelYToWorldY(pixelY, zDepth) {
+    if (!this.camera) return 0;
+    const viewportHeight = Math.max(1, window.innerHeight || 1);
+    const fovRad = ((this.camera.fov || 30) * Math.PI) / 180;
+    const distance = Math.max(0.001, Math.abs((this.camera.position?.z ?? 2.5) - zDepth));
+    const visibleHeight = 2 * Math.tan(fovRad / 2) * distance;
+    return (0.5 - (pixelY / viewportHeight)) * visibleHeight;
+  }
+
+  getLayoutSlotWorldY(planes) {
+    if (!this.camera || !Array.isArray(planes) || planes.length === 0) return [0, 0, 0];
+
+    const viewportWidth = Math.max(1, window.innerWidth || 1);
+    const firstSlot = getTimelineLayoutSlot(0);
+    const secondSlot = getTimelineLayoutSlot(1);
+    const thirdSlot = getTimelineLayoutSlot(2);
+    const firstHeightPx = viewportWidth * this.getSlotWidthPercentage(0) * 0.75;
+    const secondHeightPx = viewportWidth * this.getSlotWidthPercentage(1) * 0.75;
+    const thirdHeightPx = viewportWidth * this.getSlotWidthPercentage(2) * 0.75;
+
+    const firstTopPx = TIMELINE_LAYOUT_CONFIG.FIRST_IMAGE_TOP_PX ?? 80;
+    const firstBottomPx = firstTopPx + firstHeightPx;
+    // Diagram layout:
+    // - image2 top aligned to image1 bottom
+    // - image3 bottom aligned to image1 bottom
+    const secondCenterPx = firstBottomPx + (secondHeightPx / 2);
+    const thirdCenterPx = firstBottomPx - (thirdHeightPx / 2);
+    const firstCenterPx = firstTopPx + (firstHeightPx / 2);
+
+    return [
+      this.pixelYToWorldY(firstCenterPx, firstSlot.z),
+      this.pixelYToWorldY(secondCenterPx, secondSlot.z),
+      this.pixelYToWorldY(thirdCenterPx, thirdSlot.z)
+    ];
+  }
+
+  /**
    * Start the gathering animation sequence
    */
   startGatheringAnimation() {
@@ -93,6 +173,8 @@ class AnimationChoreographer {
     const spacing = this.calculateSpacing();
     const firstPosition = TIMELINE_CONFIG.FIRST_POSITION || -4.5;
     const offset = this.state.get('timelineOffset') || firstPosition;
+    const anchorShiftX = this.getViewportAnchorShift(planes);
+    const slotWorldY = this.getLayoutSlotWorldY(planes);
     
     // Create master timeline
     this.gatheringTimeline = gsap.timeline({
@@ -105,7 +187,9 @@ class AnimationChoreographer {
     
     // === ANIMATE IMAGES ===
     planes.forEach((plane, index) => {
-      const targetX = firstPosition + (index * spacing) - offset;
+      const targetX = firstPosition + (index * spacing) - offset + anchorShiftX;
+      const slot = getTimelineLayoutSlot(index);
+      const slotIndex = Math.abs(index) % slotWorldY.length;
       const staggerDelay = index * 0.06; // 60ms between each image
       
       console.log(`  📍 Image ${index}: target x=${targetX.toFixed(3)}, spacing=${spacing.toFixed(3)}`);
@@ -113,8 +197,8 @@ class AnimationChoreographer {
       // Animate position
       this.gatheringTimeline.to(plane.position, {
         x: targetX,
-        y: 0,
-        z: 0,
+        y: slotWorldY[slotIndex] ?? slot.y,
+        z: slot.z,
         duration: 1.2,
         ease: 'power2.inOut', // Smooth acceleration and deceleration
         delay: staggerDelay
@@ -122,9 +206,9 @@ class AnimationChoreographer {
       
       // Animate scale
       this.gatheringTimeline.to(plane.scale, {
-        x: 0.75,
-        y: 0.75,
-        z: 0.75,
+        x: this.getSlotScale(Math.abs(index) % 3, plane?.geometry?.parameters?.width ?? 2.5, slot.z),
+        y: this.getSlotScale(Math.abs(index) % 3, plane?.geometry?.parameters?.width ?? 2.5, slot.z),
+        z: this.getSlotScale(Math.abs(index) % 3, plane?.geometry?.parameters?.width ?? 2.5, slot.z),
         duration: 1.2,
         ease: 'power2.inOut',
         delay: staggerDelay

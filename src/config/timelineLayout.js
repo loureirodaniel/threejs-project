@@ -42,4 +42,30 @@ export function getTimelineSnapPositions() {
     return positions;
 }
 
+/**
+ * Staggered layout slots used to create the collage-style timeline composition.
+ * X remains controlled by timeline spacing; slots only affect Y/Z.
+ */
+const TIMELINE_LAYOUT_SLOTS = Object.freeze([
+    Object.freeze({ y: -0.08, z: 0.12, scaleMultiplier: 1.0 }),
+    Object.freeze({ y: 0.92, z: -0.22, scaleMultiplier: 436 / 490 }),
+    Object.freeze({ y: -0.62, z: -0.08, scaleMultiplier: 348 / 490 })
+]);
+
+/**
+ * Returns layered Y/Z placement for the provided timeline index.
+ * @param {number} index
+ * @returns {{ y: number, z: number, scaleMultiplier: number }}
+ */
+export function getTimelineLayoutSlot(index) {
+    const safeIndex = Number.isFinite(index) ? Math.abs(index) : 0;
+    return TIMELINE_LAYOUT_SLOTS[safeIndex % TIMELINE_LAYOUT_SLOTS.length];
+}
+
 export const TIMELINE_X_RANGE = (TIMELINE_YEAR_COUNT - 1) * TIMELINE_PLANE_SPACING;
+export const TIMELINE_FIRST_IMAGE_LEFT_PADDING_PX = 50;
+export const TIMELINE_FIRST_IMAGE_TOP_PX = 76;
+// Layout follows the attached diagram columns:
+// col1: left padding -> divider1, col2: divider1 -> divider2, col3: divider2 -> right edge
+export const TIMELINE_IMAGE_WIDTH_PERCENTAGES = Object.freeze([0.38, 0.345, 0.235]);
+export const TIMELINE_IMAGE_WIDTHS_PX = Object.freeze([490, 436, 348]);

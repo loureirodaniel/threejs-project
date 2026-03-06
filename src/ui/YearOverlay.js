@@ -3,12 +3,10 @@
  * Ticker: new number animates from the bottom upwards when the year changes.
  * Shown only after the timeline transition completes and images are in place.
  */
-const YEAR_SIZE_PX = 300; // larger per design
+const YEAR_SIZE_PX = 24;
 const FONT_WEIGHT = 100; // Geist Thin
-const SLOT_HEIGHT_PX = 360; // viewport height for one line (accommodates larger font)
-const YEAR_TOP_PX = 65;
-const YEAR_RIGHT_PX = 356;
-const YEAR_BOTTOM_PX = 278;
+const SLOT_HEIGHT_PX = 34;
+const LABEL_GAP_PX = 8;
 const TICKER_DURATION_MS = 400;
 const TICKER_EASING = 'cubic-bezier(0.32, 0.72, 0, 1)';
 const SHOW_DELAY_MS = 400; // Show year after images have fallen into position
@@ -31,6 +29,7 @@ export class YearOverlay {
         this.boundOnSceneChange = this.onSceneChange.bind(this);
         this.boundOnTransitionComplete = this.onTransitionComplete.bind(this);
         this.boundOnTickerEnd = this.onTickerTransitionEnd.bind(this);
+        this.boundOnResize = this.onResize.bind(this);
         this.init();
     }
 
@@ -41,10 +40,10 @@ export class YearOverlay {
         this.container.setAttribute('aria-hidden', 'true');
         this.container.style.cssText = `
             position: fixed;
-            top: ${YEAR_TOP_PX}px;
-            left: 24px;
-            right: ${YEAR_RIGHT_PX}px;
-            margin-bottom: ${YEAR_BOTTOM_PX}px;
+            top: 0;
+            left: 0;
+            right: auto;
+            margin-bottom: 0;
             z-index: 1001;
             pointer-events: none;
             opacity: 0;
@@ -68,7 +67,7 @@ export class YearOverlay {
         const slotStyle = `
             height: ${SLOT_HEIGHT_PX}px;
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             font-family: 'Geist', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             font-size: ${YEAR_SIZE_PX}px;
             font-weight: ${FONT_WEIGHT};
@@ -100,6 +99,7 @@ export class YearOverlay {
         window.addEventListener('timelineYearChange', this.boundOnYearChange);
         window.addEventListener('sceneChange', this.boundOnSceneChange);
         window.addEventListener('sceneTransitionComplete', this.boundOnTransitionComplete);
+        window.addEventListener('resize', this.boundOnResize);
     }
 
     onSceneChange(event) {
@@ -141,6 +141,10 @@ export class YearOverlay {
         }
     }
 
+    onResize() {
+        this.positionBelowActiveImage();
+    }
+
     onTickerTransitionEnd(event) {
         if (event.target !== this.strip || !this.isAnimating) return;
         this.isAnimating = false;
@@ -164,6 +168,46 @@ export class YearOverlay {
         this.isAnimating = true;
         // Move strip so the new year (in nextSlot) slides up from below into view
         this.strip.style.transform = `translateY(-${nextSlot * SLOT_HEIGHT_PX}px)`;
+        this.positionBelowActiveImage();
+    }
+
+    positionBelowActiveImage() {
+        const app = window.app;
+        const camera = app?.camera;
+        const planes = app?.imagePlanes?.getPlanes?.() || [];
+        if (!camera || planes.length === 0) return;
+
+        const index = Math.max(0, Math.min(planes.length - 1, this.currentYear - this.minYear));
+        const plane = planes[index] || planes[0];
+        if (!plane) return;
+
+        const viewportWidth = Math.max(1, window.innerWidth || 1);
+        const viewportHeight = Math.max(1, window.innerHeight || 1);
+        const position = plane.position.clone().project(camera);
+        const centerX = (position.x * 0.5 + 0.5) * viewportWidth;
+        const centerY = (-position.y * 0.5 + 0.5) * viewportHeight;
+
+        const geometryWidth = plane.geometry?.parameters?.width ?? 2.5;
+        const geometryHeight = plane.geometry?.parameters?.height ?? (geometryWidth * 0.75);
+        const scaleX = plane.scale?.x ?? 1;
+        const scaleY = plane.scale?.y ?? 1;
+        const worldWidth = geometryWidth * scaleX;
+        const worldHeight = geometryHeight * scaleY;
+        const distance = Math.max(0.001, Math.abs((camera.position?.z ?? 2.5) - (plane.position?.z ?? 0)));
+        const fovRad = ((camera.fov || 30) * Math.PI) / 180;
+        const visibleHeight = 2 * Math.tan(fovRad / 2) * distance;
+        const pixelsPerUnit = viewportHeight / visibleHeight;
+        const imageWidthPx = worldWidth * pixelsPerUnit;
+        const imageHeightPx = worldHeight * pixelsPerUnit;
+
+        const imageLeft = centerX - (imageWidthPx / 2);
+        const imageBottom = centerY + (imageHeightPx / 2);
+        const left = Math.max(8, Math.round(imageLeft));
+        const top = Math.max(8, Math.round(imageBottom + LABEL_GAP_PX));
+
+        this.container.style.left = `${left}px`;
+        this.container.style.top = `${top}px`;
+        this.container.style.right = 'auto';
     }
 
     show() {
@@ -171,6 +215,7 @@ export class YearOverlay {
             clearTimeout(this.hideTimeoutId);
             this.hideTimeoutId = null;
         }
+        this.positionBelowActiveImage();
         this.container.style.visibility = 'visible';
         this.container.style.opacity = '1';
     }
@@ -189,6 +234,7 @@ export class YearOverlay {
         window.removeEventListener('timelineYearChange', this.boundOnYearChange);
         window.removeEventListener('sceneChange', this.boundOnSceneChange);
         window.removeEventListener('sceneTransitionComplete', this.boundOnTransitionComplete);
+        window.removeEventListener('resize', this.boundOnResize);
         if (this.container && this.container.parentNode) {
             this.container.parentNode.removeChild(this.container);
         }

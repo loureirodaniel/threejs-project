@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { gsap } from 'gsap';
-import { TIMELINE_FIRST_POSITION, TIMELINE_PLANE_WIDTH, getTimelineAdditionalPlaneX, getTimelinePlaneX } from '../config/timelineLayout.js';
+import { TIMELINE_FIRST_IMAGE_LEFT_PADDING_PX, TIMELINE_FIRST_IMAGE_TOP_PX, TIMELINE_FIRST_POSITION, TIMELINE_IMAGE_WIDTH_PERCENTAGES, TIMELINE_PLANE_WIDTH, getTimelineAdditionalPlaneX, getTimelineLayoutSlot, getTimelinePlaneX } from '../config/timelineLayout.js';
 
 export class TimelineScene {
     constructor(scene, renderer, camera) {
@@ -24,6 +24,72 @@ export class TimelineScene {
         this.isImageLayoutTransitioning = false; // Flag to disable floating during image transitions
         
         this.init();
+    }
+
+    getVisibleWidthAtDepth(zDepth) {
+        if (!this.camera) return 1;
+        const viewportWidth = Math.max(1, window.innerWidth || 1);
+        const viewportHeight = Math.max(1, window.innerHeight || 1);
+        const fovRad = (this.camera.fov * Math.PI) / 180;
+        const distance = Math.max(0.001, Math.abs((this.camera.position?.z ?? 2.5) - zDepth));
+        const visibleHeight = 2 * Math.tan(fovRad / 2) * distance;
+        return visibleHeight * ((this.camera.aspect && Number.isFinite(this.camera.aspect)) ? this.camera.aspect : (viewportWidth / viewportHeight));
+    }
+
+    getSlotWidthPercentage(slotIndex) {
+        return TIMELINE_IMAGE_WIDTH_PERCENTAGES[slotIndex] ?? TIMELINE_IMAGE_WIDTH_PERCENTAGES[0] ?? 0.3;
+    }
+
+    getSlotScale(slotIndex, planeWidth = TIMELINE_PLANE_WIDTH, slotZ = 0) {
+        const visibleWidth = this.getVisibleWidthAtDepth(slotZ);
+        const targetWorldWidth = visibleWidth * this.getSlotWidthPercentage(slotIndex);
+        return Math.max(0.001, targetWorldWidth / Math.max(0.001, planeWidth));
+    }
+
+    getViewportAnchorShift(planeWidth = TIMELINE_PLANE_WIDTH, slotZ = 0) {
+        if (!this.camera) return 0;
+        const viewportWidth = Math.max(1, window.innerWidth || 1);
+        const visibleWidth = this.getVisibleWidthAtDepth(slotZ);
+        const unitsPerPixel = visibleWidth / viewportWidth;
+        const firstScale = this.getSlotScale(0, planeWidth, slotZ);
+        return (-visibleWidth / 2) + (TIMELINE_FIRST_IMAGE_LEFT_PADDING_PX * unitsPerPixel) + ((planeWidth * firstScale) / 2);
+    }
+
+    pixelYToWorldY(pixelY, zDepth) {
+        if (!this.camera) return 0;
+        const viewportHeight = Math.max(1, window.innerHeight || 1);
+        const fovRad = (this.camera.fov * Math.PI) / 180;
+        const distance = Math.max(0.001, Math.abs((this.camera.position?.z ?? 2.5) - zDepth));
+        const visibleHeight = 2 * Math.tan(fovRad / 2) * distance;
+        return (0.5 - (pixelY / viewportHeight)) * visibleHeight;
+    }
+
+    getLayoutSlotWorldY(planes) {
+        if (!this.camera || !Array.isArray(planes) || planes.length === 0) return [0, 0, 0];
+
+        const firstPlane = planes[0];
+        const viewportHeight = Math.max(1, window.innerHeight || 1);
+        const firstSlot = getTimelineLayoutSlot(0);
+        const secondSlot = getTimelineLayoutSlot(1);
+        const thirdSlot = getTimelineLayoutSlot(2);
+        const viewportWidth = Math.max(1, window.innerWidth || 1);
+        const firstHeightPx = viewportWidth * this.getSlotWidthPercentage(0) * 0.75;
+        const secondHeightPx = viewportWidth * this.getSlotWidthPercentage(1) * 0.75;
+        const thirdHeightPx = viewportWidth * this.getSlotWidthPercentage(2) * 0.75;
+
+        const firstBottomPx = TIMELINE_FIRST_IMAGE_TOP_PX + firstHeightPx;
+        // Diagram layout:
+        // - image2 top aligned to image1 bottom
+        // - image3 bottom aligned to image1 bottom
+        const secondCenterPx = firstBottomPx + (secondHeightPx / 2);
+        const thirdCenterPx = firstBottomPx - (thirdHeightPx / 2);
+        const firstCenterPx = TIMELINE_FIRST_IMAGE_TOP_PX + (firstHeightPx / 2);
+
+        return [
+            this.pixelYToWorldY(firstCenterPx, firstSlot.z),
+            this.pixelYToWorldY(secondCenterPx, secondSlot.z),
+            this.pixelYToWorldY(thirdCenterPx, thirdSlot.z)
+        ];
     }
     
     init() {
@@ -59,8 +125,9 @@ export class TimelineScene {
         
         years.forEach((year, index) => {
             const x = getTimelineAdditionalPlaneX(index);
-            const y = 0;
-            const z = 0;
+            const slot = getTimelineLayoutSlot(index + 8);
+            const y = slot.y;
+            const z = slot.z;
             
             this.createTimelinePlane(index, x, y, z, width, height, year);
             console.log(`TimelineScene: Created additional image ${index} for year ${year} at position (${x}, ${y}, ${z})`);
@@ -114,11 +181,17 @@ export class TimelineScene {
         if (this.justAnimatedToTimeline) this.justAnimatedToTimeline = false;
 
         if (!skipPositionOverwrite) {
+            const anchorShiftX = this.getViewportAnchorShift(TIMELINE_PLANE_WIDTH, getTimelineLayoutSlot(0).z);
+            const layoutSlotY = this.getLayoutSlotWorldY(this.getInitialSceneImages());
             this.timelinePlanes.forEach((plane, index) => {
                 const x = getTimelineAdditionalPlaneX(index);
+                const slot = getTimelineLayoutSlot(index + 8);
+                const slotIndex = (index + 8) % 3;
+                const planeWidth = plane?.geometry?.parameters?.width ?? TIMELINE_PLANE_WIDTH;
+                const slotScale = this.getSlotScale(slotIndex, planeWidth, slot.z);
                 plane.visible = true;
-                plane.position.set(x, 0, 0);
-                plane.scale.setScalar(0.75);
+                plane.position.set(x + anchorShiftX, layoutSlotY[slotIndex] ?? slot.y, slot.z);
+                plane.scale.setScalar(slotScale);
                 plane.rotation.set(0, 0, 0);
                 plane.material.opacity = 0.9;
             });
@@ -131,9 +204,13 @@ export class TimelineScene {
                         image.userData.originalScale = image.scale.clone();
                     }
                     const originalX = getTimelinePlaneX(index);
+                    const slot = getTimelineLayoutSlot(index);
+                    const slotIndex = index % 3;
+                    const imageWidth = image?.geometry?.parameters?.width ?? TIMELINE_PLANE_WIDTH;
+                    const slotScale = this.getSlotScale(slotIndex, imageWidth, slot.z);
                     image.visible = true;
-                    image.position.set(originalX - offset, 0, 0);
-                    image.scale.setScalar(0.75);
+                    image.position.set(originalX - offset + anchorShiftX, layoutSlotY[slotIndex] ?? slot.y, slot.z);
+                    image.scale.setScalar(slotScale);
                     image.rotation.set(0, 0, 0);
                     image.userData.isTimelineTransitioned = true;
                 }
@@ -184,46 +261,23 @@ export class TimelineScene {
         if (this.cameraTransitionState !== 'idle' || this.isImageLayoutTransitioning) {
             return;
         }
+        const initialImages = this.getInitialSceneImages();
+        const layoutSlotY = this.getLayoutSlotWorldY(initialImages);
         
         // Animate additional timeline planes with subtle floating motion
         this.timelinePlanes.forEach((plane, index) => {
             // Skip floating animation if this plane is currently transitioning or enlarged
             if (plane.userData.isTransitioning || plane.userData.isEnlarged) {
-                // Only apply billboard effect to enlarged image, no floating
-                if (plane.userData.isEnlarged) {
-                    const direction = new THREE.Vector3();
-                    direction.subVectors(camera.position, plane.position);
-                    direction.y = 0; // Keep Y component at 0 to maintain upright orientation
-                    
-                    if (direction.length() > 0.001) {
-                        direction.normalize();
-                        const angle = Math.atan2(direction.x, direction.z);
-                        plane.rotation.y = angle;
-                    }
-                }
                 return;
             }
             
             // Subtle floating animation for non-enlarged planes - maintain horizontal alignment
-            plane.position.y = Math.sin(time * 0.001 + index) * 0.02; // Reduced floating amplitude
+            const slot = getTimelineLayoutSlot(index + 8);
+            plane.position.y = (layoutSlotY[(index + 8) % 3] ?? slot.y) + Math.sin(time * 0.001 + index) * 0.02; // Reduced floating amplitude
             
-            // Billboard effect: only rotate around Y-axis to face camera
-            const direction = new THREE.Vector3();
-            direction.subVectors(camera.position, plane.position);
-            direction.y = 0; // Keep Y component at 0 to maintain upright orientation
-            
-            if (direction.length() > 0.001) {
-                direction.normalize();
-                const angle = Math.atan2(direction.x, direction.z);
-                plane.rotation.y = angle;
-                // Keep X and Z rotation at 0 for proper alignment
-                plane.rotation.x = 0;
-                plane.rotation.z = 0;
-            }
         });
         
         // Also animate initial scene images that have been transitioned to timeline
-        const initialImages = this.getInitialSceneImages();
         initialImages.forEach((image, index) => {
             if (image.userData.isTimelineTransitioned && !image.userData.isEnlarged) {
                 // Skip floating animation if image is currently transitioning
@@ -232,22 +286,10 @@ export class TimelineScene {
                 }
                 
                 // Apply subtle floating animation to transitioned initial images
-                // Keep them at Y=0 for horizontal alignment, only add minimal floating
-                image.position.y = Math.sin(time * 0.001 + index) * 0.02; // Reduced floating amplitude
+                // Keep layered slot placement and only add minimal floating.
+                const slot = getTimelineLayoutSlot(index);
+                image.position.y = (layoutSlotY[index % 3] ?? slot.y) + Math.sin(time * 0.001 + index) * 0.02; // Reduced floating amplitude
                 
-                // Billboard effect for transitioned images - only rotate around Y-axis
-                const direction = new THREE.Vector3();
-                direction.subVectors(camera.position, image.position);
-                direction.y = 0; // Keep Y component at 0 to maintain upright orientation
-                
-                if (direction.length() > 0.001) {
-                    direction.normalize();
-                    const angle = Math.atan2(direction.x, direction.z);
-                    image.rotation.y = angle;
-                    // Keep X and Z rotation at 0 for proper alignment
-                    image.rotation.x = 0;
-                    image.rotation.z = 0;
-                }
             }
         });
     }
@@ -285,6 +327,8 @@ export class TimelineScene {
         const initialImages = this.getInitialSceneImages();
         const hasInitial = initialImages && initialImages.length > 0;
         const offset = TIMELINE_FIRST_POSITION;
+        const anchorShiftX = this.getViewportAnchorShift(TIMELINE_PLANE_WIDTH, getTimelineLayoutSlot(0).z);
+        const layoutSlotY = this.getLayoutSlotWorldY(initialImages);
         const duration = 2;
         const stagger = 0.12;
         const ease = 'power2.inOut';
@@ -312,7 +356,8 @@ export class TimelineScene {
             plane.material.opacity = 0;
             plane.scale.setScalar(0);
             const x = getTimelineAdditionalPlaneX(i);
-            plane.position.set(x, 0, 0);
+            const slot = getTimelineLayoutSlot(i + 8);
+            plane.position.set(x + anchorShiftX, layoutSlotY[(i + 8) % 3] ?? slot.y, slot.z);
             plane.rotation.set(0, 0, 0);
             plane.renderOrder = 8 + i;
             plane.userData.isTransitioning = true;
@@ -353,10 +398,13 @@ export class TimelineScene {
             initialImages.forEach((img, i) => {
                 if (i >= 8) return;
                 const origX = getTimelinePlaneX(i);
-                const targetX = origX - offset;
+                const targetX = origX - offset + anchorShiftX;
+                const slot = getTimelineLayoutSlot(i);
+                const imageWidth = img?.geometry?.parameters?.width ?? TIMELINE_PLANE_WIDTH;
+                const slotScale = this.getSlotScale(i % 3, imageWidth, slot.z);
                 gsap.killTweensOf([img.position, img.scale, img.rotation]);
-                tl.to(img.position, { x: targetX, y: 0, z: 0, duration, ease }, i * stagger);
-                tl.to(img.scale, { x: 0.75, y: 0.75, z: 0.75, duration, ease }, i * stagger);
+                tl.to(img.position, { x: targetX, y: layoutSlotY[i % 3] ?? slot.y, z: slot.z, duration, ease }, i * stagger);
+                tl.to(img.scale, { x: slotScale, y: slotScale, z: slotScale, duration, ease }, i * stagger);
                 tl.to(img.rotation, { x: 0, y: 0, z: 0, duration, ease }, i * stagger);
                 tl.call(() => { img.userData.isTimelineTransitioned = true; img.userData.timelineIndex = i; }, [], i * stagger + duration);
             });
@@ -370,7 +418,10 @@ export class TimelineScene {
         const planeStagger = 0.12;
         this.timelinePlanes.forEach((plane, i) => {
             gsap.killTweensOf([plane.scale, plane.material]);
-            tl.to(plane.scale, { x: 0.75, y: 0.75, z: 0.75, duration: planeDuration, ease }, (hasInitial ? 8 * stagger + duration : 0) + i * planeStagger);
+            const slot = getTimelineLayoutSlot(i + 8);
+            const planeWidth = plane?.geometry?.parameters?.width ?? TIMELINE_PLANE_WIDTH;
+            const slotScale = this.getSlotScale((i + 8) % 3, planeWidth, slot.z);
+            tl.to(plane.scale, { x: slotScale, y: slotScale, z: slotScale, duration: planeDuration, ease }, (hasInitial ? 8 * stagger + duration : 0) + i * planeStagger);
             tl.to(plane.material, { opacity: 0.9, duration: planeDuration, ease }, (hasInitial ? 8 * stagger + duration : 0) + i * planeStagger);
             tl.call(() => { plane.userData.isTransitioning = false; }, [], (hasInitial ? 8 * stagger + duration : 0) + i * planeStagger + planeDuration);
         });

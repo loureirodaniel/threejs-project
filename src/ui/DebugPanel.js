@@ -12,6 +12,7 @@ export class DebugPanel {
             enlargement: false,
             smoothScroll: false,
             liquidDistortion: false,
+            glitch: false,
         };
         
         this.init();
@@ -254,6 +255,36 @@ export class DebugPanel {
                     </div>
                 </div>
             </div>
+
+            <!-- Glitch Section -->
+            <div class="debug-section" style="margin-bottom: 15px;">
+                <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; padding: 8px 0; border-bottom: 1px solid #333;">
+                    <h4 style="margin: 0; color: #00ff88;">Glitch</h4>
+                    <button class="section-toggle" data-section="glitch" style="background: #333; color: white; border: 1px solid #555; padding: 2px 6px; border-radius: 3px; cursor: pointer; font-family: inherit; font-size: 10px;">+</button>
+                </div>
+                <div class="section-content" id="glitch-content" style="display: none; padding-top: 10px;">
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Navigation Peak: <span id="glitchNavPeakDisplay">1.00</span></label>
+                        <input type="range" id="glitchNavPeakSlider" min="0" max="1" step="0.01" value="1.00" style="width: 100%;">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Scroll Peak: <span id="glitchScrollPeakDisplay">0.85</span></label>
+                        <input type="range" id="glitchScrollPeakSlider" min="0" max="1" step="0.01" value="0.85" style="width: 100%;">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Lerp: <span id="glitchLerpDisplay">0.18</span></label>
+                        <input type="range" id="glitchLerpSlider" min="0.01" max="0.50" step="0.01" value="0.18" style="width: 100%;">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Decay: <span id="glitchDecayDisplay">0.85</span></label>
+                        <input type="range" id="glitchDecaySlider" min="0.50" max="0.99" step="0.01" value="0.85" style="width: 100%;">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Time Step: <span id="glitchTimeStepDisplay">0.016</span></label>
+                        <input type="range" id="glitchTimeStepSlider" min="0.001" max="0.050" step="0.001" value="0.016" style="width: 100%;">
+                    </div>
+                </div>
+            </div>
             
             
             <button id="resetBtn" style="background: #00ff88; color: black; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-family: inherit;">Reset to Default</button>
@@ -365,6 +396,18 @@ export class DebugPanel {
         this.controls.falloffDistanceDisplay = document.getElementById('falloffDistanceDisplay');
         this.controls.noiseScaleDisplay = document.getElementById('noiseScaleDisplay');
         this.controls.noiseStrengthDisplay = document.getElementById('noiseStrengthDisplay');
+        
+        // Glitch controls
+        this.controls.glitchNavPeakSlider = document.getElementById('glitchNavPeakSlider');
+        this.controls.glitchScrollPeakSlider = document.getElementById('glitchScrollPeakSlider');
+        this.controls.glitchLerpSlider = document.getElementById('glitchLerpSlider');
+        this.controls.glitchDecaySlider = document.getElementById('glitchDecaySlider');
+        this.controls.glitchTimeStepSlider = document.getElementById('glitchTimeStepSlider');
+        this.controls.glitchNavPeakDisplay = document.getElementById('glitchNavPeakDisplay');
+        this.controls.glitchScrollPeakDisplay = document.getElementById('glitchScrollPeakDisplay');
+        this.controls.glitchLerpDisplay = document.getElementById('glitchLerpDisplay');
+        this.controls.glitchDecayDisplay = document.getElementById('glitchDecayDisplay');
+        this.controls.glitchTimeStepDisplay = document.getElementById('glitchTimeStepDisplay');
         
         // Fog effect controls
         

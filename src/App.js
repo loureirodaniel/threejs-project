@@ -1,4 +1,7 @@
 import * as THREE from 'three';
+import Lenis from 'lenis';
+import { gsap } from 'gsap';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { SceneManager } from './scene/SceneManager.js';
 import { Lighting } from './scene/Lighting.js';
 import { ImagePlanes } from './scene/ImagePlanes.js';
@@ -24,11 +27,13 @@ import { CommentStorage } from './features/comments/CommentStorage.js';
 import { CommentModeration } from './features/comments/CommentModeration.js';
 import { CommentUI } from './features/comments/CommentUI.js';
 import { dataService } from './services/DataService.js';
+import { GlitchController } from './systems/GlitchController.js';
 
 
 export class App {
     constructor(container) {
         this.container = container;
+        gsap.registerPlugin(ScrollTrigger);
 
         // Core modules
         this.stateManager = new AppStateManager();
@@ -60,6 +65,9 @@ export class App {
         // Controllers
         this.mouseController = null;
         this.timelineController = null;
+        this.glitchController = null;
+        this.lenis = null;
+        this.lenisTicker = null;
         this.imageData = null;
         this.lastFrameTime = 0;
         this.isCanvasInteractionDisabled = false;
@@ -141,7 +149,7 @@ export class App {
         this.liquidDistortionEffect = new LiquidDistortionEffect(scene, camera, this.sceneManager.getRenderer());
         this.titleOverlay = new TitleOverlay();
         this.debugPanel = new DebugPanel();
-        this.eventsPanel = new EventsPanel();
+        this.eventsPanel = new EventsPanel(this.imageData);
         this.timelineNavigation = new TimelineNavigation();
         this.yearOverlay = new YearOverlay(yearRange.minYear, yearRange.maxYear);
         this.setupTimelineUIWrapper();
@@ -190,9 +198,12 @@ export class App {
         
         // Setup event listeners
         this.eventHandlers.setupEventListeners();
+        this.setupLenisScroll();
         
         // Start animation loop
         this.animate();
+        this.glitchController = new GlitchController();
+        this.eventHandlers.updateGlitchControls?.();
         // Scroll hint is shown when intro text animation completes (see introSequence.onTextAnimationComplete)
         
         // Optional: preload for smoother image display (non-blocking)
@@ -202,6 +213,29 @@ export class App {
             this.showErrorMessage('Failed to load timeline. Please refresh the page.');
             throw error;
         }
+    }
+
+    setupLenisScroll() {
+        if (this.lenis) return;
+
+        this.lenis = new Lenis({
+            lerp: 0.08,
+            smoothWheel: true,
+            wheelMultiplier: 0.9,
+            touchMultiplier: 1.0,
+            duration: 1.2
+        });
+
+        this.lenis.on('scroll', () => {
+            ScrollTrigger.update();
+        });
+
+        this.lenisTicker = (time) => {
+            this.lenis.raf(time * 1000);
+        };
+
+        gsap.ticker.add(this.lenisTicker);
+        gsap.ticker.lagSmoothing(0);
     }
     
     
