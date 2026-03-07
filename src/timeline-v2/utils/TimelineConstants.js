@@ -124,8 +124,9 @@ export const TIMELINE_LAYOUT_CONFIG = Object.freeze({
   // Backward-compat fallback for older call sites.
   FIRST_IMAGE_LEFT_PADDING_PX: 50,
   FIRST_IMAGE_TOP_PX: 76,
+  COLUMN_GAP_PX: 12,
   IMAGE_WIDTH_PERCENTAGES: Object.freeze([0.38, 0.345, 0.235]),
-  IMAGE_WIDTHS_PX: Object.freeze([490, 436, 348])
+  IMAGE_WIDTHS_PX: Object.freeze([490, 435, 348])
 });
 
 /**
@@ -161,7 +162,7 @@ export function getTimelineSnapPositions() {
  */
 const TIMELINE_LAYOUT_SLOTS = Object.freeze([
   Object.freeze({ y: -0.08, z: 0.12, scaleMultiplier: 1.0 }), // Main foreground card
-  Object.freeze({ y: 0.92, z: -0.22, scaleMultiplier: 436 / 490 }), // Top secondary card
+  Object.freeze({ y: 0.92, z: -0.22, scaleMultiplier: 435 / 490 }), // Top secondary card
   Object.freeze({ y: -0.62, z: -0.08, scaleMultiplier: 348 / 490 }) // Lower secondary card
 ]);
 

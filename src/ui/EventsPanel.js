@@ -389,12 +389,9 @@ export class EventsPanel {
     const fallbackDividerTwo = Math.round(viewportWidth * 0.69);
 
     const dividerOnePx = primaryBounds?.right ?? fallbackDividerOne;
-    const dividerTwoSource = (
-      (secondaryBounds?.right && tertiaryBounds?.left)
-        ? Math.round((secondaryBounds.right + tertiaryBounds.left) / 2)
-        : (secondaryBounds?.right ?? tertiaryBounds?.left ?? fallbackDividerTwo)
-    );
-    const dividerTwoPx = Math.max(dividerOnePx + 1, dividerTwoSource);
+    // Keep divider lines on actual image edges so columns match visible plane widths.
+    const dividerTwoSource = secondaryBounds?.right ?? tertiaryBounds?.left ?? fallbackDividerTwo;
+    const dividerTwoPx = Math.max(dividerOnePx + 1, Math.round(dividerTwoSource));
 
     this.panel.style.setProperty('--timeline-divider-one', `${dividerOnePx}px`);
     this.panel.style.setProperty('--timeline-divider-two', `${dividerTwoPx}px`);

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { gsap } from 'gsap';
-import { TIMELINE_FIRST_IMAGE_LEFT_PADDING_PX, TIMELINE_FIRST_IMAGE_TOP_PX, TIMELINE_FIRST_POSITION, TIMELINE_IMAGE_WIDTH_PERCENTAGES, TIMELINE_PLANE_WIDTH, getTimelineAdditionalPlaneX, getTimelineLayoutSlot, getTimelinePlaneX } from '../config/timelineLayout.js';
+import { TIMELINE_COLUMN_GAP_PX, TIMELINE_FIRST_IMAGE_LEFT_PADDING_PX, TIMELINE_FIRST_IMAGE_TOP_PX, TIMELINE_IMAGE_WIDTH_PERCENTAGES, TIMELINE_IMAGE_WIDTHS_PX, TIMELINE_PLANE_WIDTH, getTimelineAdditionalPlaneX, getTimelineLayoutSlot, getTimelinePlaneX } from '../config/timelineLayout.js';
 
 export class TimelineScene {
     constructor(scene, renderer, camera) {
@@ -40,9 +40,70 @@ export class TimelineScene {
         return TIMELINE_IMAGE_WIDTH_PERCENTAGES[slotIndex] ?? TIMELINE_IMAGE_WIDTH_PERCENTAGES[0] ?? 0.3;
     }
 
+    getSlotWidthPx(slotIndex) {
+        const safeIndex = Math.abs(slotIndex) % 3;
+        const configuredWidth = TIMELINE_IMAGE_WIDTHS_PX?.[safeIndex];
+        if (Number.isFinite(configuredWidth) && configuredWidth > 0) {
+            return configuredWidth;
+        }
+
+        const viewportWidth = Math.max(1, window.innerWidth || 1);
+        const leftPaddingPx = TIMELINE_FIRST_IMAGE_LEFT_PADDING_PX;
+        const columnGapPx = TIMELINE_COLUMN_GAP_PX;
+        const weight0 = this.getSlotWidthPercentage(0);
+        const weight1 = this.getSlotWidthPercentage(1);
+        const weight2 = this.getSlotWidthPercentage(2);
+        const weightSum = Math.max(0.001, weight0 + weight1 + weight2);
+        const usableWidth = Math.max(1, viewportWidth - leftPaddingPx - (columnGapPx * 2));
+        const weights = [weight0, weight1, weight2];
+        return usableWidth * (weights[safeIndex] ?? weights[0]) / weightSum;
+    }
+
+    getColumnMetrics() {
+        const widths = [this.getSlotWidthPx(0), this.getSlotWidthPx(1), this.getSlotWidthPx(2)];
+        const centers = [
+            TIMELINE_FIRST_IMAGE_LEFT_PADDING_PX + (widths[0] / 2),
+            TIMELINE_FIRST_IMAGE_LEFT_PADDING_PX + widths[0] + TIMELINE_COLUMN_GAP_PX + (widths[1] / 2),
+            TIMELINE_FIRST_IMAGE_LEFT_PADDING_PX + widths[0] + TIMELINE_COLUMN_GAP_PX + widths[1] + TIMELINE_COLUMN_GAP_PX + (widths[2] / 2)
+        ];
+
+        return {
+            centers,
+            clusterWidth: widths[0] + widths[1] + widths[2] + (TIMELINE_COLUMN_GAP_PX * 2)
+        };
+    }
+
+    getDiscreteSlotCenterPx(relativeIndex) {
+        const safeIndex = Number.isFinite(relativeIndex) ? Math.floor(relativeIndex) : 0;
+        const { centers, clusterWidth } = this.getColumnMetrics();
+        const slotIndex = ((safeIndex % 3) + 3) % 3;
+        const clusterIndex = Math.floor(safeIndex / 3);
+        return centers[slotIndex] + (clusterIndex * clusterWidth);
+    }
+
+    getInterpolatedSlotCenterPx(relativeIndex) {
+        const safeIndex = Number.isFinite(relativeIndex) ? relativeIndex : 0;
+        const lower = Math.floor(safeIndex);
+        const upper = lower + 1;
+        const progress = safeIndex - lower;
+        const lowerCenter = this.getDiscreteSlotCenterPx(lower);
+        const upperCenter = this.getDiscreteSlotCenterPx(upper);
+        return THREE.MathUtils.lerp(lowerCenter, upperCenter, progress);
+    }
+
+    pixelXToWorldX(pixelX, zDepth) {
+        if (!this.camera) return 0;
+        const viewportWidth = Math.max(1, window.innerWidth || 1);
+        const visibleWidth = this.getVisibleWidthAtDepth(zDepth);
+        const normalizedX = (pixelX / viewportWidth) - 0.5;
+        return normalizedX * visibleWidth;
+    }
+
     getSlotScale(slotIndex, planeWidth = TIMELINE_PLANE_WIDTH, slotZ = 0) {
         const visibleWidth = this.getVisibleWidthAtDepth(slotZ);
-        const targetWorldWidth = visibleWidth * this.getSlotWidthPercentage(slotIndex);
+        const viewportWidth = Math.max(1, window.innerWidth || 1);
+        const unitsPerPixel = visibleWidth / viewportWidth;
+        const targetWorldWidth = this.getSlotWidthPx(slotIndex) * unitsPerPixel;
         return Math.max(0.001, targetWorldWidth / Math.max(0.001, planeWidth));
     }
 
@@ -72,10 +133,9 @@ export class TimelineScene {
         const firstSlot = getTimelineLayoutSlot(0);
         const secondSlot = getTimelineLayoutSlot(1);
         const thirdSlot = getTimelineLayoutSlot(2);
-        const viewportWidth = Math.max(1, window.innerWidth || 1);
-        const firstHeightPx = viewportWidth * this.getSlotWidthPercentage(0) * 0.75;
-        const secondHeightPx = viewportWidth * this.getSlotWidthPercentage(1) * 0.75;
-        const thirdHeightPx = viewportWidth * this.getSlotWidthPercentage(2) * 0.75;
+        const firstHeightPx = this.getSlotWidthPx(0) * 0.75;
+        const secondHeightPx = this.getSlotWidthPx(1) * 0.75;
+        const thirdHeightPx = this.getSlotWidthPx(2) * 0.75;
 
         const firstBottomPx = TIMELINE_FIRST_IMAGE_TOP_PX + firstHeightPx;
         // Diagram layout:
@@ -181,21 +241,19 @@ export class TimelineScene {
         if (this.justAnimatedToTimeline) this.justAnimatedToTimeline = false;
 
         if (!skipPositionOverwrite) {
-            const anchorShiftX = this.getViewportAnchorShift(TIMELINE_PLANE_WIDTH, getTimelineLayoutSlot(0).z);
             const layoutSlotY = this.getLayoutSlotWorldY(this.getInitialSceneImages());
             this.timelinePlanes.forEach((plane, index) => {
-                const x = getTimelineAdditionalPlaneX(index);
                 const slot = getTimelineLayoutSlot(index + 8);
                 const slotIndex = (index + 8) % 3;
                 const planeWidth = plane?.geometry?.parameters?.width ?? TIMELINE_PLANE_WIDTH;
                 const slotScale = this.getSlotScale(slotIndex, planeWidth, slot.z);
+                const targetCenterPx = this.getInterpolatedSlotCenterPx(index + 8);
                 plane.visible = true;
-                plane.position.set(x + anchorShiftX, layoutSlotY[slotIndex] ?? slot.y, slot.z);
+                plane.position.set(this.pixelXToWorldX(targetCenterPx, slot.z), layoutSlotY[slotIndex] ?? slot.y, slot.z);
                 plane.scale.setScalar(slotScale);
                 plane.rotation.set(0, 0, 0);
                 plane.material.opacity = 0.9;
             });
-            const offset = TIMELINE_FIRST_POSITION;
             const initialImages = this.getInitialSceneImages();
             initialImages.forEach((image, index) => {
                 if (index < 8) {
@@ -203,13 +261,13 @@ export class TimelineScene {
                         image.userData.originalPosition = image.position.clone();
                         image.userData.originalScale = image.scale.clone();
                     }
-                    const originalX = getTimelinePlaneX(index);
                     const slot = getTimelineLayoutSlot(index);
                     const slotIndex = index % 3;
                     const imageWidth = image?.geometry?.parameters?.width ?? TIMELINE_PLANE_WIDTH;
                     const slotScale = this.getSlotScale(slotIndex, imageWidth, slot.z);
+                    const targetCenterPx = this.getInterpolatedSlotCenterPx(index);
                     image.visible = true;
-                    image.position.set(originalX - offset + anchorShiftX, layoutSlotY[slotIndex] ?? slot.y, slot.z);
+                    image.position.set(this.pixelXToWorldX(targetCenterPx, slot.z), layoutSlotY[slotIndex] ?? slot.y, slot.z);
                     image.scale.setScalar(slotScale);
                     image.rotation.set(0, 0, 0);
                     image.userData.isTimelineTransitioned = true;
@@ -326,8 +384,6 @@ export class TimelineScene {
 
         const initialImages = this.getInitialSceneImages();
         const hasInitial = initialImages && initialImages.length > 0;
-        const offset = TIMELINE_FIRST_POSITION;
-        const anchorShiftX = this.getViewportAnchorShift(TIMELINE_PLANE_WIDTH, getTimelineLayoutSlot(0).z);
         const layoutSlotY = this.getLayoutSlotWorldY(initialImages);
         const duration = 2;
         const stagger = 0.12;
@@ -355,9 +411,9 @@ export class TimelineScene {
             plane.visible = true;
             plane.material.opacity = 0;
             plane.scale.setScalar(0);
-            const x = getTimelineAdditionalPlaneX(i);
             const slot = getTimelineLayoutSlot(i + 8);
-            plane.position.set(x + anchorShiftX, layoutSlotY[(i + 8) % 3] ?? slot.y, slot.z);
+            const targetCenterPx = this.getInterpolatedSlotCenterPx(i + 8);
+            plane.position.set(this.pixelXToWorldX(targetCenterPx, slot.z), layoutSlotY[(i + 8) % 3] ?? slot.y, slot.z);
             plane.rotation.set(0, 0, 0);
             plane.renderOrder = 8 + i;
             plane.userData.isTransitioning = true;
@@ -397,11 +453,11 @@ export class TimelineScene {
         if (hasInitial) {
             initialImages.forEach((img, i) => {
                 if (i >= 8) return;
-                const origX = getTimelinePlaneX(i);
-                const targetX = origX - offset + anchorShiftX;
                 const slot = getTimelineLayoutSlot(i);
                 const imageWidth = img?.geometry?.parameters?.width ?? TIMELINE_PLANE_WIDTH;
                 const slotScale = this.getSlotScale(i % 3, imageWidth, slot.z);
+                const targetCenterPx = this.getInterpolatedSlotCenterPx(i);
+                const targetX = this.pixelXToWorldX(targetCenterPx, slot.z);
                 gsap.killTweensOf([img.position, img.scale, img.rotation]);
                 tl.to(img.position, { x: targetX, y: layoutSlotY[i % 3] ?? slot.y, z: slot.z, duration, ease }, i * stagger);
                 tl.to(img.scale, { x: slotScale, y: slotScale, z: slotScale, duration, ease }, i * stagger);

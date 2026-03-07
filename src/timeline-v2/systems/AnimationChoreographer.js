@@ -30,37 +30,33 @@ class AnimationChoreographer {
    * Calculate timeline spacing dynamically
    */
   calculateSpacing() {
-    const cameraZ = 3.0; // Initial scene camera Z position
-    const fov = 75; // Camera field of view in degrees
-    
-    // Calculate visible height at z=0
-    const vFOV = (fov * Math.PI) / 180;
-    const visibleHeight = 2 * Math.tan(vFOV / 2) * cameraZ;
-    
-    // Get viewport height
-    const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 1080;
-    
-    // Calculate pixels per three.js unit
-    const pixelsPerUnit = viewportHeight / visibleHeight;
-    
-    // Image width in pixels (0.75 three.js units at scale 0.75)
-    const imageWidthPx = 0.75 * pixelsPerUnit;
-    
-    // Desired margin between images (increased to open up the timeline layout)
-    const marginPx = 520;
-    
-    // Total spacing (center to center) in pixels
-    const totalSpacingPx = imageWidthPx + marginPx;
-    
-    // Convert back to three.js units
-    const spacingUnits = totalSpacingPx / pixelsPerUnit;
+    const viewportWidth = typeof window !== 'undefined' ? Math.max(1, window.innerWidth || 1) : 1920;
+    const slot0 = getTimelineLayoutSlot(0);
+    const slot1 = getTimelineLayoutSlot(1);
+    const slot2 = getTimelineLayoutSlot(2);
+
+    const visibleWidth = this.getVisibleWidthAtDepth(slot0.z);
+    const unitsPerPixel = visibleWidth / viewportWidth;
+    const gapPx = TIMELINE_LAYOUT_CONFIG.COLUMN_GAP_PX ?? 12;
+    const gapWorld = gapPx * unitsPerPixel;
+
+    const firstWidthWorld = this.getSlotWidthPx(0) * unitsPerPixel;
+    const secondWidthWorld = this.getSlotWidthPx(1) * unitsPerPixel;
+    const thirdWidthWorld = this.getSlotWidthPx(2) * unitsPerPixel;
+
+    // Adjacent center distances required for exactly 12px edge-to-edge gaps.
+    const distance01 = ((firstWidthWorld + secondWidthWorld) / 2) + gapWorld;
+    const distance12 = ((secondWidthWorld + thirdWidthWorld) / 2) + gapWorld;
+
+    // Single spacing value used by timeline physics; choose midpoint for stable rhythm.
+    const spacingUnits = (distance01 + distance12) / 2;
     
     console.log(`📏 Spacing Calculation:
-      Viewport Height: ${viewportHeight}px
-      Pixels per Unit: ${pixelsPerUnit.toFixed(2)}px
-      Image Width: ${imageWidthPx.toFixed(0)}px
-      Margin: ${marginPx}px
-      Total Spacing: ${spacingUnits.toFixed(3)} units (${totalSpacingPx.toFixed(0)}px)`);
+      Viewport Width: ${viewportWidth}px
+      Gap: ${gapPx}px
+      Slot Widths (world): ${firstWidthWorld.toFixed(3)}, ${secondWidthWorld.toFixed(3)}, ${thirdWidthWorld.toFixed(3)}
+      Distances (world): d01=${distance01.toFixed(3)}, d12=${distance12.toFixed(3)}
+      Chosen spacing: ${spacingUnits.toFixed(3)} units`);
 
     // Store calculated spacing in state for timeline navigation
     this.state.setState({
@@ -91,9 +87,74 @@ class AnimationChoreographer {
     return percentages[slotIndex] ?? percentages[0] ?? 0.3;
   }
 
+  getSlotWidthPx(slotIndex) {
+    const configuredWidths = TIMELINE_LAYOUT_CONFIG.IMAGE_WIDTHS_PX;
+    const safeIndex = Math.abs(slotIndex) % 3;
+    const configuredWidth = configuredWidths?.[safeIndex];
+    if (Number.isFinite(configuredWidth) && configuredWidth > 0) {
+      return configuredWidth;
+    }
+
+    const viewportWidth = Math.max(1, window.innerWidth || 1);
+    const leftPaddingPx = TIMELINE_LAYOUT_CONFIG.FIRST_IMAGE_LEFT_PADDING_PX ?? 50;
+    const columnGapPx = TIMELINE_LAYOUT_CONFIG.COLUMN_GAP_PX ?? 12;
+    const weights = [
+      this.getSlotWidthPercentage(0),
+      this.getSlotWidthPercentage(1),
+      this.getSlotWidthPercentage(2)
+    ];
+    const weightSum = Math.max(0.001, weights[0] + weights[1] + weights[2]);
+    const usableWidth = Math.max(1, viewportWidth - leftPaddingPx - (columnGapPx * 2));
+    return usableWidth * (weights[safeIndex] ?? weights[0]) / weightSum;
+  }
+
+  getColumnMetrics() {
+    const widths = [this.getSlotWidthPx(0), this.getSlotWidthPx(1), this.getSlotWidthPx(2)];
+    const leftPaddingPx = TIMELINE_LAYOUT_CONFIG.FIRST_IMAGE_LEFT_PADDING_PX ?? 50;
+    const columnGapPx = TIMELINE_LAYOUT_CONFIG.COLUMN_GAP_PX ?? 12;
+    const centers = [
+      leftPaddingPx + (widths[0] / 2),
+      leftPaddingPx + widths[0] + columnGapPx + (widths[1] / 2),
+      leftPaddingPx + widths[0] + columnGapPx + widths[1] + columnGapPx + (widths[2] / 2)
+    ];
+
+    return {
+      centers,
+      clusterWidth: widths[0] + widths[1] + widths[2] + (columnGapPx * 2)
+    };
+  }
+
+  getDiscreteSlotCenterPx(relativeIndex) {
+    const safeIndex = Number.isFinite(relativeIndex) ? Math.floor(relativeIndex) : 0;
+    const { centers, clusterWidth } = this.getColumnMetrics();
+    const slotIndex = ((safeIndex % 3) + 3) % 3;
+    const clusterIndex = Math.floor(safeIndex / 3);
+    return centers[slotIndex] + (clusterIndex * clusterWidth);
+  }
+
+  getInterpolatedSlotCenterPx(relativeIndex) {
+    const safeIndex = Number.isFinite(relativeIndex) ? relativeIndex : 0;
+    const lower = Math.floor(safeIndex);
+    const upper = lower + 1;
+    const progress = safeIndex - lower;
+    const lowerCenter = this.getDiscreteSlotCenterPx(lower);
+    const upperCenter = this.getDiscreteSlotCenterPx(upper);
+    return THREE.MathUtils.lerp(lowerCenter, upperCenter, progress);
+  }
+
+  pixelXToWorldX(pixelX, zDepth) {
+    if (!this.camera) return 0;
+    const viewportWidth = Math.max(1, window.innerWidth || 1);
+    const visibleWidth = this.getVisibleWidthAtDepth(zDepth);
+    const normalizedX = (pixelX / viewportWidth) - 0.5;
+    return normalizedX * visibleWidth;
+  }
+
   getSlotScale(slotIndex, planeWidth = 2.5, slotZ = 0) {
     const visibleWidth = this.getVisibleWidthAtDepth(slotZ);
-    const targetWorldWidth = visibleWidth * this.getSlotWidthPercentage(slotIndex);
+    const viewportWidth = Math.max(1, window.innerWidth || 1);
+    const unitsPerPixel = visibleWidth / viewportWidth;
+    const targetWorldWidth = this.getSlotWidthPx(slotIndex) * unitsPerPixel;
     return Math.max(0.001, targetWorldWidth / Math.max(0.001, planeWidth));
   }
 
@@ -126,13 +187,12 @@ class AnimationChoreographer {
   getLayoutSlotWorldY(planes) {
     if (!this.camera || !Array.isArray(planes) || planes.length === 0) return [0, 0, 0];
 
-    const viewportWidth = Math.max(1, window.innerWidth || 1);
     const firstSlot = getTimelineLayoutSlot(0);
     const secondSlot = getTimelineLayoutSlot(1);
     const thirdSlot = getTimelineLayoutSlot(2);
-    const firstHeightPx = viewportWidth * this.getSlotWidthPercentage(0) * 0.75;
-    const secondHeightPx = viewportWidth * this.getSlotWidthPercentage(1) * 0.75;
-    const thirdHeightPx = viewportWidth * this.getSlotWidthPercentage(2) * 0.75;
+    const firstHeightPx = this.getSlotWidthPx(0) * 0.75;
+    const secondHeightPx = this.getSlotWidthPx(1) * 0.75;
+    const thirdHeightPx = this.getSlotWidthPx(2) * 0.75;
 
     const firstTopPx = TIMELINE_LAYOUT_CONFIG.FIRST_IMAGE_TOP_PX ?? 80;
     const firstBottomPx = firstTopPx + firstHeightPx;
@@ -173,8 +233,8 @@ class AnimationChoreographer {
     const spacing = this.calculateSpacing();
     const firstPosition = TIMELINE_CONFIG.FIRST_POSITION || -4.5;
     const offset = this.state.get('timelineOffset') || firstPosition;
-    const anchorShiftX = this.getViewportAnchorShift(planes);
     const slotWorldY = this.getLayoutSlotWorldY(planes);
+    const progress = (offset - firstPosition) / Math.max(0.0001, spacing);
     
     // Create master timeline
     this.gatheringTimeline = gsap.timeline({
@@ -187,9 +247,10 @@ class AnimationChoreographer {
     
     // === ANIMATE IMAGES ===
     planes.forEach((plane, index) => {
-      const targetX = firstPosition + (index * spacing) - offset + anchorShiftX;
       const slot = getTimelineLayoutSlot(index);
       const slotIndex = Math.abs(index) % slotWorldY.length;
+      const targetCenterPx = this.getInterpolatedSlotCenterPx(index - progress);
+      const targetX = this.pixelXToWorldX(targetCenterPx, slot.z);
       const staggerDelay = index * 0.06; // 60ms between each image
       
       console.log(`  📍 Image ${index}: target x=${targetX.toFixed(3)}, spacing=${spacing.toFixed(3)}`);

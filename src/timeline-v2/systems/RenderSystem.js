@@ -382,13 +382,90 @@ class RenderSystem {
     return percentages[slotIndex] ?? percentages[0] ?? 0.3;
   }
 
+  getSlotWidthPx(slotIndex) {
+    const configuredWidths = TIMELINE_LAYOUT_CONFIG.IMAGE_WIDTHS_PX;
+    const safeIndex = Math.abs(slotIndex) % 3;
+    const configuredWidth = configuredWidths?.[safeIndex];
+    if (Number.isFinite(configuredWidth) && configuredWidth > 0) {
+      return configuredWidth;
+    }
+
+    const viewportWidth = Math.max(1, window.innerWidth || 1);
+    const leftPaddingPx = TIMELINE_LAYOUT_CONFIG.FIRST_IMAGE_LEFT_PADDING_PX ?? 50;
+    const columnGapPx = TIMELINE_LAYOUT_CONFIG.COLUMN_GAP_PX ?? 12;
+    const weights = [
+      this.getSlotWidthPercentage(0),
+      this.getSlotWidthPercentage(1),
+      this.getSlotWidthPercentage(2)
+    ];
+    const weightSum = Math.max(0.001, weights[0] + weights[1] + weights[2]);
+    const usableWidth = Math.max(1, viewportWidth - leftPaddingPx - (columnGapPx * 2));
+    return usableWidth * (weights[safeIndex] ?? weights[0]) / weightSum;
+  }
+
+  getColumnMetrics() {
+    const widths = [this.getSlotWidthPx(0), this.getSlotWidthPx(1), this.getSlotWidthPx(2)];
+    const leftPaddingPx = TIMELINE_LAYOUT_CONFIG.FIRST_IMAGE_LEFT_PADDING_PX ?? 50;
+    const columnGapPx = TIMELINE_LAYOUT_CONFIG.COLUMN_GAP_PX ?? 12;
+    const centers = [
+      leftPaddingPx + (widths[0] / 2),
+      leftPaddingPx + widths[0] + columnGapPx + (widths[1] / 2),
+      leftPaddingPx + widths[0] + columnGapPx + widths[1] + columnGapPx + (widths[2] / 2)
+    ];
+
+    return {
+      centers,
+      clusterWidth: widths[0] + widths[1] + widths[2] + (columnGapPx * 2)
+    };
+  }
+
+  getDiscreteSlotCenterPx(relativeIndex) {
+    const safeIndex = Number.isFinite(relativeIndex) ? Math.floor(relativeIndex) : 0;
+    const { centers, clusterWidth } = this.getColumnMetrics();
+    const slotIndex = ((safeIndex % 3) + 3) % 3;
+    const clusterIndex = Math.floor(safeIndex / 3);
+    return centers[slotIndex] + (clusterIndex * clusterWidth);
+  }
+
+  getInterpolatedSlotCenterPx(relativeIndex) {
+    const safeIndex = Number.isFinite(relativeIndex) ? relativeIndex : 0;
+    const lower = Math.floor(safeIndex);
+    const upper = lower + 1;
+    const progress = safeIndex - lower;
+    const lowerCenter = this.getDiscreteSlotCenterPx(lower);
+    const upperCenter = this.getDiscreteSlotCenterPx(upper);
+    return THREE.MathUtils.lerp(lowerCenter, upperCenter, progress);
+  }
+
+  pixelXToWorldX(pixelX, zDepth, camera) {
+    const activeCamera = camera || this.camera || window.app?.camera;
+    if (!activeCamera) return 0;
+    const viewportWidth = Math.max(1, window.innerWidth || 1);
+    const visibleWidth = this.getVisibleWidthAtDepth(zDepth);
+    const normalizedX = (pixelX / viewportWidth) - 0.5;
+    return normalizedX * visibleWidth;
+  }
+
   getSlotScaleForIndex(index, plane) {
     const slot = getTimelineLayoutSlot(index);
     const slotIndex = Math.abs(index) % 3;
     const geometryWidth = plane?.geometry?.parameters?.width ?? 2.5;
     const visibleWidth = this.getVisibleWidthAtDepth(slot.z);
-    const targetWorldWidth = visibleWidth * this.getSlotWidthPercentage(slotIndex);
+    const viewportWidth = Math.max(1, window.innerWidth || 1);
+    const unitsPerPixel = visibleWidth / viewportWidth;
+    const targetWorldWidth = this.getSlotWidthPx(slotIndex) * unitsPerPixel;
     return Math.max(0.001, targetWorldWidth / Math.max(0.001, geometryWidth));
+  }
+
+  getAnchorIndex(offset, spacing, firstPosition, yearCount) {
+    const safeSpacing = Math.max(0.0001, Number.isFinite(spacing) ? spacing : 1);
+    const safeOffset = Number.isFinite(offset) ? offset : firstPosition;
+    const raw = Math.round((safeOffset - firstPosition) / safeSpacing);
+    return Math.max(0, Math.min(yearCount - 1, raw));
+  }
+
+  getRelativeSlotIndex(index, anchorIndex) {
+    return ((index - anchorIndex) % 3 + 3) % 3;
   }
 
   /**
@@ -419,13 +496,12 @@ class RenderSystem {
     const camera = this.camera || window.app?.camera;
     if (!camera || !Array.isArray(allPlanes) || allPlanes.length === 0) return [0, 0, 0];
 
-    const viewportWidth = Math.max(1, window.innerWidth || 1);
     const firstSlot = getTimelineLayoutSlot(0);
     const secondSlot = getTimelineLayoutSlot(1);
     const thirdSlot = getTimelineLayoutSlot(2);
-    const firstHeightPx = viewportWidth * this.getSlotWidthPercentage(0) * 0.75;
-    const secondHeightPx = viewportWidth * this.getSlotWidthPercentage(1) * 0.75;
-    const thirdHeightPx = viewportWidth * this.getSlotWidthPercentage(2) * 0.75;
+    const firstHeightPx = this.getSlotWidthPx(0) * 0.75;
+    const secondHeightPx = this.getSlotWidthPx(1) * 0.75;
+    const thirdHeightPx = this.getSlotWidthPx(2) * 0.75;
 
     const firstTopPx = TIMELINE_LAYOUT_CONFIG.FIRST_IMAGE_TOP_PX ?? 80;
     const firstBottomPx = firstTopPx + firstHeightPx;
@@ -453,19 +529,23 @@ class RenderSystem {
 
     const spacing = this.state.get('calculatedSpacing') || 1.8;
     const firstPosition = TIMELINE_CONFIG.FIRST_POSITION || -4.5;
+    const yearCount = TIMELINE_CONFIG.YEAR_COUNT || 10;
+    const anchorIndex = this.getAnchorIndex(safeOffset, spacing, firstPosition, yearCount);
+    const progress = (safeOffset - firstPosition) / Math.max(0.0001, spacing);
     const cullDistance = 15;
-    const anchorShiftX = this.getViewportAnchorShift(allPlanes);
     const slotWorldY = this.getLayoutSlotWorldY(allPlanes);
 
     allPlanes.forEach((plane, index) => {
       if (!plane) return;
       if (plane.userData?.isFrozen || plane.userData?.animatingFromFullscreen || plane.userData?.isTransitioning) return;
-      const originalX = firstPosition + index * spacing;
-      const slot = getTimelineLayoutSlot(index);
-      const slotIndex = Math.abs(index) % slotWorldY.length;
-      plane.position.x = originalX - safeOffset + anchorShiftX;
+      const slotIndex = this.getRelativeSlotIndex(index, anchorIndex);
+      const slot = getTimelineLayoutSlot(slotIndex);
+      const targetScale = this.getSlotScaleForIndex(slotIndex, plane);
+      const targetCenterPx = this.getInterpolatedSlotCenterPx(index - progress);
+      plane.position.x = this.pixelXToWorldX(targetCenterPx, slot.z, this.camera);
       plane.position.y = slotWorldY[slotIndex] ?? slot.y;
       plane.position.z = slot.z;
+      plane.scale.setScalar(targetScale);
       plane.visible = Math.abs(plane.position.x) < cullDistance;
     });
   }
@@ -503,21 +583,7 @@ class RenderSystem {
       plane.material.transparent = true;
       plane.material.needsUpdate = true;
 
-      const baseScale = this.getSlotScaleForIndex(index, plane);
-      const targetScale = baseScale;
-      const needsScaleChange = Math.abs(plane.scale.x - targetScale) > 0.01;
-      if (!needsScaleChange) return;
-
-      gsap.killTweensOf(plane.scale);
-
-      gsap.to(plane.scale, {
-        x: targetScale,
-        y: targetScale,
-        z: targetScale,
-        duration: 0.35,
-        ease: 'power2.out',
-        overwrite: 'auto'
-      });
+      // Scale is enforced in updateImagePositions to match column width exactly.
     });
   }
 
