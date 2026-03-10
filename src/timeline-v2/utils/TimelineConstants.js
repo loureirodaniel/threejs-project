@@ -227,9 +227,14 @@ export const CAMERA_CONFIG = Object.freeze({
 
   // Scroll zoom
   SCROLL_ZOOM_ENABLED: true,
-  SCROLL_ZOOM_MAX_PULLBACK: 0.6,   // max extra z added while scrolling (world units)
-  SCROLL_ZOOM_VELOCITY_SCALE: 0.7, // how much velocity maps to zoom (tune this)
-  SCROLL_ZOOM_LERP_SPEED: 8.0      // how fast camera returns to base z
+  SCROLL_ZOOM_MAX_PULLBACK: 1.8,             // strong extra z added while scrolling (world units)
+  SCROLL_ZOOM_VELOCITY_SCALE: 1.2,           // stronger velocity to pullback mapping
+  SCROLL_ZOOM_LERP_SPEED: 10.5,              // responsive positional smoothing speed in update loop
+  SCROLL_ZOOM_DELTA_FOR_MAX_INTENSITY: 1.2,  // normalized wheel delta that maps to full input intensity
+  SCROLL_ZOOM_MIN_KICK_FACTOR: 0.85,         // guaranteed strong dolly factor per gesture
+  SCROLL_ZOOM_HOLD_MS: 260,                  // keep strong pullback visible slightly longer
+  SCROLL_ZOOM_DOLLY_OUT_DURATION: 0.16,      // faster dolly-back punch
+  SCROLL_ZOOM_DOLLY_RETURN_DURATION: 0.7     // slower cinematic return-to-base
 });
 
 // -----------------------------------------------------------------------------
@@ -250,6 +255,15 @@ export const EFFECTS_CONFIG = Object.freeze({
   // Image scaling
   FOCUS_SCALE: 0.85, // Scale for focused (center) image
   NORMAL_SCALE: 0.75, // Scale for non-focused images
+  TIMELINE_DISTANCE_MIN_SCALE: 0.75, // Minimum multiplier for far timeline images
+  TIMELINE_DISTANCE_SCALE_RANGE: 6.0, // World-units distance from center to reach min scale
+  TIMELINE_DEPTH_SCALE_BOOST: 1.6, // Extra perspective boost for slot z depth (higher = stronger near/far size contrast)
+  TIMELINE_DEPTH_SCALE_MIN: 0.72, // Clamp to avoid tiny cards when far from camera
+  TIMELINE_DEPTH_SCALE_MAX: 1.35, // Clamp to avoid oversized cards when near camera
+  TIMELINE_OVERFLOW_DECAY_START_INDEX: 2, // First overflow index (0-based relative index) that starts sequence decay
+  TIMELINE_SEQUENCE_DECAY_PER_STEP: 0.94, // Extra scale decay per card after the 3rd slot
+  TIMELINE_SEQUENCE_MIN_SCALE: 0.65, // Lower clamp for sequence-based shrinking
+  TIMELINE_OVERFLOW_FOCUS_BLEND_RANGE: 1.2, // Relative-index range where overflow penalty blends back to full scale near focus
 
   // Liquid distortion
   LIQUID_DISTORTION_STRENGTH: 0.02,

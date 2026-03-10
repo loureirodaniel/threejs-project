@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { gsap } from 'gsap';
 import { TIMELINE_COLUMN_GAP_PX, TIMELINE_FIRST_IMAGE_LEFT_PADDING_PX, TIMELINE_FIRST_IMAGE_TOP_PX, TIMELINE_IMAGE_WIDTH_PERCENTAGES, TIMELINE_IMAGE_WIDTHS_PX, TIMELINE_PLANE_WIDTH, getTimelineAdditionalPlaneX, getTimelineLayoutSlot, getTimelinePlaneX } from '../config/timelineLayout.js';
 
+const TIMELINE_SCALE_REFERENCE_Z = 0;
+
 export class TimelineScene {
     constructor(scene, renderer, camera) {
         this.scene = scene;
@@ -100,7 +102,10 @@ export class TimelineScene {
     }
 
     getSlotScale(slotIndex, planeWidth = TIMELINE_PLANE_WIDTH, slotZ = 0) {
-        const visibleWidth = this.getVisibleWidthAtDepth(slotZ);
+        // Keep world-size derived from a fixed timeline reference depth.
+        // This allows perspective to do its job: farther images appear smaller,
+        // closer images appear larger relative to the camera.
+        const visibleWidth = this.getVisibleWidthAtDepth(TIMELINE_SCALE_REFERENCE_Z);
         const viewportWidth = Math.max(1, window.innerWidth || 1);
         const unitsPerPixel = visibleWidth / viewportWidth;
         const targetWorldWidth = this.getSlotWidthPx(slotIndex) * unitsPerPixel;
@@ -150,6 +155,22 @@ export class TimelineScene {
             this.pixelYToWorldY(secondCenterPx, secondSlot.z),
             this.pixelYToWorldY(thirdCenterPx, thirdSlot.z)
         ];
+    }
+
+    getAlternatingRowSlotIndex(index, slotWorldY = []) {
+        const fallbackTopIndex = 0;
+        const fallbackBottomIndex = 1;
+        const rowValues = [0, 1, 2]
+            .map((slotIndex) => ({ slotIndex, y: slotWorldY?.[slotIndex] }))
+            .filter((entry) => Number.isFinite(entry.y));
+
+        if (rowValues.length < 2) {
+            return index % 2 === 0 ? fallbackTopIndex : fallbackBottomIndex;
+        }
+
+        const topIndex = rowValues.reduce((best, current) => (current.y > best.y ? current : best)).slotIndex;
+        const bottomIndex = rowValues.reduce((best, current) => (current.y < best.y ? current : best)).slotIndex;
+        return index % 2 === 0 ? topIndex : bottomIndex;
     }
     
     init() {
@@ -243,13 +264,16 @@ export class TimelineScene {
         if (!skipPositionOverwrite) {
             const layoutSlotY = this.getLayoutSlotWorldY(this.getInitialSceneImages());
             this.timelinePlanes.forEach((plane, index) => {
+                const timelineIndex = index + 8;
                 const slot = getTimelineLayoutSlot(index + 8);
-                const slotIndex = (index + 8) % 3;
+                const slotIndex = timelineIndex % 3;
+                const rowSlotIndex = this.getAlternatingRowSlotIndex(timelineIndex, layoutSlotY);
+                const rowSlot = getTimelineLayoutSlot(rowSlotIndex);
                 const planeWidth = plane?.geometry?.parameters?.width ?? TIMELINE_PLANE_WIDTH;
                 const slotScale = this.getSlotScale(slotIndex, planeWidth, slot.z);
-                const targetCenterPx = this.getInterpolatedSlotCenterPx(index + 8);
+                const targetCenterPx = this.getInterpolatedSlotCenterPx(timelineIndex);
                 plane.visible = true;
-                plane.position.set(this.pixelXToWorldX(targetCenterPx, slot.z), layoutSlotY[slotIndex] ?? slot.y, slot.z);
+                plane.position.set(this.pixelXToWorldX(targetCenterPx, slot.z), layoutSlotY[rowSlotIndex] ?? rowSlot.y, slot.z);
                 plane.scale.setScalar(slotScale);
                 plane.rotation.set(0, 0, 0);
                 plane.material.opacity = 0.9;
@@ -263,11 +287,13 @@ export class TimelineScene {
                     }
                     const slot = getTimelineLayoutSlot(index);
                     const slotIndex = index % 3;
+                    const rowSlotIndex = this.getAlternatingRowSlotIndex(index, layoutSlotY);
+                    const rowSlot = getTimelineLayoutSlot(rowSlotIndex);
                     const imageWidth = image?.geometry?.parameters?.width ?? TIMELINE_PLANE_WIDTH;
                     const slotScale = this.getSlotScale(slotIndex, imageWidth, slot.z);
                     const targetCenterPx = this.getInterpolatedSlotCenterPx(index);
                     image.visible = true;
-                    image.position.set(this.pixelXToWorldX(targetCenterPx, slot.z), layoutSlotY[slotIndex] ?? slot.y, slot.z);
+                    image.position.set(this.pixelXToWorldX(targetCenterPx, slot.z), layoutSlotY[rowSlotIndex] ?? rowSlot.y, slot.z);
                     image.scale.setScalar(slotScale);
                     image.rotation.set(0, 0, 0);
                     image.userData.isTimelineTransitioned = true;
@@ -330,8 +356,10 @@ export class TimelineScene {
             }
             
             // Subtle floating animation for non-enlarged planes - maintain horizontal alignment
-            const slot = getTimelineLayoutSlot(index + 8);
-            plane.position.y = (layoutSlotY[(index + 8) % 3] ?? slot.y) + Math.sin(time * 0.001 + index) * 0.02; // Reduced floating amplitude
+            const timelineIndex = index + 8;
+            const rowSlotIndex = this.getAlternatingRowSlotIndex(timelineIndex, layoutSlotY);
+            const rowSlot = getTimelineLayoutSlot(rowSlotIndex);
+            plane.position.y = (layoutSlotY[rowSlotIndex] ?? rowSlot.y) + Math.sin(time * 0.001 + index) * 0.02; // Reduced floating amplitude
             
         });
         
@@ -345,8 +373,9 @@ export class TimelineScene {
                 
                 // Apply subtle floating animation to transitioned initial images
                 // Keep layered slot placement and only add minimal floating.
-                const slot = getTimelineLayoutSlot(index);
-                image.position.y = (layoutSlotY[index % 3] ?? slot.y) + Math.sin(time * 0.001 + index) * 0.02; // Reduced floating amplitude
+                const rowSlotIndex = this.getAlternatingRowSlotIndex(index, layoutSlotY);
+                const rowSlot = getTimelineLayoutSlot(rowSlotIndex);
+                image.position.y = (layoutSlotY[rowSlotIndex] ?? rowSlot.y) + Math.sin(time * 0.001 + index) * 0.02; // Reduced floating amplitude
                 
             }
         });
@@ -411,9 +440,12 @@ export class TimelineScene {
             plane.visible = true;
             plane.material.opacity = 0;
             plane.scale.setScalar(0);
-            const slot = getTimelineLayoutSlot(i + 8);
-            const targetCenterPx = this.getInterpolatedSlotCenterPx(i + 8);
-            plane.position.set(this.pixelXToWorldX(targetCenterPx, slot.z), layoutSlotY[(i + 8) % 3] ?? slot.y, slot.z);
+            const timelineIndex = i + 8;
+            const slot = getTimelineLayoutSlot(timelineIndex);
+            const rowSlotIndex = this.getAlternatingRowSlotIndex(timelineIndex, layoutSlotY);
+            const rowSlot = getTimelineLayoutSlot(rowSlotIndex);
+            const targetCenterPx = this.getInterpolatedSlotCenterPx(timelineIndex);
+            plane.position.set(this.pixelXToWorldX(targetCenterPx, slot.z), layoutSlotY[rowSlotIndex] ?? rowSlot.y, slot.z);
             plane.rotation.set(0, 0, 0);
             plane.renderOrder = 8 + i;
             plane.userData.isTransitioning = true;
@@ -454,12 +486,14 @@ export class TimelineScene {
             initialImages.forEach((img, i) => {
                 if (i >= 8) return;
                 const slot = getTimelineLayoutSlot(i);
+                const rowSlotIndex = this.getAlternatingRowSlotIndex(i, layoutSlotY);
+                const rowSlot = getTimelineLayoutSlot(rowSlotIndex);
                 const imageWidth = img?.geometry?.parameters?.width ?? TIMELINE_PLANE_WIDTH;
                 const slotScale = this.getSlotScale(i % 3, imageWidth, slot.z);
                 const targetCenterPx = this.getInterpolatedSlotCenterPx(i);
                 const targetX = this.pixelXToWorldX(targetCenterPx, slot.z);
                 gsap.killTweensOf([img.position, img.scale, img.rotation]);
-                tl.to(img.position, { x: targetX, y: layoutSlotY[i % 3] ?? slot.y, z: slot.z, duration, ease }, i * stagger);
+                tl.to(img.position, { x: targetX, y: layoutSlotY[rowSlotIndex] ?? rowSlot.y, z: slot.z, duration, ease }, i * stagger);
                 tl.to(img.scale, { x: slotScale, y: slotScale, z: slotScale, duration, ease }, i * stagger);
                 tl.to(img.rotation, { x: 0, y: 0, z: 0, duration, ease }, i * stagger);
                 tl.call(() => { img.userData.isTimelineTransitioned = true; img.userData.timelineIndex = i; }, [], i * stagger + duration);

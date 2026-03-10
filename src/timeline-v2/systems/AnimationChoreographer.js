@@ -158,6 +158,34 @@ class AnimationChoreographer {
     return Math.max(0.001, targetWorldWidth / Math.max(0.001, planeWidth));
   }
 
+  getDistanceScaleMultiplier(worldX) {
+    const minScale = EFFECTS_CONFIG.TIMELINE_DISTANCE_MIN_SCALE ?? EFFECTS_CONFIG.NORMAL_SCALE ?? 0.75;
+    const falloffDistance = EFFECTS_CONFIG.TIMELINE_DISTANCE_SCALE_RANGE ?? 6.0;
+    const safeRange = Math.max(0.001, falloffDistance);
+    const distance = Math.abs((Number.isFinite(worldX) ? worldX : 0) - 0);
+    const t = Math.min(1, distance / safeRange);
+    const eased = t * t * (3 - 2 * t);
+    return 1 - eased * (1 - minScale);
+  }
+
+  getSequenceScaleMultiplier(relativeIndex) {
+    const safeIndex = Math.abs(Number.isFinite(relativeIndex) ? relativeIndex : 0);
+    const overflowStart = EFFECTS_CONFIG.TIMELINE_OVERFLOW_DECAY_START_INDEX ?? 2;
+    const extraSteps = Math.max(0, safeIndex - overflowStart);
+    if (extraSteps <= 0) return 1;
+
+    const perStepDecay = EFFECTS_CONFIG.TIMELINE_SEQUENCE_DECAY_PER_STEP ?? 0.94;
+    const minSequenceScale = EFFECTS_CONFIG.TIMELINE_SEQUENCE_MIN_SCALE ?? 0.65;
+    const baseOverflowScale = Math.max(minSequenceScale, Math.pow(perStepDecay, extraSteps));
+
+    const focusBlendRange = Math.max(0.001, EFFECTS_CONFIG.TIMELINE_OVERFLOW_FOCUS_BLEND_RANGE ?? 1.2);
+    const focusBlendRaw = ((overflowStart + focusBlendRange) - safeIndex) / focusBlendRange;
+    const focusBlend = Math.min(1, Math.max(0, focusBlendRaw));
+    const easedBlend = focusBlend * focusBlend * (3 - (2 * focusBlend));
+
+    return baseOverflowScale + ((1 - baseOverflowScale) * easedBlend);
+  }
+
   getViewportAnchorShift(planes) {
     if (!this.camera || !Array.isArray(planes) || planes.length === 0) return 0;
 
@@ -249,8 +277,13 @@ class AnimationChoreographer {
     planes.forEach((plane, index) => {
       const slot = getTimelineLayoutSlot(index);
       const slotIndex = Math.abs(index) % slotWorldY.length;
-      const targetCenterPx = this.getInterpolatedSlotCenterPx(index - progress);
+      const relativeIndex = index - progress;
+      const targetCenterPx = this.getInterpolatedSlotCenterPx(relativeIndex);
       const targetX = this.pixelXToWorldX(targetCenterPx, slot.z);
+      const baseScale = this.getSlotScale(Math.abs(index) % 3, plane?.geometry?.parameters?.width ?? 2.5, slot.z);
+      const targetScale = baseScale
+        * this.getDistanceScaleMultiplier(targetX)
+        * this.getSequenceScaleMultiplier(relativeIndex);
       const staggerDelay = index * 0.06; // 60ms between each image
       
       console.log(`  📍 Image ${index}: target x=${targetX.toFixed(3)}, spacing=${spacing.toFixed(3)}`);
@@ -267,9 +300,9 @@ class AnimationChoreographer {
       
       // Animate scale
       this.gatheringTimeline.to(plane.scale, {
-        x: this.getSlotScale(Math.abs(index) % 3, plane?.geometry?.parameters?.width ?? 2.5, slot.z),
-        y: this.getSlotScale(Math.abs(index) % 3, plane?.geometry?.parameters?.width ?? 2.5, slot.z),
-        z: this.getSlotScale(Math.abs(index) % 3, plane?.geometry?.parameters?.width ?? 2.5, slot.z),
+        x: targetScale,
+        y: targetScale,
+        z: targetScale,
         duration: 1.2,
         ease: 'power2.inOut',
         delay: staggerDelay

@@ -37,6 +37,9 @@ class CameraSystem {
     this.cameraFrozen = false;
     this.frozenPosition = null;
     this.debugCameraConfig = null;
+    this.scrollDollyFactor = 0;
+    this.scrollDollyTween = null;
+    this.scrollReturnTween = null;
 
     this.unsubscribeFns = [];
     this.init();
@@ -48,7 +51,8 @@ class CameraSystem {
       this.eventBus.on('scene:transition:start', this.onSceneTransition.bind(this)),
       this.eventBus.on('scene:transition', this.onSceneTransition.bind(this)),
       this.eventBus.on('timeline:drag:start', this.onDragStart.bind(this)),
-      this.eventBus.on('timeline:drag:end', this.onDragEnd.bind(this))
+      this.eventBus.on('timeline:drag:end', this.onDragEnd.bind(this)),
+      this.eventBus.on('timeline:scroll', this.onTimelineScroll.bind(this))
     );
 
     console.log('✅ CameraSystem initialized');
@@ -120,12 +124,22 @@ class CameraSystem {
 
     this.lookAtCurrent.lerp(this.lookAtTarget, t);
 
-    if (debugConfig?.enabled && debugConfig.position) {
+    const hasDebugPosition = Boolean(debugConfig?.enabled && debugConfig.position);
+    const debugBaseZ = hasDebugPosition && Number.isFinite(debugConfig.position.z)
+      ? debugConfig.position.z
+      : null;
+
+    if (hasDebugPosition) {
       this.camera.position.set(
         debugConfig.position.x,
         debugConfig.position.y,
-        debugConfig.position.z
+        this.camera.position.z
       );
+
+      // Optional hard lock for debug workflows; disabled by default so scroll dolly stays visible.
+      if (debugConfig.lockPositionZ === true || !CAMERA_CONFIG.SCROLL_ZOOM_ENABLED) {
+        this.camera.position.z = debugConfig.position.z;
+      }
     }
 
     if (debugConfig?.enabled && Number.isFinite(debugConfig.fov)) {
@@ -154,12 +168,14 @@ class CameraSystem {
     // Scroll zoom - camera pulls back slightly while scrolling
     if (CAMERA_CONFIG.SCROLL_ZOOM_ENABLED) {
       const scrollVelocity = Math.abs(this.state.get('scrollVelocity') || 0);
-      const baseZ = SCENE_CONFIG.timeline.position.z; // 2.5
+      const baseZ = debugBaseZ ?? SCENE_CONFIG.timeline.position.z;
       const maxPullback = CAMERA_CONFIG.SCROLL_ZOOM_MAX_PULLBACK;
       const velocityScale = CAMERA_CONFIG.SCROLL_ZOOM_VELOCITY_SCALE;
       const lerpSpeed = CAMERA_CONFIG.SCROLL_ZOOM_LERP_SPEED;
-
-      const targetZ = baseZ + Math.min(scrollVelocity * velocityScale, maxPullback);
+      const velocityPullback = Math.min(scrollVelocity * velocityScale, maxPullback);
+      const dollyPullback = Math.min(maxPullback, this.scrollDollyFactor * maxPullback);
+      const targetPullback = Math.max(velocityPullback, dollyPullback);
+      const targetZ = baseZ + targetPullback;
       const safeDeltaZ = Math.max(0, Number.isFinite(deltaTime) ? deltaTime : 0);
       const tZ = 1 - Math.exp(-lerpSpeed * safeDeltaZ);
       this.camera.position.z += (targetZ - this.camera.position.z) * tZ;
@@ -484,12 +500,62 @@ class CameraSystem {
   }
 
   /**
+   * Track wheel/trackpad activity for temporary scroll dolly.
+   * @param {object} data - { delta, timestamp }
+   */
+  onTimelineScroll({ delta = 0 } = {}) {
+    if (!CAMERA_CONFIG.SCROLL_ZOOM_ENABLED) return;
+
+    const absoluteDelta = Math.abs(delta);
+    const deltaForMax = CAMERA_CONFIG.SCROLL_ZOOM_DELTA_FOR_MAX_INTENSITY ?? 1.2;
+    const minKick = CAMERA_CONFIG.SCROLL_ZOOM_MIN_KICK_FACTOR ?? 0.55;
+    const holdDelayMs = CAMERA_CONFIG.SCROLL_ZOOM_HOLD_MS ?? 180;
+    const outDuration = CAMERA_CONFIG.SCROLL_ZOOM_DOLLY_OUT_DURATION ?? 0.22;
+    const returnDuration = CAMERA_CONFIG.SCROLL_ZOOM_DOLLY_RETURN_DURATION ?? 0.55;
+
+    const normalizedDelta = Math.min(1, absoluteDelta / Math.max(0.0001, deltaForMax));
+    const targetFactor = Math.max(minKick, normalizedDelta);
+
+    if (this.scrollReturnTween) {
+      this.scrollReturnTween.kill();
+      this.scrollReturnTween = null;
+    }
+    if (this.scrollDollyTween) {
+      this.scrollDollyTween.kill();
+      this.scrollDollyTween = null;
+    }
+
+    this.scrollDollyTween = gsap.to(this, {
+      scrollDollyFactor: targetFactor,
+      duration: outDuration,
+      ease: 'power2.out',
+      overwrite: 'auto'
+    });
+
+    this.scrollReturnTween = gsap.to(this, {
+      scrollDollyFactor: 0,
+      duration: returnDuration,
+      delay: holdDelayMs / 1000,
+      ease: 'power2.inOut',
+      overwrite: 'auto'
+    });
+  }
+
+  /**
    * Schedule pullback check while dragging.
    */
   schedulePullbackCheck() {
     if (this.pullbackCheckRafId !== null) {
       cancelAnimationFrame(this.pullbackCheckRafId);
       this.pullbackCheckRafId = null;
+    }
+    if (this.scrollDollyTween) {
+      this.scrollDollyTween.kill();
+      this.scrollDollyTween = null;
+    }
+    if (this.scrollReturnTween) {
+      this.scrollReturnTween.kill();
+      this.scrollReturnTween = null;
     }
     this.pullbackCheckRafId = requestAnimationFrame(() => this.checkPullback());
   }

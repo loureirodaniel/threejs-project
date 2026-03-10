@@ -23,7 +23,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { RippleAnimation } from './RippleAnimation.js';
 import * as TimelineUtils from '../utils/TimelineUtils.js';
-import { EFFECTS_CONFIG, TIMELINE_CONFIG, TIMELINE_LAYOUT_CONFIG, getTimelineLayoutSlot } from '../utils/TimelineConstants.js';
+import { EFFECTS_CONFIG, SCENE_CONFIG, TIMELINE_CONFIG, TIMELINE_LAYOUT_CONFIG, getTimelineLayoutSlot } from '../utils/TimelineConstants.js';
 import { GlitchShader } from '../../shaders/GlitchShader.js';
 
 class RenderSystem {
@@ -372,7 +372,11 @@ class RenderSystem {
     const viewportWidth = Math.max(1, window.innerWidth || 1);
     const viewportHeight = Math.max(1, window.innerHeight || 1);
     const fovRad = THREE.MathUtils.degToRad(camera.fov || 30);
-    const distance = Math.max(0.001, Math.abs((camera.position?.z ?? 2.5) - zDepth));
+    // IMPORTANT: Keep layout calculations anchored to timeline baseline camera Z.
+    // If we use live camera Z here, scroll dolly gets visually canceled because
+    // plane sizes/positions are recomputed to preserve screen-space size.
+    const layoutReferenceZ = SCENE_CONFIG?.timeline?.position?.z ?? 2.5;
+    const distance = Math.max(0.001, Math.abs(layoutReferenceZ - zDepth));
     const visibleHeight = 2 * Math.tan(fovRad / 2) * distance;
     return visibleHeight * ((camera.aspect && Number.isFinite(camera.aspect)) ? camera.aspect : (viewportWidth / viewportHeight));
   }
@@ -450,11 +454,70 @@ class RenderSystem {
     const slot = getTimelineLayoutSlot(index);
     const slotIndex = Math.abs(index) % 3;
     const geometryWidth = plane?.geometry?.parameters?.width ?? 2.5;
-    const visibleWidth = this.getVisibleWidthAtDepth(slot.z);
+    const camera = this.camera || window.app?.camera;
+    const scaleReferenceZ = SCENE_CONFIG?.timeline?.target?.z ?? 0;
+    const visibleWidth = this.getVisibleWidthAtDepth(scaleReferenceZ);
     const viewportWidth = Math.max(1, window.innerWidth || 1);
     const unitsPerPixel = visibleWidth / viewportWidth;
-    const targetWorldWidth = this.getSlotWidthPx(slotIndex) * unitsPerPixel;
+    let targetWorldWidth = this.getSlotWidthPx(slotIndex) * unitsPerPixel;
+
+    if (camera) {
+      const cameraZ = camera.position?.z ?? (SCENE_CONFIG?.timeline?.position?.z ?? 2.5);
+      const referenceDistance = Math.max(0.001, Math.abs(cameraZ - scaleReferenceZ));
+      const slotDistance = Math.max(0.001, Math.abs(cameraZ - slot.z));
+      const depthRatio = referenceDistance / slotDistance;
+      const depthBoost = EFFECTS_CONFIG.TIMELINE_DEPTH_SCALE_BOOST ?? 1.6;
+      const depthScaleMin = EFFECTS_CONFIG.TIMELINE_DEPTH_SCALE_MIN ?? 0.72;
+      const depthScaleMax = EFFECTS_CONFIG.TIMELINE_DEPTH_SCALE_MAX ?? 1.35;
+      const depthScaleMultiplier = THREE.MathUtils.clamp(
+        Math.pow(depthRatio, depthBoost),
+        depthScaleMin,
+        depthScaleMax
+      );
+      targetWorldWidth *= depthScaleMultiplier;
+    }
+
     return Math.max(0.001, targetWorldWidth / Math.max(0.001, geometryWidth));
+  }
+
+  /**
+   * Scale multiplier by timeline distance (center stays largest).
+   * @param {number} worldX
+   * @returns {number}
+   */
+  getDistanceScaleMultiplier(worldX) {
+    const minScale = EFFECTS_CONFIG.TIMELINE_DISTANCE_MIN_SCALE ?? EFFECTS_CONFIG.NORMAL_SCALE ?? 0.75;
+    const falloffDistance = EFFECTS_CONFIG.TIMELINE_DISTANCE_SCALE_RANGE ?? 6.0;
+    const safeRange = Math.max(0.001, falloffDistance);
+    const distance = Math.abs((Number.isFinite(worldX) ? worldX : 0) - 0);
+    const t = Math.min(1, distance / safeRange);
+    // Smoothstep for natural shrink progression.
+    const eased = t * t * (3 - 2 * t);
+    return 1 - eased * (1 - minScale);
+  }
+
+  /**
+   * Additional scale decay for images beyond the first 3 timeline slots.
+   * Decay is relaxed near focus so overflow cards can grow while scrolling.
+   * @param {number} relativeIndex
+   * @returns {number}
+   */
+  getSequenceScaleMultiplier(relativeIndex) {
+    const safeIndex = Math.abs(Number.isFinite(relativeIndex) ? relativeIndex : 0);
+    const overflowStart = EFFECTS_CONFIG.TIMELINE_OVERFLOW_DECAY_START_INDEX ?? 2;
+    const extraSteps = Math.max(0, safeIndex - overflowStart);
+    if (extraSteps <= 0) return 1;
+
+    const perStepDecay = EFFECTS_CONFIG.TIMELINE_SEQUENCE_DECAY_PER_STEP ?? 0.94;
+    const minSequenceScale = EFFECTS_CONFIG.TIMELINE_SEQUENCE_MIN_SCALE ?? 0.65;
+    const baseOverflowScale = Math.max(minSequenceScale, Math.pow(perStepDecay, extraSteps));
+
+    const focusBlendRange = Math.max(0.001, EFFECTS_CONFIG.TIMELINE_OVERFLOW_FOCUS_BLEND_RANGE ?? 1.2);
+    const focusBlendRaw = ((overflowStart + focusBlendRange) - safeIndex) / focusBlendRange;
+    const focusBlend = Math.min(1, Math.max(0, focusBlendRaw));
+    const easedBlend = focusBlend * focusBlend * (3 - (2 * focusBlend));
+
+    return baseOverflowScale + ((1 - baseOverflowScale) * easedBlend);
   }
 
   getAnchorIndex(offset, spacing, firstPosition, yearCount) {
@@ -468,6 +531,22 @@ class RenderSystem {
     return ((index - anchorIndex) % 3 + 3) % 3;
   }
 
+  getAlternatingRowSlotIndex(index, slotWorldY = []) {
+    const fallbackTopIndex = 0;
+    const fallbackBottomIndex = 1;
+    const rowValues = [0, 1, 2]
+      .map((slotIndex) => ({ slotIndex, y: slotWorldY?.[slotIndex] }))
+      .filter((entry) => Number.isFinite(entry.y));
+
+    if (rowValues.length < 2) {
+      return index % 2 === 0 ? fallbackTopIndex : fallbackBottomIndex;
+    }
+
+    const topIndex = rowValues.reduce((best, current) => (current.y > best.y ? current : best)).slotIndex;
+    const bottomIndex = rowValues.reduce((best, current) => (current.y < best.y ? current : best)).slotIndex;
+    return index % 2 === 0 ? topIndex : bottomIndex;
+  }
+
   /**
    * Convert a screen Y (px) to world Y for a specific z depth.
    * @param {number} pixelY
@@ -478,7 +557,8 @@ class RenderSystem {
   pixelYToWorldY(pixelY, zDepth, camera) {
     const viewportHeight = Math.max(1, window.innerHeight || 1);
     const fovRad = THREE.MathUtils.degToRad(camera.fov || 30);
-    const distance = Math.max(0.001, Math.abs((camera.position?.z ?? 2.5) - zDepth));
+    const layoutReferenceZ = SCENE_CONFIG?.timeline?.position?.z ?? 2.5;
+    const distance = Math.max(0.001, Math.abs(layoutReferenceZ - zDepth));
     const visibleHeight = 2 * Math.tan(fovRad / 2) * distance;
     const normalizedY = 0.5 - (pixelY / viewportHeight);
     return normalizedY * visibleHeight;
@@ -539,11 +619,19 @@ class RenderSystem {
       if (!plane) return;
       if (plane.userData?.isFrozen || plane.userData?.animatingFromFullscreen || plane.userData?.isTransitioning) return;
       const slotIndex = this.getRelativeSlotIndex(index, anchorIndex);
+      const rowSlotIndex = this.getAlternatingRowSlotIndex(index, slotWorldY);
       const slot = getTimelineLayoutSlot(slotIndex);
-      const targetScale = this.getSlotScaleForIndex(slotIndex, plane);
+      const rowSlot = getTimelineLayoutSlot(rowSlotIndex);
+      const relativeIndex = index - progress;
       const targetCenterPx = this.getInterpolatedSlotCenterPx(index - progress);
-      plane.position.x = this.pixelXToWorldX(targetCenterPx, slot.z, this.camera);
-      plane.position.y = slotWorldY[slotIndex] ?? slot.y;
+      const targetWorldX = this.pixelXToWorldX(targetCenterPx, slot.z, this.camera);
+      const baseScale = this.getSlotScaleForIndex(slotIndex, plane);
+      const distanceScale = this.getDistanceScaleMultiplier(targetWorldX);
+      const sequenceScale = this.getSequenceScaleMultiplier(relativeIndex);
+      const targetScale = baseScale * distanceScale * sequenceScale;
+
+      plane.position.x = targetWorldX;
+      plane.position.y = slotWorldY[rowSlotIndex] ?? rowSlot.y;
       plane.position.z = slot.z;
       plane.scale.setScalar(targetScale);
       plane.visible = Math.abs(plane.position.x) < cullDistance;
@@ -583,7 +671,7 @@ class RenderSystem {
       plane.material.transparent = true;
       plane.material.needsUpdate = true;
 
-      // Scale is enforced in updateImagePositions to match column width exactly.
+      // Scale is enforced in updateImagePositions (slot width + distance falloff).
     });
   }
 

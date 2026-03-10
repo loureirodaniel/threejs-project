@@ -501,9 +501,13 @@ export class App {
             this.spotlightEffect.setPosition(worldPos.x, worldPos.y);
         }
         
-        // Animate image planes (only in initial scene)
+        // Animate image planes (only in initial scene, and not during timeline gathering)
         if (this.timelineController.getCurrentSceneIndex() === 0) {
-            this.imagePlanes.animate(currentTimestamp);
+            const timelineState = this.timelineController?.getState?.();
+            const isGathering = timelineState?.imagesGathering || timelineState?.imagesGathered;
+            if (!isGathering) {
+                this.imagePlanes.animate(currentTimestamp);
+            }
         }
         
         // Update timeline scene
