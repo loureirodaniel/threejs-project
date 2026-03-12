@@ -48,6 +48,8 @@ export class EventsPanel {
     this.primaryMetaBox = null;
     this.secondaryMetaBox = null;
     this.tertiaryMetaBox = null;
+    this.dividerLayer = null;
+    this.lastDividerPositionsKey = '';
 
     this.boundOnYearChange = this.onYearChange.bind(this);
     this.boundOnSceneChange = this.onSceneChange.bind(this);
@@ -69,13 +71,8 @@ export class EventsPanel {
     this.panel.id = 'timeline-meta-overlay';
     this.panel.setAttribute('aria-hidden', 'true');
 
-    const dividerOne = document.createElement('div');
-    dividerOne.className = 'timeline-meta-divider timeline-meta-divider-one';
-    this.dividerOne = dividerOne;
-
-    const dividerTwo = document.createElement('div');
-    dividerTwo.className = 'timeline-meta-divider timeline-meta-divider-two';
-    this.dividerTwo = dividerTwo;
+    this.dividerLayer = document.createElement('div');
+    this.dividerLayer.className = 'timeline-meta-divider-layer';
 
     this.header = document.createElement('div');
     this.header.className = 'timeline-meta-header';
@@ -89,8 +86,7 @@ export class EventsPanel {
     this.secondaryMetaBox = new TimelineMetaBox({ variant: 'secondary' });
     this.tertiaryMetaBox = new TimelineMetaBox({ variant: 'tertiary' });
 
-    this.panel.appendChild(dividerOne);
-    this.panel.appendChild(dividerTwo);
+    this.panel.appendChild(this.dividerLayer);
     this.panel.appendChild(this.header);
     this.panel.appendChild(this.primaryMetaBox.getElement());
     this.panel.appendChild(this.secondaryMetaBox.getElement());
@@ -137,12 +133,9 @@ export class EventsPanel {
         background: rgba(244, 244, 244, 0.12);
       }
 
-      #timeline-meta-overlay .timeline-meta-divider-one {
-        left: var(--timeline-divider-one);
-      }
-
-      #timeline-meta-overlay .timeline-meta-divider-two {
-        left: var(--timeline-divider-two);
+      #timeline-meta-overlay .timeline-meta-divider-layer {
+        position: absolute;
+        inset: 0;
       }
 
       #timeline-meta-overlay .timeline-meta-header {
@@ -340,7 +333,15 @@ export class EventsPanel {
     const secondaryBounds = this.placeMetaUnderPlane(this.secondaryMetaBox, allPlanes[index2], camera, viewportWidth, viewportHeight, false);
     const tertiaryBounds = this.placeMetaUnderPlane(this.tertiaryMetaBox, allPlanes[index3], camera, viewportWidth, viewportHeight, false);
 
-    this.updateColumnGuides(viewportWidth, primaryBounds, secondaryBounds, tertiaryBounds);
+    this.updateColumnGuides(
+      viewportWidth,
+      primaryBounds,
+      secondaryBounds,
+      tertiaryBounds,
+      allPlanes,
+      camera,
+      viewportHeight
+    );
   }
 
   placeMetaUnderPlane(metaBox, plane, camera, viewportWidth, viewportHeight, isPrimary) {
@@ -382,19 +383,50 @@ export class EventsPanel {
     };
   }
 
-  updateColumnGuides(viewportWidth, primaryBounds, secondaryBounds, tertiaryBounds) {
+  getPlaneBounds(plane, camera, viewportWidth, viewportHeight) {
+    if (!plane || !plane.visible) return null;
+    const center = projectToScreen(plane.position, camera, viewportWidth, viewportHeight);
+    const size = planePixelSize(plane, camera, viewportHeight);
+    const left = Math.round(center.x - (size.width / 2));
+    const right = left + Math.round(size.width);
+    return { left, right };
+  }
+
+  updateColumnGuides(viewportWidth, primaryBounds, secondaryBounds, tertiaryBounds, allPlanes, camera, viewportHeight) {
     if (!this.panel || !Number.isFinite(viewportWidth) || viewportWidth <= 0) return;
 
     const fallbackDividerOne = Math.round(viewportWidth * 0.42);
     const fallbackDividerTwo = Math.round(viewportWidth * 0.69);
-
     const dividerOnePx = primaryBounds?.right ?? fallbackDividerOne;
-    // Keep divider lines on actual image edges so columns match visible plane widths.
     const dividerTwoSource = secondaryBounds?.right ?? tertiaryBounds?.left ?? fallbackDividerTwo;
     const dividerTwoPx = Math.max(dividerOnePx + 1, Math.round(dividerTwoSource));
 
     this.panel.style.setProperty('--timeline-divider-one', `${dividerOnePx}px`);
     this.panel.style.setProperty('--timeline-divider-two', `${dividerTwoPx}px`);
+
+    if (!this.dividerLayer || !Array.isArray(allPlanes)) return;
+
+    const dividerPositions = allPlanes
+      .map((plane) => this.getPlaneBounds(plane, camera, viewportWidth, viewportHeight))
+      .filter(Boolean)
+      .map((bounds) => Math.round(bounds.right))
+      .filter((x) => Number.isFinite(x) && x > 0 && x < viewportWidth)
+      .sort((a, b) => a - b)
+      .filter((x, index, arr) => index === 0 || Math.abs(x - arr[index - 1]) > 2);
+
+    const key = dividerPositions.join(',');
+    if (key === this.lastDividerPositionsKey) return;
+    this.lastDividerPositionsKey = key;
+
+    this.dividerLayer.replaceChildren();
+    const fragment = document.createDocumentFragment();
+    dividerPositions.forEach((x) => {
+      const divider = document.createElement('div');
+      divider.className = 'timeline-meta-divider';
+      divider.style.left = `${x}px`;
+      fragment.appendChild(divider);
+    });
+    this.dividerLayer.appendChild(fragment);
   }
 
   startTracking() {
