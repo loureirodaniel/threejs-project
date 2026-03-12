@@ -3,6 +3,7 @@
  * Handles smooth staggered motion with acceleration/deceleration
  */
 
+import * as THREE from 'three';
 import { gsap } from 'gsap';
 import { EFFECTS_CONFIG, TIMELINE_CONFIG, TIMELINE_LAYOUT_CONFIG, SCENE_CONFIG, getTimelineLayoutSlot } from '../utils/TimelineConstants.js';
 
@@ -14,6 +15,7 @@ class AnimationChoreographer {
     this.scene = scene;
     
     this.gatheringTimeline = null;
+    this.gatherRetryCount = 0;
     this.unsubscribeFns = [];
     
     this.init();
@@ -239,18 +241,54 @@ class AnimationChoreographer {
   }
 
   /**
+   * Match timeline row assignment used by RenderSystem:
+   * even indices on top row, odd indices on bottom row.
+   */
+  getAlternatingRowSlotIndex(index, slotWorldY = []) {
+    const fallbackTopIndex = 0;
+    const fallbackBottomIndex = 1;
+    const rowValues = [0, 1, 2]
+      .map((slotIndex) => ({ slotIndex, y: slotWorldY?.[slotIndex] }))
+      .filter((entry) => Number.isFinite(entry.y));
+
+    if (rowValues.length < 2) {
+      return index % 2 === 0 ? fallbackTopIndex : fallbackBottomIndex;
+    }
+
+    const topIndex = rowValues.reduce((best, current) => (current.y > best.y ? current : best)).slotIndex;
+    const bottomIndex = rowValues.reduce((best, current) => (current.y < best.y ? current : best)).slotIndex;
+    return index % 2 === 0 ? topIndex : bottomIndex;
+  }
+
+  /**
    * Start the gathering animation sequence
    */
   startGatheringAnimation() {
     console.log('🎬 AnimationChoreographer: Starting gathering sequence...');
     
-    // Get image planes
-    const planes = window.app?.imagePlanes?.getPlanes();
+    // Get image planes (robustly handles either getPlanes() API or direct array)
+    const imagePlanes = window.app?.imagePlanes;
+    const planes = (
+      imagePlanes?.getPlanes?.()
+      || imagePlanes?.planes
+      || []
+    );
+
     if (!planes || planes.length === 0) {
-      console.warn('⚠️ No planes available for animation');
+      // If planes are not ready yet, retry a few times before giving up.
+      if (this.gatherRetryCount < 10) {
+        this.gatherRetryCount += 1;
+        console.warn(`⚠️ No planes for gather animation, retry ${this.gatherRetryCount}/10`);
+        setTimeout(() => this.startGatheringAnimation(), 100);
+        return;
+      }
+
+      console.warn('⚠️ No planes available for animation after retries');
+      this.gatherRetryCount = 0;
       this.completeGathering();
       return;
     }
+    this.gatherRetryCount = 0;
     
     // Kill any existing animation
     if (this.gatheringTimeline) {
@@ -264,6 +302,15 @@ class AnimationChoreographer {
     const slotWorldY = this.getLayoutSlotWorldY(planes);
     const progress = (offset - firstPosition) / Math.max(0.0001, spacing);
     
+    // Transition timing is intentionally longer so users can clearly perceive
+    // the initial scene -> timeline handoff choreography.
+    const imageMoveDuration = 1.7;
+    const imageStagger = 0.05;
+    const pullbackDuration = 0.95;
+    const dollyDuration = 1.65;
+    const fourthImageSettleAt = imageMoveDuration + (Math.min(3, planes.length - 1) * imageStagger);
+    const dollyStartAt = Math.max(pullbackDuration, fourthImageSettleAt + 0.12);
+
     // Create master timeline
     this.gatheringTimeline = gsap.timeline({
       onComplete: () => {
@@ -277,24 +324,26 @@ class AnimationChoreographer {
     planes.forEach((plane, index) => {
       const slot = getTimelineLayoutSlot(index);
       const slotIndex = Math.abs(index) % slotWorldY.length;
+      const rowSlotIndex = this.getAlternatingRowSlotIndex(index, slotWorldY);
       const relativeIndex = index - progress;
       const targetCenterPx = this.getInterpolatedSlotCenterPx(relativeIndex);
       const targetX = this.pixelXToWorldX(targetCenterPx, slot.z);
       const baseScale = this.getSlotScale(Math.abs(index) % 3, plane?.geometry?.parameters?.width ?? 2.5, slot.z);
-      const targetScale = baseScale
-        * this.getDistanceScaleMultiplier(targetX)
-        * this.getSequenceScaleMultiplier(relativeIndex);
-      const staggerDelay = index * 0.06; // 60ms between each image
+      // Keep contiguous columns during gather animation as well.
+      const targetScale = baseScale;
+      // Ensure first four images settle early and consistently.
+      const staggerIndex = Math.min(index, 2);
+      const staggerDelay = staggerIndex * imageStagger;
       
       console.log(`  📍 Image ${index}: target x=${targetX.toFixed(3)}, spacing=${spacing.toFixed(3)}`);
       
       // Animate position
       this.gatheringTimeline.to(plane.position, {
         x: targetX,
-        y: slotWorldY[slotIndex] ?? slot.y,
+        y: slotWorldY[rowSlotIndex] ?? slotWorldY[slotIndex] ?? slot.y,
         z: slot.z,
-        duration: 1.2,
-        ease: 'power2.inOut', // Smooth acceleration and deceleration
+        duration: imageMoveDuration,
+        ease: 'power2.inOut',
         delay: staggerDelay
       }, 0);
       
@@ -303,7 +352,7 @@ class AnimationChoreographer {
         x: targetScale,
         y: targetScale,
         z: targetScale,
-        duration: 1.2,
+        duration: imageMoveDuration,
         ease: 'power2.inOut',
         delay: staggerDelay
       }, 0);
@@ -312,7 +361,7 @@ class AnimationChoreographer {
       if (plane.material) {
         this.gatheringTimeline.to(plane.material, {
           opacity: 1.0,
-          duration: 1.0,
+          duration: imageMoveDuration * 0.8,
           ease: 'power2.inOut',
           delay: staggerDelay
         }, 0);
@@ -321,40 +370,35 @@ class AnimationChoreographer {
       plane.visible = true;
     });
     
-    // ===== CAMERA SEQUENCE: Smooth zoom-out, then dolly in =====
-    const startCameraZ = 10; // Far view during gathering
+    // ===== CAMERA SEQUENCE: pull back then glide into timeline =====
+    const startCameraZ = 12; // Further pullback for stronger reveal
     const endCameraZ = SCENE_CONFIG.timeline.position.z; // reads 3.0 from constants
 
     console.log(`📷 Camera sequence: ${this.camera.position.z.toFixed(2)} -> ${startCameraZ} -> ${endCameraZ}`);
 
-    // STEP 1: Smooth zoom-out (0.0s - 0.5s)
-    // Pull camera back for overview as images start moving
+    // STEP 1: Pull camera back while images start converging
     this.gatheringTimeline.to(this.camera.position, {
       x: 0,
       y: 0,
       z: startCameraZ,
-      duration: 0.5,
-      ease: 'power1.out', // Fast at start, slow at end
+      duration: pullbackDuration,
+      ease: 'power2.out',
       onComplete: () => {
         console.log('📷 Zoom-out complete, camera at overview position');
       }
     }, 0); // Start immediately
 
-    // STEP 2: Hold at overview (0.5s - 0.8s)
-    // Let user see the full gathering motion
-
-    // STEP 3: Smooth dolly-in (0.8s - 2.3s)
-    // Zoom into timeline as images settle
+    // STEP 2: Smooth dolly-in as images land on timeline positions
     this.gatheringTimeline.to(this.camera.position, {
       x: 0,
       y: 0,
       z: endCameraZ,
-      duration: 1.5,
-      ease: 'power2.inOut', // Smooth acceleration/deceleration
+      duration: dollyDuration,
+      ease: 'power2.inOut',
       onComplete: () => {
         console.log(`📷 Dolly-in complete at z=${this.camera.position.z.toFixed(2)}`);
       }
-    }, 0.8); // Start after 0.8 seconds
+    }, dollyStartAt);
     
     console.log(`⏱️ Total animation duration: ${this.gatheringTimeline.duration().toFixed(2)}s`);
   }

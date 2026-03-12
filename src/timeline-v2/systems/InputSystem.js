@@ -47,6 +47,7 @@ class InputSystem {
     this.onInitialSceneWheel = null;
     this.onInitialSceneTouchStart = null;
     this.onInitialSceneTouchMove = null;
+    this.unsubscribeFns = [];
 
     // Bind all event handlers in constructor (for proper cleanup)
     this.onWheel = this.onWheel.bind(this);
@@ -85,6 +86,12 @@ class InputSystem {
     this.initSceneTransitionScroll();
     this.initSceneTransitionTouch();
 
+    // Keep lock lifecycle tied to animation/scene transition events.
+    this.unsubscribeFns.push(
+      this.eventBus.on('images:gather:complete', this.onImagesGatherComplete.bind(this)),
+      this.eventBus.on('scene:transition:complete', this.onSceneTransitionComplete.bind(this))
+    );
+
     console.log('✅ InputSystem initialized');
   }
 
@@ -97,6 +104,16 @@ class InputSystem {
     this.onInitialSceneWheel = (event) => {
       const currentScene = this.state.get('currentSceneIndex');
       if (currentScene === 0) {
+        const introComplete = this.state.get('introComplete');
+        if (!introComplete) return;
+
+        event.preventDefault();
+
+        const isInitialSceneScrollLocked = this.state.get('isInitialSceneScrollLocked');
+        if (isInitialSceneScrollLocked) {
+          return;
+        }
+
         // Accumulate only downward intent on initial scene
         this.sceneTransitionTotalScroll = Math.max(0, this.sceneTransitionTotalScroll + Math.max(0, event.deltaY));
         const scrollProgress = this.sceneTransitionTotalScroll / scrollThreshold;
@@ -134,13 +151,20 @@ class InputSystem {
    * Listen for touch swipe up to trigger timeline transition
    */
   initSceneTransitionTouch() {
+    const scrollThreshold = 100;
     let touchStartY = 0;
     let touchMoveY = 0;
 
     this.onInitialSceneTouchStart = (event) => {
       const currentScene = this.state.get('currentSceneIndex');
       if (currentScene !== 0) return;
+      if (!this.state.get('introComplete')) return;
       if (!event.touches || event.touches.length === 0) return;
+
+      if (this.state.get('isInitialSceneScrollLocked')) {
+        event.preventDefault();
+        return;
+      }
 
       touchStartY = event.touches[0].clientY;
     };
@@ -148,7 +172,14 @@ class InputSystem {
     this.onInitialSceneTouchMove = (event) => {
       const currentScene = this.state.get('currentSceneIndex');
       if (currentScene !== 0) return;
+      if (!this.state.get('introComplete')) return;
       if (!event.touches || event.touches.length === 0) return;
+
+      event.preventDefault();
+
+      if (this.state.get('isInitialSceneScrollLocked')) {
+        return;
+      }
 
       touchMoveY = event.touches[0].clientY;
       const deltaY = touchStartY - touchMoveY;
@@ -180,32 +211,73 @@ class InputSystem {
    * @param {number} scrollProgress - Normalized progress [0..1]
    */
   handleSceneTransition(scrollProgress) {
+    const introComplete = this.state.get('introComplete');
+    if (!introComplete) return;
+
     const currentScene = this.state.get('currentSceneIndex');
     const imagesGathered = this.state.get('imagesGathered');
     const imagesGathering = this.state.get('imagesGathering');
+    const isInitialSceneScrollLocked = this.state.get('isInitialSceneScrollLocked');
 
     // Scene 0 -> 1 transition (initial -> timeline)
     if (currentScene === 0 && scrollProgress > 0.1) {
+      if (isInitialSceneScrollLocked) {
+        return;
+      }
+
       // Step 1: Start gathering animation
       if (!imagesGathering && !imagesGathered) {
         console.log('🌟 InputSystem: Scroll threshold reached, starting image gathering...');
-        this.state.setState({ imagesGathering: true });
+        this.state.setState({
+          imagesGathering: true,
+          isInitialSceneScrollLocked: true
+        });
         this.eventBus.emit('images:gather:start');
         return;
       }
 
-      // Step 2: After gathering, allow transition
-      if (imagesGathered && scrollProgress > 0.2 && !this.state.get('isTransitioning')) {
-        console.log('✅ InputSystem: Images gathered, transitioning to timeline scene');
-        this.state.setState({ currentSceneIndex: 1 });
-        this.eventBus.emit('scene:transition', {
-          from: 0,
-          to: 1,
-          trigger: 'scroll'
-        });
+      // Defensive fallback for pre-gathered state.
+      if (imagesGathered && !this.state.get('isTransitioning')) {
+        this.transitionToTimelineScene('scroll');
       }
     }
 
+  }
+
+  /**
+   * Start scene handoff once image gathering animation has landed.
+   */
+  onImagesGatherComplete() {
+    if (this.state.get('currentSceneIndex') !== 0) return;
+    if (this.state.get('isTransitioning')) return;
+    this.transitionToTimelineScene('gather-complete');
+  }
+
+  /**
+   * Release initial-scene lock only after timeline transition truly finishes.
+   * @param {{scene: string}} payload
+   */
+  onSceneTransitionComplete({ scene } = {}) {
+    if (scene !== 'timeline') return;
+    this.sceneTransitionTotalScroll = 0;
+    this.state.setState({ isInitialSceneScrollLocked: false });
+  }
+
+  /**
+   * Emit transition event from initial scene to timeline scene.
+   * @param {string} trigger
+   */
+  transitionToTimelineScene(trigger = 'scroll') {
+    if (this.state.get('currentSceneIndex') !== 0) return;
+    if (this.state.get('isTransitioning')) return;
+
+    console.log('✅ InputSystem: Images gathered, transitioning to timeline scene');
+    this.state.setState({ currentSceneIndex: 1 });
+    this.eventBus.emit('scene:transition', {
+      from: 0,
+      to: 1,
+      trigger
+    });
   }
 
   /**
@@ -216,6 +288,11 @@ class InputSystem {
 
     // Block during scene transitions
     if (stateObj.isTransitioning) {
+      return false;
+    }
+
+    // Block all input while initial scene transition sequence is locked.
+    if (stateObj.isInitialSceneScrollLocked) {
       return false;
     }
 
@@ -518,6 +595,14 @@ class InputSystem {
       window.removeEventListener('touchmove', this.onInitialSceneTouchMove);
       this.onInitialSceneTouchMove = null;
     }
+    for (const unsubscribe of this.unsubscribeFns) {
+      try {
+        unsubscribe();
+      } catch (err) {
+        console.warn('InputSystem unsubscribe failed:', err);
+      }
+    }
+    this.unsubscribeFns = [];
 
     console.log('🧹 InputSystem disposed');
   }

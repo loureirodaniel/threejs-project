@@ -454,28 +454,12 @@ class RenderSystem {
     const slot = getTimelineLayoutSlot(index);
     const slotIndex = Math.abs(index) % 3;
     const geometryWidth = plane?.geometry?.parameters?.width ?? 2.5;
-    const camera = this.camera || window.app?.camera;
-    const scaleReferenceZ = SCENE_CONFIG?.timeline?.target?.z ?? 0;
-    const visibleWidth = this.getVisibleWidthAtDepth(scaleReferenceZ);
+    // Compute scale at the slot's own depth so screen-space column widths stay
+    // exactly contiguous (edge-to-edge) across columns.
+    const visibleWidth = this.getVisibleWidthAtDepth(slot.z);
     const viewportWidth = Math.max(1, window.innerWidth || 1);
     const unitsPerPixel = visibleWidth / viewportWidth;
-    let targetWorldWidth = this.getSlotWidthPx(slotIndex) * unitsPerPixel;
-
-    if (camera) {
-      const cameraZ = camera.position?.z ?? (SCENE_CONFIG?.timeline?.position?.z ?? 2.5);
-      const referenceDistance = Math.max(0.001, Math.abs(cameraZ - scaleReferenceZ));
-      const slotDistance = Math.max(0.001, Math.abs(cameraZ - slot.z));
-      const depthRatio = referenceDistance / slotDistance;
-      const depthBoost = EFFECTS_CONFIG.TIMELINE_DEPTH_SCALE_BOOST ?? 1.6;
-      const depthScaleMin = EFFECTS_CONFIG.TIMELINE_DEPTH_SCALE_MIN ?? 0.72;
-      const depthScaleMax = EFFECTS_CONFIG.TIMELINE_DEPTH_SCALE_MAX ?? 1.35;
-      const depthScaleMultiplier = THREE.MathUtils.clamp(
-        Math.pow(depthRatio, depthBoost),
-        depthScaleMin,
-        depthScaleMax
-      );
-      targetWorldWidth *= depthScaleMultiplier;
-    }
+    const targetWorldWidth = this.getSlotWidthPx(slotIndex) * unitsPerPixel;
 
     return Math.max(0.001, targetWorldWidth / Math.max(0.001, geometryWidth));
   }
@@ -626,9 +610,9 @@ class RenderSystem {
       const targetCenterPx = this.getInterpolatedSlotCenterPx(index - progress);
       const targetWorldX = this.pixelXToWorldX(targetCenterPx, slot.z, this.camera);
       const baseScale = this.getSlotScaleForIndex(slotIndex, plane);
-      const distanceScale = this.getDistanceScaleMultiplier(targetWorldX);
-      const sequenceScale = this.getSequenceScaleMultiplier(relativeIndex);
-      const targetScale = baseScale * distanceScale * sequenceScale;
+      // Keep contiguous columns: avoid extra per-image scaling that introduces
+      // visual horizontal gaps between adjacent timeline images.
+      const targetScale = baseScale;
 
       plane.position.x = targetWorldX;
       plane.position.y = slotWorldY[rowSlotIndex] ?? rowSlot.y;

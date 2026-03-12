@@ -124,7 +124,7 @@ export const TIMELINE_LAYOUT_CONFIG = Object.freeze({
   // Backward-compat fallback for older call sites.
   FIRST_IMAGE_LEFT_PADDING_PX: 50,
   FIRST_IMAGE_TOP_PX: 76,
-  COLUMN_GAP_PX: 12,
+  COLUMN_GAP_PX: 0,
   IMAGE_WIDTH_PERCENTAGES: Object.freeze([0.38, 0.345, 0.235]),
   IMAGE_WIDTHS_PX: Object.freeze([490, 435, 348])
 });

@@ -65,7 +65,7 @@ export function getTimelineLayoutSlot(index) {
 export const TIMELINE_X_RANGE = (TIMELINE_YEAR_COUNT - 1) * TIMELINE_PLANE_SPACING;
 export const TIMELINE_FIRST_IMAGE_LEFT_PADDING_PX = 50;
 export const TIMELINE_FIRST_IMAGE_TOP_PX = 76;
-export const TIMELINE_COLUMN_GAP_PX = 12;
+export const TIMELINE_COLUMN_GAP_PX = 0;
 // Layout follows the attached diagram columns:
 // col1: left padding -> divider1, col2: divider1 -> divider2, col3: divider2 -> right edge
 export const TIMELINE_IMAGE_WIDTH_PERCENTAGES = Object.freeze([0.38, 0.345, 0.235]);
