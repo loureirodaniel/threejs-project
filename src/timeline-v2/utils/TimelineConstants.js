@@ -118,6 +118,9 @@ export const TIMELINE_CONFIG = Object.freeze({
   YEAR_COUNT: TIMELINE_YEAR_COUNT
 });
 
+/** Aspect ratio (height / width) for timeline image planes. Derived from 738×427 target. */
+export const IMAGE_ASPECT_RATIO = 427 / 738;
+
 /** Right padding (px) between viewport edge and first timeline image. */
 export const TIMELINE_LAYOUT_CONFIG = Object.freeze({
   FIRST_IMAGE_RIGHT_PADDING_PX: 50,
@@ -125,8 +128,12 @@ export const TIMELINE_LAYOUT_CONFIG = Object.freeze({
   FIRST_IMAGE_LEFT_PADDING_PX: 50,
   FIRST_IMAGE_TOP_PX: 76,
   COLUMN_GAP_PX: 0,
-  IMAGE_WIDTH_PERCENTAGES: Object.freeze([0.38, 0.345, 0.235]),
-  IMAGE_WIDTHS_PX: Object.freeze([490, 435, 348])
+  // Reserve space below timeline cards so metadata remains visible.
+  META_SAFE_SPACE_PX: 100,
+  // Gap between image bottom and metadata card top (kept in sync with EventsPanel).
+  META_OFFSET_PX: 14,
+  IMAGE_WIDTH_PERCENTAGES: Object.freeze([0.53, 0.27, 0.20]),
+  IMAGE_WIDTHS_PX: Object.freeze([])
 });
 
 /**

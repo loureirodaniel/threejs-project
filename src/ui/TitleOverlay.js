@@ -35,7 +35,7 @@ export class TitleOverlay {
         this.titleDiv.style.zIndex = '1000';
         this.titleDiv.style.opacity = '0';
         this.titleDiv.style.scale = '0.8';
-        this.titleDiv.innerHTML = 'THREE.JS PROJECT<br><span id="subtitle" style="font-size: 24px; font-weight: normal; color: #cccccc;">Welcome to the 3D World</span>';
+        this.titleDiv.innerHTML = 'archivo memoria<br><span id="subtitle" style="font-size: 24px; font-weight: normal; color: #cccccc;">Welcome to the 3D World</span>';
         document.body.appendChild(this.titleDiv);
         
         this.subtitle = document.getElementById('subtitle');
@@ -374,7 +374,7 @@ export class TitleOverlay {
      * Scrambles the title text and animates it to reveal the actual text
      */
     startScrambleAnimation() {
-        const targetText = 'THREE.JS PROJECT';
+        const targetText = 'archivo memoria';
         const scrambleChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ.!@#$%^&*()_+-=[]{}|;:,.<>?';
         
         this.scrambleAnimationActive = true;

@@ -35,6 +35,20 @@ export class AppStateManager {
                     lerp: 0.18,
                     decay: 0.85,
                     timeStep: 0.016
+                },
+                dream: {
+                    enabled: true,
+                    fogEnabled: true,
+                    bloomStrength: 0.22,
+                    bloomRadius: 0.48,
+                    bloomThreshold: 0.76,
+                    fogDensity: 0.08,
+                    fogIntensity: 0.14,
+                    fogNoiseScale: 1.8,
+                    fogNoiseSpeed: 0.12,
+                    fogColor: '#c9d6ff',
+                    clickBoost: 0.55,
+                    decayDuration: 1.8
                 }
             },
             camera: {
@@ -136,6 +150,20 @@ export class AppStateManager {
                     lerp: 0.18,
                     decay: 0.85,
                     timeStep: 0.016
+                },
+                dream: {
+                    enabled: true,
+                    fogEnabled: true,
+                    bloomStrength: 0.22,
+                    bloomRadius: 0.48,
+                    bloomThreshold: 0.76,
+                    fogDensity: 0.08,
+                    fogIntensity: 0.14,
+                    fogNoiseScale: 1.8,
+                    fogNoiseSpeed: 0.12,
+                    fogColor: '#c9d6ff',
+                    clickBoost: 0.55,
+                    decayDuration: 1.8
                 }
             },
             camera: {

@@ -196,6 +196,48 @@ class CameraSystem {
   }
 
   /**
+   * Resolve the timeline's default camera Z.
+   * Prefers debug override when debug camera config is active.
+   * @returns {number}
+   */
+  getTimelineDefaultZ() {
+    const debugConfig = this.debugCameraConfig;
+    if (debugConfig?.enabled && debugConfig.position && Number.isFinite(debugConfig.position.z)) {
+      return debugConfig.position.z;
+    }
+    return SCENE_CONFIG?.timeline?.position?.z ?? 2.5;
+  }
+
+  /**
+   * Resolve the timeline's default camera zoom.
+   * Prefers debug override when debug camera config is active.
+   * @returns {number}
+   */
+  getTimelineDefaultZoom() {
+    const debugConfig = this.debugCameraConfig;
+    if (debugConfig?.enabled && Number.isFinite(debugConfig.zoom)) {
+      return debugConfig.zoom;
+    }
+    return 1;
+  }
+
+  /**
+   * Snap camera to timeline default distance/zoom and clear dolly residue.
+   */
+  snapToTimelineDefaultDistanceAndZoom() {
+    this.scrollDollyFactor = 0;
+
+    const targetZ = this.getTimelineDefaultZ();
+    this.camera.position.z = targetZ;
+
+    const targetZoom = this.getTimelineDefaultZoom();
+    if (!Number.isFinite(this.camera.zoom) || Math.abs(this.camera.zoom - targetZoom) > 0.0001) {
+      this.camera.zoom = targetZoom;
+      this.camera.updateProjectionMatrix();
+    }
+  }
+
+  /**
    * Apply debug camera overrides from the debug panel.
    * @param {object|null} config
    */
@@ -537,7 +579,11 @@ class CameraSystem {
       duration: returnDuration,
       delay: holdDelayMs / 1000,
       ease: 'power2.inOut',
-      overwrite: 'auto'
+      overwrite: 'auto',
+      onComplete: () => {
+        this.scrollReturnTween = null;
+        this.snapToTimelineDefaultDistanceAndZoom();
+      }
     });
   }
 
@@ -632,8 +678,7 @@ class CameraSystem {
     }
 
     // Return to timeline camera Z by default
-    const timelineSceneConfig = SCENE_CONFIG.timeline;
-    const targetZ = timelineSceneConfig?.position?.z ?? 2.5;
+    const targetZ = this.getTimelineDefaultZ();
 
     this.pullbackAnimation = gsap.to(this.camera.position, {
       z: targetZ,
@@ -642,6 +687,7 @@ class CameraSystem {
       onComplete: () => {
         this.isPullingBack = false;
         this.pullbackAnimation = null;
+        this.snapToTimelineDefaultDistanceAndZoom();
       }
     });
   }

@@ -61,7 +61,7 @@ export class ImagePlanes {
     }
 
     createImagePlanes() {
-        const aspectRatio = 4/3;
+        const aspectRatio = 738/427;
         const width = TIMELINE_PLANE_WIDTH;
         const height = width / aspectRatio;
         

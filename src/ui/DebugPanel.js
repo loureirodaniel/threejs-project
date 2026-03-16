@@ -13,6 +13,7 @@ export class DebugPanel {
             smoothScroll: false,
             liquidDistortion: false,
             glitch: false,
+            dreamEffect: false,
         };
         
         this.init();
@@ -285,6 +286,65 @@ export class DebugPanel {
                     </div>
                 </div>
             </div>
+
+            <!-- Dream Effect Section -->
+            <div class="debug-section" style="margin-bottom: 15px;">
+                <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; padding: 8px 0; border-bottom: 1px solid #333;">
+                    <h4 style="margin: 0; color: #00ff88;">Dream Effect</h4>
+                    <button class="section-toggle" data-section="dreamEffect" style="background: #333; color: white; border: 1px solid #555; padding: 2px 6px; border-radius: 3px; cursor: pointer; font-family: inherit; font-size: 10px;">+</button>
+                </div>
+                <div class="section-content" id="dreamEffect-content" style="display: none; padding-top: 10px;">
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
+                            <input type="checkbox" id="dreamEnabledCheckbox" checked>
+                            Enable click dream effect
+                        </label>
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <button id="toggleDreamFogBtn" data-enabled="true" style="background: #4ecdc4; color: black; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-family: inherit; width: 100%;">Disable Fog Effect</button>
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Bloom Strength: <span id="dreamBloomStrengthDisplay">0.22</span></label>
+                        <input type="range" id="dreamBloomStrengthSlider" min="0" max="1.5" step="0.01" value="0.22" style="width: 100%;">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Bloom Radius: <span id="dreamBloomRadiusDisplay">0.48</span></label>
+                        <input type="range" id="dreamBloomRadiusSlider" min="0" max="1" step="0.01" value="0.48" style="width: 100%;">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Bloom Threshold: <span id="dreamBloomThresholdDisplay">0.76</span></label>
+                        <input type="range" id="dreamBloomThresholdSlider" min="0" max="1.5" step="0.01" value="0.76" style="width: 100%;">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Fog Density: <span id="dreamFogDensityDisplay">0.08</span></label>
+                        <input type="range" id="dreamFogDensitySlider" min="0" max="0.5" step="0.005" value="0.08" style="width: 100%;">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Fog Intensity: <span id="dreamFogIntensityDisplay">0.14</span></label>
+                        <input type="range" id="dreamFogIntensitySlider" min="0" max="0.7" step="0.005" value="0.14" style="width: 100%;">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Fog Noise Scale: <span id="dreamFogNoiseScaleDisplay">1.80</span></label>
+                        <input type="range" id="dreamFogNoiseScaleSlider" min="0.1" max="8" step="0.1" value="1.8" style="width: 100%;">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Fog Noise Speed: <span id="dreamFogNoiseSpeedDisplay">0.12</span></label>
+                        <input type="range" id="dreamFogNoiseSpeedSlider" min="0" max="1.5" step="0.01" value="0.12" style="width: 100%;">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Fog Tint</label>
+                        <input type="color" id="dreamFogColorPicker" value="#c9d6ff" style="width: 100%; height: 32px; border: none; background: transparent;">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Click Boost: <span id="dreamClickBoostDisplay">0.55</span></label>
+                        <input type="range" id="dreamClickBoostSlider" min="0" max="1.5" step="0.01" value="0.55" style="width: 100%;">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Decay Duration: <span id="dreamDecayDurationDisplay">1.80</span>s</label>
+                        <input type="range" id="dreamDecayDurationSlider" min="0.1" max="6" step="0.1" value="1.8" style="width: 100%;">
+                    </div>
+                </div>
+            </div>
             
             
             <button id="resetBtn" style="background: #00ff88; color: black; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-family: inherit;">Reset to Default</button>
@@ -408,6 +468,29 @@ export class DebugPanel {
         this.controls.glitchLerpDisplay = document.getElementById('glitchLerpDisplay');
         this.controls.glitchDecayDisplay = document.getElementById('glitchDecayDisplay');
         this.controls.glitchTimeStepDisplay = document.getElementById('glitchTimeStepDisplay');
+
+        // Dream effect controls
+        this.controls.dreamEnabledCheckbox = document.getElementById('dreamEnabledCheckbox');
+        this.controls.toggleDreamFogBtn = document.getElementById('toggleDreamFogBtn');
+        this.controls.dreamBloomStrengthSlider = document.getElementById('dreamBloomStrengthSlider');
+        this.controls.dreamBloomRadiusSlider = document.getElementById('dreamBloomRadiusSlider');
+        this.controls.dreamBloomThresholdSlider = document.getElementById('dreamBloomThresholdSlider');
+        this.controls.dreamFogDensitySlider = document.getElementById('dreamFogDensitySlider');
+        this.controls.dreamFogIntensitySlider = document.getElementById('dreamFogIntensitySlider');
+        this.controls.dreamFogNoiseScaleSlider = document.getElementById('dreamFogNoiseScaleSlider');
+        this.controls.dreamFogNoiseSpeedSlider = document.getElementById('dreamFogNoiseSpeedSlider');
+        this.controls.dreamFogColorPicker = document.getElementById('dreamFogColorPicker');
+        this.controls.dreamClickBoostSlider = document.getElementById('dreamClickBoostSlider');
+        this.controls.dreamDecayDurationSlider = document.getElementById('dreamDecayDurationSlider');
+        this.controls.dreamBloomStrengthDisplay = document.getElementById('dreamBloomStrengthDisplay');
+        this.controls.dreamBloomRadiusDisplay = document.getElementById('dreamBloomRadiusDisplay');
+        this.controls.dreamBloomThresholdDisplay = document.getElementById('dreamBloomThresholdDisplay');
+        this.controls.dreamFogDensityDisplay = document.getElementById('dreamFogDensityDisplay');
+        this.controls.dreamFogIntensityDisplay = document.getElementById('dreamFogIntensityDisplay');
+        this.controls.dreamFogNoiseScaleDisplay = document.getElementById('dreamFogNoiseScaleDisplay');
+        this.controls.dreamFogNoiseSpeedDisplay = document.getElementById('dreamFogNoiseSpeedDisplay');
+        this.controls.dreamClickBoostDisplay = document.getElementById('dreamClickBoostDisplay');
+        this.controls.dreamDecayDurationDisplay = document.getElementById('dreamDecayDurationDisplay');
         
         // Fog effect controls
         

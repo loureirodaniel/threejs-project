@@ -210,9 +210,48 @@ export class AppEventHandlers {
         controls.glitchTimeStepSlider.addEventListener('input', () => {
             this.updateGlitchControls();
         });
+
+        // Dream effect controls
+        controls.dreamEnabledCheckbox.addEventListener('change', () => {
+            this.updateDreamEffectControls();
+        });
+        controls.toggleDreamFogBtn.addEventListener('click', () => {
+            this.toggleDreamFogEffect();
+        });
+        controls.dreamBloomStrengthSlider.addEventListener('input', () => {
+            this.updateDreamEffectControls();
+        });
+        controls.dreamBloomRadiusSlider.addEventListener('input', () => {
+            this.updateDreamEffectControls();
+        });
+        controls.dreamBloomThresholdSlider.addEventListener('input', () => {
+            this.updateDreamEffectControls();
+        });
+        controls.dreamFogDensitySlider.addEventListener('input', () => {
+            this.updateDreamEffectControls();
+        });
+        controls.dreamFogIntensitySlider.addEventListener('input', () => {
+            this.updateDreamEffectControls();
+        });
+        controls.dreamFogNoiseScaleSlider.addEventListener('input', () => {
+            this.updateDreamEffectControls();
+        });
+        controls.dreamFogNoiseSpeedSlider.addEventListener('input', () => {
+            this.updateDreamEffectControls();
+        });
+        controls.dreamFogColorPicker.addEventListener('input', () => {
+            this.updateDreamEffectControls();
+        });
+        controls.dreamClickBoostSlider.addEventListener('input', () => {
+            this.updateDreamEffectControls();
+        });
+        controls.dreamDecayDurationSlider.addEventListener('input', () => {
+            this.updateDreamEffectControls();
+        });
         
         this.syncCameraControlsFromCamera();
         this.updateGlitchControls();
+        this.updateDreamEffectControls();
     }
 
     /**
@@ -473,6 +512,92 @@ export class AppEventHandlers {
         }
     }
 
+    /**
+     * Update dream click effect controls
+     */
+    updateDreamEffectControls() {
+        const controls = this.app.debugPanel.getControls();
+
+        const enabled = Boolean(controls.dreamEnabledCheckbox.checked);
+        const fogEnabled = controls.toggleDreamFogBtn.dataset.enabled !== 'false';
+        const bloomStrength = parseFloat(controls.dreamBloomStrengthSlider.value);
+        const bloomRadius = parseFloat(controls.dreamBloomRadiusSlider.value);
+        const bloomThreshold = parseFloat(controls.dreamBloomThresholdSlider.value);
+        const fogDensity = parseFloat(controls.dreamFogDensitySlider.value);
+        const fogIntensity = parseFloat(controls.dreamFogIntensitySlider.value);
+        const fogNoiseScale = parseFloat(controls.dreamFogNoiseScaleSlider.value);
+        const fogNoiseSpeed = parseFloat(controls.dreamFogNoiseSpeedSlider.value);
+        const fogColor = controls.dreamFogColorPicker.value;
+        const clickBoost = parseFloat(controls.dreamClickBoostSlider.value);
+        const decayDuration = parseFloat(controls.dreamDecayDurationSlider.value);
+
+        this.stateManager.updateEffect('dream', {
+            enabled,
+            fogEnabled,
+            bloomStrength,
+            bloomRadius,
+            bloomThreshold,
+            fogDensity,
+            fogIntensity,
+            fogNoiseScale,
+            fogNoiseSpeed,
+            fogColor,
+            clickBoost,
+            decayDuration
+        });
+
+        controls.dreamBloomStrengthDisplay.textContent = bloomStrength.toFixed(2);
+        controls.dreamBloomRadiusDisplay.textContent = bloomRadius.toFixed(2);
+        controls.dreamBloomThresholdDisplay.textContent = bloomThreshold.toFixed(2);
+        controls.dreamFogDensityDisplay.textContent = fogDensity.toFixed(2);
+        controls.dreamFogIntensityDisplay.textContent = fogIntensity.toFixed(2);
+        controls.dreamFogNoiseScaleDisplay.textContent = fogNoiseScale.toFixed(2);
+        controls.dreamFogNoiseSpeedDisplay.textContent = fogNoiseSpeed.toFixed(2);
+        controls.dreamClickBoostDisplay.textContent = clickBoost.toFixed(2);
+        controls.dreamDecayDurationDisplay.textContent = `${decayDuration.toFixed(2)}s`;
+
+        const renderSystem = this.app.timelineController?.renderSystem;
+        if (renderSystem?.setDreamEffectSettings) {
+            renderSystem.setDreamEffectSettings({
+                enabled,
+                fogEnabled,
+                bloomStrength,
+                bloomRadius,
+                bloomThreshold,
+                fogDensity,
+                fogIntensity,
+                fogNoiseScale,
+                fogNoiseSpeed,
+                fogColor,
+                clickBoost,
+                decayDuration
+            });
+        }
+    }
+
+    toggleDreamFogEffect() {
+        const controls = this.app.debugPanel.getControls();
+        const currentEnabled = controls.toggleDreamFogBtn.dataset.enabled !== 'false';
+        controls.toggleDreamFogBtn.dataset.enabled = currentEnabled ? 'false' : 'true';
+        this.updateDreamFogButtonAppearance();
+        this.updateDreamEffectControls();
+    }
+
+    updateDreamFogButtonAppearance() {
+        const controls = this.app.debugPanel.getControls();
+        const fogEnabled = controls.toggleDreamFogBtn.dataset.enabled !== 'false';
+
+        if (fogEnabled) {
+            controls.toggleDreamFogBtn.textContent = 'Disable Fog Effect';
+            controls.toggleDreamFogBtn.style.background = '#4ecdc4';
+            controls.toggleDreamFogBtn.style.color = 'black';
+        } else {
+            controls.toggleDreamFogBtn.textContent = 'Enable Fog Effect';
+            controls.toggleDreamFogBtn.style.background = '#666';
+            controls.toggleDreamFogBtn.style.color = 'white';
+        }
+    }
+
 
     /**
      * Update timeline camera settings
@@ -665,6 +790,22 @@ export class AppEventHandlers {
         controls.glitchDecaySlider.value = state.effects.glitch.decay;
         controls.glitchTimeStepSlider.value = state.effects.glitch.timeStep;
         this.updateGlitchControls();
+
+        // Reset dream effect settings
+        controls.dreamEnabledCheckbox.checked = state.effects.dream.enabled;
+        controls.toggleDreamFogBtn.dataset.enabled = state.effects.dream.fogEnabled ? 'true' : 'false';
+        this.updateDreamFogButtonAppearance();
+        controls.dreamBloomStrengthSlider.value = state.effects.dream.bloomStrength;
+        controls.dreamBloomRadiusSlider.value = state.effects.dream.bloomRadius;
+        controls.dreamBloomThresholdSlider.value = state.effects.dream.bloomThreshold;
+        controls.dreamFogDensitySlider.value = state.effects.dream.fogDensity;
+        controls.dreamFogIntensitySlider.value = state.effects.dream.fogIntensity;
+        controls.dreamFogNoiseScaleSlider.value = state.effects.dream.fogNoiseScale;
+        controls.dreamFogNoiseSpeedSlider.value = state.effects.dream.fogNoiseSpeed;
+        controls.dreamFogColorPicker.value = state.effects.dream.fogColor;
+        controls.dreamClickBoostSlider.value = state.effects.dream.clickBoost;
+        controls.dreamDecayDurationSlider.value = state.effects.dream.decayDuration;
+        this.updateDreamEffectControls();
         
     }
 }

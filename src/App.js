@@ -15,7 +15,6 @@ import { TitleOverlay } from './ui/TitleOverlay.js';
 import { DebugPanel } from './ui/DebugPanel.js';
 import { EventsPanel } from './ui/EventsPanel.js';
 import { TimelineNavigation } from './ui/TimelineNavigation.js';
-import { YearOverlay } from './ui/YearOverlay.js';
 import { MouseController } from './controls/MouseController.js';
 import { TimelineController } from './timeline-v2/core/TimelineController.js';
 import { AppStateManager } from './core/AppStateManager.js';
@@ -68,6 +67,7 @@ export class App {
         this.glitchController = null;
         this.lenis = null;
         this.lenisTicker = null;
+        this.timelineScrollStopTimer = null;
         this.imageData = null;
         this.lastFrameTime = 0;
         this.isCanvasInteractionDisabled = false;
@@ -151,7 +151,7 @@ export class App {
         this.debugPanel = new DebugPanel();
         this.eventsPanel = new EventsPanel(this.imageData);
         this.timelineNavigation = new TimelineNavigation();
-        this.yearOverlay = new YearOverlay(yearRange.minYear, yearRange.maxYear);
+        this.yearOverlay = null;
         this.setupTimelineUIWrapper();
         
         // Ensure timeline navigation is hidden on app start (initial scene)
@@ -228,6 +228,7 @@ export class App {
 
         this.lenis.on('scroll', () => {
             ScrollTrigger.update();
+            this.handleTimelineScrollActivity();
         });
 
         this.lenisTicker = (time) => {
@@ -237,6 +238,53 @@ export class App {
         gsap.ticker.add(this.lenisTicker);
         gsap.ticker.lagSmoothing(0);
     }
+
+    handleTimelineScrollActivity() {
+        this.setTimelineScrollUiHidden(true);
+
+        if (this.timelineScrollStopTimer) {
+            clearTimeout(this.timelineScrollStopTimer);
+        }
+
+        this.timelineScrollStopTimer = setTimeout(() => {
+            this.setTimelineScrollUiHidden(false);
+            this.timelineScrollStopTimer = null;
+        }, 180);
+    }
+
+    setTimelineScrollUiHidden(isScrolling) {
+        if (typeof document === 'undefined') return;
+
+        const timelineOverlayActive = document.body.classList.contains('timeline-meta-active');
+        const isTimelineScene = this.timelineController?.getCurrentSceneIndex?.() === 1;
+        const shouldHideMetaText = Boolean(isScrolling) && (isTimelineScene || timelineOverlayActive);
+        document.body.classList.toggle('timeline-scrolling-active', shouldHideMetaText);
+    }
+
+    syncTimelineScrollUiFromTimelineState() {
+        if (typeof document === 'undefined') return;
+
+        const timelineOverlayActive = document.body.classList.contains('timeline-meta-active');
+        const isTimelineScene = this.timelineController?.getCurrentSceneIndex?.() === 1;
+        const state = this.timelineController?.getState?.();
+        const isControllerScrolling = Boolean(state?.isScrolling);
+        const isLenisRecentlyScrolling = this.timelineScrollStopTimer !== null;
+        const cameraSystem = this.timelineController?.cameraSystem;
+        const timelineDefaultZ = cameraSystem?.getTimelineDefaultZ?.();
+        const cameraZ = this.sceneManager?.getCamera?.()?.position?.z;
+        const hasCameraPulledBack = Number.isFinite(timelineDefaultZ) && Number.isFinite(cameraZ)
+            ? Math.abs(cameraZ - timelineDefaultZ) > 0.02
+            : false;
+        const isCameraSettlingBack = Boolean(cameraSystem?.scrollReturnTween) || Boolean(cameraSystem?.pullbackAnimation) || Boolean(cameraSystem?.isPullingBack);
+        const shouldHideMetaText = (timelineOverlayActive || isTimelineScene) && (
+            isControllerScrolling ||
+            isLenisRecentlyScrolling ||
+            hasCameraPulledBack ||
+            isCameraSettlingBack
+        );
+
+        document.body.classList.toggle('timeline-scrolling-active', shouldHideMetaText);
+    }
     
     
     
@@ -245,6 +293,7 @@ export class App {
         console.log(`Scene changing to: ${sceneDetail.sceneName}`);
         
         if (sceneDetail.sceneName === 'timeline') {
+            this.setTimelineScrollUiHidden(false);
             // Don't hide initial scene images immediately - let the transition handle it
             // The timeline scene will handle the image layout transition
             
@@ -263,6 +312,7 @@ export class App {
                 this.yearOverlay.setYear(this.timelineController.getCurrentYear());
             }
         } else if (sceneDetail.sceneName === 'initial') {
+            this.setTimelineScrollUiHidden(false);
             // Deactivate timeline scene
             this.timelineScene.deactivate();
             
@@ -487,6 +537,7 @@ export class App {
         if (this.timelineController && this.timelineController.update) {
             this.timelineController.update(deltaTime, currentTimestamp);
         }
+        this.syncTimelineScrollUiFromTimelineState();
 
         // Disable canvas interaction while fullscreen/detail view is open
         if (this.timelineController?.imageDetailPage?.isOpen) {

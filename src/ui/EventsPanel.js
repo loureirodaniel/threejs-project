@@ -1,4 +1,5 @@
 import { TimelineMetaBox } from './TimelineMetaBox.js';
+import { SCENE_CONFIG, IMAGE_ASPECT_RATIO } from '../timeline-v2/utils/TimelineConstants.js';
 
 const PRIMARY_COMMENT_ITEMS = [
   { date: '24/06/26', text: 'Comment1' },
@@ -6,6 +7,11 @@ const PRIMARY_COMMENT_ITEMS = [
   { date: '24/06/26', text: 'Comment3' }
 ];
 const META_BOX_OFFSET_PX = 14;
+const META_VIEWPORT_MARGIN_PX = 12;
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
 
 function projectToScreen(position, camera, viewportWidth, viewportHeight) {
   const projected = position.clone().project(camera);
@@ -15,15 +21,33 @@ function projectToScreen(position, camera, viewportWidth, viewportHeight) {
   };
 }
 
-function planePixelSize(plane, camera, viewportHeight) {
+function resolveTimelineReferenceZ(camera) {
+  const cameraSystem = window.app?.timelineController?.cameraSystem;
+  if (typeof cameraSystem?.getTimelineDefaultZ === 'function') {
+    const timelineDefaultZ = cameraSystem.getTimelineDefaultZ();
+    if (Number.isFinite(timelineDefaultZ)) return timelineDefaultZ;
+  }
+
+  const configuredTimelineZ = SCENE_CONFIG?.timeline?.position?.z;
+  if (Number.isFinite(configuredTimelineZ)) return configuredTimelineZ;
+
+  return Number.isFinite(camera?.position?.z) ? camera.position.z : 2.5;
+}
+
+function planePixelSize(plane, camera, viewportHeight, useTimelineReferenceDistance = true) {
   const geometryWidth = plane?.geometry?.parameters?.width ?? 2.5;
-  const geometryHeight = plane?.geometry?.parameters?.height ?? (geometryWidth * 0.75);
+  const geometryHeight = plane?.geometry?.parameters?.height ?? (geometryWidth * IMAGE_ASPECT_RATIO);
   const scaleX = plane?.scale?.x ?? 1;
   const scaleY = plane?.scale?.y ?? 1;
   const worldWidth = geometryWidth * scaleX;
   const worldHeight = geometryHeight * scaleY;
 
-  const distance = Math.max(0.001, Math.abs((camera.position?.z ?? 2.5) - (plane.position?.z ?? 0)));
+  // Metadata boxes use timeline baseline distance so temporary scroll pullback/return
+  // doesn't squash or crop text while the cards keep a stable reading size.
+  const cameraZ = useTimelineReferenceDistance
+    ? resolveTimelineReferenceZ(camera)
+    : (Number.isFinite(camera?.position?.z) ? camera.position.z : resolveTimelineReferenceZ(camera));
+  const distance = Math.max(0.001, Math.abs(cameraZ - (plane.position?.z ?? 0)));
   const fovRad = ((camera.fov || 30) * Math.PI) / 180;
   const visibleHeight = 2 * Math.tan(fovRad / 2) * distance;
   const pixelsPerUnit = viewportHeight / visibleHeight;
@@ -74,9 +98,6 @@ export class EventsPanel {
     this.dividerLayer = document.createElement('div');
     this.dividerLayer.className = 'timeline-meta-divider-layer';
 
-    this.header = document.createElement('div');
-    this.header.className = 'timeline-meta-header';
-    this.header.textContent = 'Archivo memoria';
 
     this.primaryMetaBox = new TimelineMetaBox({
       variant: 'primary',
@@ -87,7 +108,6 @@ export class EventsPanel {
     this.tertiaryMetaBox = new TimelineMetaBox({ variant: 'tertiary' });
 
     this.panel.appendChild(this.dividerLayer);
-    this.panel.appendChild(this.header);
     this.panel.appendChild(this.primaryMetaBox.getElement());
     this.panel.appendChild(this.secondaryMetaBox.getElement());
     this.panel.appendChild(this.tertiaryMetaBox.getElement());
@@ -123,6 +143,19 @@ export class EventsPanel {
       body.detail-view-open #timeline-meta-overlay {
         opacity: 0 !important;
         visibility: hidden !important;
+      }
+
+      body.timeline-scrolling-active #timeline-meta-overlay .timeline-meta-comments-container,
+      body.timeline-scrolling-active #timeline-meta-overlay .timeline-meta-year,
+      body.timeline-scrolling-active #timeline-meta-overlay .timeline-meta-title,
+      body.timeline-scrolling-active #timeline-meta-overlay .timeline-meta-description {
+        opacity: 0 !important;
+        visibility: hidden !important;
+        display: none !important;
+      }
+
+      body.timeline-scrolling-active #timeline-meta-overlay .timeline-meta-card {
+        border-top-color: transparent !important;
       }
 
       #timeline-meta-overlay .timeline-meta-divider {
@@ -178,9 +211,27 @@ export class EventsPanel {
         font-size: clamp(22px, 1.7vw, 35px);
       }
 
+      #timeline-meta-overlay .timeline-meta-description {
+        margin: 8px 0 0;
+        color: rgba(255, 255, 255, 0.74);
+        font-size: clamp(14px, 1vw, 18px);
+        line-height: 1.32;
+        max-width: 90%;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+
       #timeline-meta-overlay .timeline-meta-card-secondary .timeline-meta-title,
       #timeline-meta-overlay .timeline-meta-card-tertiary .timeline-meta-title {
         font-size: clamp(18px, 1.4vw, 28px);
+      }
+
+      #timeline-meta-overlay .timeline-meta-card-secondary .timeline-meta-description,
+      #timeline-meta-overlay .timeline-meta-card-tertiary .timeline-meta-description {
+        font-size: clamp(13px, 0.92vw, 16px);
+        -webkit-line-clamp: 2;
       }
 
       #timeline-meta-overlay .timeline-meta-ghost-year {
@@ -300,17 +351,34 @@ export class EventsPanel {
     const secondaryEntry = this.getCardDataForYear(year2);
     const tertiaryEntry = this.getCardDataForYear(year3);
 
-    this.primaryMetaBox?.setContent({ year: year1, title: primaryEntry.title, ghostYear: year1 });
-    this.secondaryMetaBox?.setContent({ year: year2, title: secondaryEntry.title });
-    this.tertiaryMetaBox?.setContent({ year: year3, title: tertiaryEntry.title });
+    this.primaryMetaBox?.setContent({
+      year: year1,
+      title: primaryEntry.title,
+      description: primaryEntry.description,
+      ghostYear: year1
+    });
+    this.secondaryMetaBox?.setContent({
+      year: year2,
+      title: secondaryEntry.title,
+      description: secondaryEntry.description
+    });
+    this.tertiaryMetaBox?.setContent({
+      year: year3,
+      title: tertiaryEntry.title,
+      description: tertiaryEntry.description
+    });
 
     this.updateAnchoredLayout();
   }
 
   getAllTimelinePlanes() {
-    const initialPlanes = window.app?.imagePlanes?.getPlanes?.() || [];
-    const additionalPlanes = window.app?.timelineScene?.timelinePlanes || [];
-    return [...initialPlanes, ...additionalPlanes];
+    // Keep in sync with RenderSystem, which positions and renders window.app.imagePlanes.planes.
+    const imagePlanes = window.app?.imagePlanes;
+    if (!imagePlanes) return [];
+    if (Array.isArray(imagePlanes.planes) && imagePlanes.planes.length > 0) {
+      return imagePlanes.planes;
+    }
+    return imagePlanes.getPlanes?.() || [];
   }
 
   updateAnchoredLayout() {
@@ -351,44 +419,72 @@ export class EventsPanel {
     }
 
     const center = projectToScreen(plane.position, camera, viewportWidth, viewportHeight);
-    const size = planePixelSize(plane, camera, viewportHeight);
+    const size = planePixelSize(plane, camera, viewportHeight, true);
 
-    const left = Math.round(center.x - (size.width / 2));
-    const top = Math.round(center.y + (size.height / 2));
+    const requestedLeft = Math.round(center.x - (size.width / 2));
+    const requestedTop = Math.round(center.y + (size.height / 2) + META_BOX_OFFSET_PX);
+    const cardWidth = Math.max(1, Math.min(Math.round(size.width), viewportWidth - (META_VIEWPORT_MARGIN_PX * 2)));
+    const maxLeft = Math.max(META_VIEWPORT_MARGIN_PX, viewportWidth - cardWidth - META_VIEWPORT_MARGIN_PX);
+    const left = clamp(requestedLeft, META_VIEWPORT_MARGIN_PX, maxLeft);
+    const right = left + cardWidth;
+    const desiredMinHeight = isPrimary
+      ? Math.max(120, Math.min(230, Math.round(size.height * 0.8)))
+      : 96;
+    const maxTopFromMinHeight = Math.max(
+      META_VIEWPORT_MARGIN_PX,
+      viewportHeight - desiredMinHeight - META_VIEWPORT_MARGIN_PX
+    );
+    let top = clamp(requestedTop, META_VIEWPORT_MARGIN_PX, maxTopFromMinHeight);
 
-    if (isPrimary) {
-      const minHeight = Math.max(120, Math.min(230, Math.round(size.height * 0.8)));
-      metaBox.setLayout({
-        left,
-        top: Math.round(top + META_BOX_OFFSET_PX),
-        width: Math.round(size.width),
-        minHeight,
-        visible: true
-      });
-    } else {
-      metaBox.setLayout({
-        left,
-        top: Math.round(top + META_BOX_OFFSET_PX),
-        width: Math.round(size.width),
-        minHeight: 96,
-        visible: true
-      });
+    metaBox.setLayout({
+      left,
+      top,
+      width: cardWidth,
+      minHeight: desiredMinHeight,
+      visible: true
+    });
+
+    const element = typeof metaBox.getElement === 'function' ? metaBox.getElement() : null;
+    if (element) {
+      const rect = element.getBoundingClientRect();
+      if (rect.bottom > viewportHeight - META_VIEWPORT_MARGIN_PX) {
+        top -= (rect.bottom - (viewportHeight - META_VIEWPORT_MARGIN_PX));
+      }
+      if (rect.top < META_VIEWPORT_MARGIN_PX) {
+        top += (META_VIEWPORT_MARGIN_PX - rect.top);
+      }
+      const clampedTop = clamp(
+        Math.round(top),
+        META_VIEWPORT_MARGIN_PX,
+        Math.max(META_VIEWPORT_MARGIN_PX, viewportHeight - Math.ceil(rect.height) - META_VIEWPORT_MARGIN_PX)
+      );
+      if (clampedTop !== Math.round(element.offsetTop || 0)) {
+        metaBox.setLayout({
+          left,
+          top: clampedTop,
+          width: cardWidth,
+          minHeight: desiredMinHeight,
+          visible: true
+        });
+      }
+      top = clampedTop;
     }
 
     return {
       left,
-      right: left + Math.round(size.width),
+      right,
       top,
-      bottom: top + Math.round(size.height)
+      bottom: top + Math.round(desiredMinHeight)
     };
   }
 
   getPlaneBounds(plane, camera, viewportWidth, viewportHeight) {
     if (!plane || !plane.visible) return null;
     const center = projectToScreen(plane.position, camera, viewportWidth, viewportHeight);
-    const size = planePixelSize(plane, camera, viewportHeight);
-    const left = Math.round(center.x - (size.width / 2));
-    const right = left + Math.round(size.width);
+    // Divider lines should reflect live image width while scrolling.
+    const size = planePixelSize(plane, camera, viewportHeight, false);
+    const left = Math.floor(center.x - (size.width / 2));
+    const right = Math.ceil(center.x + (size.width / 2));
     return { left, right };
   }
 
@@ -406,10 +502,40 @@ export class EventsPanel {
 
     if (!this.dividerLayer || !Array.isArray(allPlanes)) return;
 
-    const dividerPositions = allPlanes
-      .map((plane) => this.getPlaneBounds(plane, camera, viewportWidth, viewportHeight))
-      .filter(Boolean)
-      .map((bounds) => Math.round(bounds.right))
+    const visibleBounds = allPlanes
+      .map((plane, index) => ({ bounds: this.getPlaneBounds(plane, camera, viewportWidth, viewportHeight), index }))
+      .filter((entry) => Boolean(entry.bounds));
+
+    const visibleBoundsByIndex = new Map(
+      visibleBounds.map(({ bounds, index }) => [index, bounds])
+    );
+
+    const dividerPositions = visibleBounds
+      .flatMap(({ bounds, index }) => {
+        const positions = [];
+
+        // Align cluster boundary dividers (4th, 7th, ...) to the incoming card left edge.
+        // Keep this marker AND the card's own right edge so the 4th-column right divider is visible.
+        if (index > 0 && (index % 3) === 0) {
+          positions.push(Math.round(bounds.left));
+        }
+
+        // Avoid duplicate boundary lines between the 3rd and 4th cards in each cluster.
+        // Only suppress the 3rd card right edge when the 4th card left edge is on-screen.
+        const isClusterTail = (index % 3) === 2;
+        if (isClusterTail) {
+          const nextBounds = visibleBoundsByIndex.get(index + 1);
+          const nextLeftPx = Number.isFinite(nextBounds?.left) ? Math.round(nextBounds.left) : null;
+          const nextBoundaryIsOnScreen = Number.isFinite(nextLeftPx) && nextLeftPx > 0 && nextLeftPx < viewportWidth;
+          if (!nextBoundaryIsOnScreen) {
+            positions.push(Math.round(bounds.right));
+          }
+          return positions;
+        }
+
+        positions.push(Math.round(bounds.right));
+        return positions;
+      })
       .filter((x) => Number.isFinite(x) && x > 0 && x < viewportWidth)
       .sort((a, b) => a - b)
       .filter((x, index, arr) => index === 0 || Math.abs(x - arr[index - 1]) > 2);

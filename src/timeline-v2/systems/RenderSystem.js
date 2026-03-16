@@ -21,10 +21,72 @@ import { gsap } from 'gsap';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { RippleAnimation } from './RippleAnimation.js';
 import * as TimelineUtils from '../utils/TimelineUtils.js';
-import { EFFECTS_CONFIG, SCENE_CONFIG, TIMELINE_CONFIG, TIMELINE_LAYOUT_CONFIG, getTimelineLayoutSlot } from '../utils/TimelineConstants.js';
+import { EFFECTS_CONFIG, SCENE_CONFIG, TIMELINE_CONFIG, TIMELINE_LAYOUT_CONFIG, IMAGE_ASPECT_RATIO, getTimelineLayoutSlot } from '../utils/TimelineConstants.js';
 import { GlitchShader } from '../../shaders/GlitchShader.js';
+
+const DreamFogShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uTime: { value: 0 },
+    uIntensity: { value: 0.12 },
+    uDensity: { value: 0.08 },
+    uNoiseScale: { value: 1.8 },
+    uNoiseSpeed: { value: 0.12 },
+    uBoost: { value: 0 },
+    uFogColor: { value: new THREE.Color(0xc9d6ff) },
+    uResolution: { value: new THREE.Vector2(1, 1) }
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float uTime;
+    uniform float uIntensity;
+    uniform float uDensity;
+    uniform float uNoiseScale;
+    uniform float uNoiseSpeed;
+    uniform float uBoost;
+    uniform vec3 uFogColor;
+    varying vec2 vUv;
+
+    float hash(vec2 p) {
+      return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+    }
+
+    float valueNoise(vec2 p) {
+      vec2 i = floor(p);
+      vec2 f = fract(p);
+      vec2 u = f * f * (3.0 - 2.0 * f);
+      float a = hash(i + vec2(0.0, 0.0));
+      float b = hash(i + vec2(1.0, 0.0));
+      float c = hash(i + vec2(0.0, 1.0));
+      float d = hash(i + vec2(1.0, 1.0));
+      return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+    }
+
+    void main() {
+      vec4 base = texture2D(tDiffuse, vUv);
+      vec2 centered = vUv - 0.5;
+      float radial = 1.0 - smoothstep(0.2, 0.85, length(centered));
+      float vertical = smoothstep(0.0, 1.0, 1.0 - vUv.y);
+      float animatedNoise = valueNoise(vUv * max(uNoiseScale, 0.001) + vec2(uTime * uNoiseSpeed, uTime * uNoiseSpeed * 0.6));
+      float fogShape = (vertical * 0.7 + radial * 0.3);
+      float fogAmount = max(0.0, uDensity * fogShape * (0.75 + animatedNoise * 0.5));
+      float dreamBoost = 1.0 + (uBoost * 1.4);
+      float fogMix = clamp(fogAmount * uIntensity * dreamBoost, 0.0, 0.75);
+      vec3 dreamColor = mix(base.rgb, uFogColor, fogMix);
+      gl_FragColor = vec4(dreamColor, base.a);
+    }
+  `
+};
 
 class RenderSystem {
   constructor(state, eventBus, timelineScene, effects = {}) {
@@ -50,6 +112,7 @@ class RenderSystem {
     this.currentAnimatingPlane = null;
     this.currentImageData = null;
     this.hiddenTimelineUIState = [];
+    this.timelineUIHiddenByRenderSystem = false;
     this.timelineStateBeforeDetail = null;
     this.savedTimelineState = null;
     this.savedTimelineConfig = null;
@@ -57,6 +120,23 @@ class RenderSystem {
     this.isHandlingImageClose = false;
     this.suppressNextImageCloseEvent = false;
     this._glitchTimeStep = 0.016;
+    this._dreamEffectConfig = {
+      enabled: true,
+      fogEnabled: true,
+      bloomStrength: 0.22,
+      bloomRadius: 0.48,
+      bloomThreshold: 0.76,
+      fogDensity: 0.08,
+      fogIntensity: 0.14,
+      fogNoiseScale: 1.8,
+      fogNoiseSpeed: 0.12,
+      fogColor: '#c9d6ff',
+      clickBoost: 0.55,
+      decayDuration: 1.8
+    };
+    this._dreamBoost = 0;
+    this._dreamTargetBoost = 0;
+    this._dreamLastFrameTime = 0;
     const app = typeof window !== 'undefined' ? (window.app || {}) : {};
     this.camera = app.camera;
 
@@ -90,6 +170,7 @@ class RenderSystem {
       }),
       this.eventBus.on('timeline:resume', () => {
         this.paused = false;
+        this.fadeOutDreamEffect();
         this.stopDetailRenderLoop();
         this.showTimelineUI();
         console.log('👁️ Title and year visible again');
@@ -271,10 +352,39 @@ class RenderSystem {
     }
 
     if (this._composer) {
+      this.updateDreamEffectState();
       this._glitchPass.uniforms.uTime.value += this._glitchTimeStep;
       this._composer.render();
     } else {
       this.renderer.render(this.scene, this.camera);
+    }
+  }
+
+  updateDreamEffectState() {
+    const now = performance.now();
+    if (!this._dreamLastFrameTime) {
+      this._dreamLastFrameTime = now;
+    }
+    const deltaSeconds = Math.max(0.001, (now - this._dreamLastFrameTime) / 1000);
+    this._dreamLastFrameTime = now;
+
+    const decayDuration = Math.max(0.1, this._dreamEffectConfig.decayDuration || 1.8);
+    const decayStep = deltaSeconds / decayDuration;
+    this._dreamTargetBoost = Math.max(0, this._dreamTargetBoost - decayStep);
+    this._dreamBoost = THREE.MathUtils.lerp(this._dreamBoost, this._dreamTargetBoost, Math.min(1, deltaSeconds * 7));
+
+    if (this._bloomPass) {
+      this._bloomPass.strength = this._dreamEffectConfig.enabled
+        ? this._dreamEffectConfig.bloomStrength + (this._dreamBoost * this._dreamEffectConfig.clickBoost)
+        : 0;
+    }
+
+    if (this._dreamFogPass?.uniforms) {
+      this._dreamFogPass.uniforms.uTime.value += deltaSeconds;
+      this._dreamFogPass.uniforms.uBoost.value = this._dreamEffectConfig.enabled ? this._dreamBoost : 0;
+      this._dreamFogPass.uniforms.uIntensity.value = (this._dreamEffectConfig.enabled && this._dreamEffectConfig.fogEnabled)
+        ? this._dreamEffectConfig.fogIntensity
+        : 0;
     }
   }
 
@@ -283,6 +393,21 @@ class RenderSystem {
     this._composer = new EffectComposer(renderer);
     this._renderPass = new RenderPass(scene, camera);
     this._composer.addPass(this._renderPass);
+    this._bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      this._dreamEffectConfig.bloomStrength,
+      this._dreamEffectConfig.bloomRadius,
+      this._dreamEffectConfig.bloomThreshold
+    );
+    this._composer.addPass(this._bloomPass);
+    this._dreamFogPass = new ShaderPass(DreamFogShader);
+    this._dreamFogPass.uniforms.uDensity.value = this._dreamEffectConfig.fogDensity;
+    this._dreamFogPass.uniforms.uIntensity.value = this._dreamEffectConfig.fogIntensity;
+    this._dreamFogPass.uniforms.uNoiseScale.value = this._dreamEffectConfig.fogNoiseScale;
+    this._dreamFogPass.uniforms.uNoiseSpeed.value = this._dreamEffectConfig.fogNoiseSpeed;
+    this._dreamFogPass.uniforms.uFogColor.value.set(this._dreamEffectConfig.fogColor);
+    this._dreamFogPass.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+    this._composer.addPass(this._dreamFogPass);
     this._glitchPass = new ShaderPass(GlitchShader);
     this._glitchPass.uniforms.uGlitchIntensity.value = 0;
     this._glitchPass.uniforms.uResolution.value.x = window.innerWidth;
@@ -291,6 +416,12 @@ class RenderSystem {
     this._composer.setSize(window.innerWidth, window.innerHeight);
     window.addEventListener('resize', () => {
       this._composer?.setSize(window.innerWidth, window.innerHeight);
+      if (this._bloomPass?.setSize) {
+        this._bloomPass.setSize(window.innerWidth, window.innerHeight);
+      }
+      if (this._dreamFogPass?.uniforms?.uResolution?.value) {
+        this._dreamFogPass.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+      }
       if (this._glitchPass?.uniforms?.uResolution?.value) {
         this._glitchPass.uniforms.uResolution.value.x = window.innerWidth;
         this._glitchPass.uniforms.uResolution.value.y = window.innerHeight;
@@ -308,6 +439,101 @@ class RenderSystem {
     if (Number.isFinite(value)) {
       this._glitchTimeStep = Math.max(0.001, Math.min(0.1, value));
     }
+  }
+
+  setDreamEffectEnabled(enabled) {
+    this._dreamEffectConfig.enabled = Boolean(enabled);
+    if (!this._dreamEffectConfig.enabled) {
+      this._dreamBoost = 0;
+      this._dreamTargetBoost = 0;
+    }
+  }
+
+  setDreamBloomSettings({ strength, radius, threshold } = {}) {
+    if (Number.isFinite(strength)) {
+      this._dreamEffectConfig.bloomStrength = Math.max(0, Math.min(2, strength));
+    }
+    if (Number.isFinite(radius)) {
+      this._dreamEffectConfig.bloomRadius = Math.max(0, Math.min(1, radius));
+    }
+    if (Number.isFinite(threshold)) {
+      this._dreamEffectConfig.bloomThreshold = Math.max(0, Math.min(1.5, threshold));
+    }
+    if (this._bloomPass) {
+      this._bloomPass.radius = this._dreamEffectConfig.bloomRadius;
+      this._bloomPass.threshold = this._dreamEffectConfig.bloomThreshold;
+      this._bloomPass.strength = this._dreamEffectConfig.enabled ? this._dreamEffectConfig.bloomStrength : 0;
+    }
+  }
+
+  setDreamFogSettings({ enabled, density, intensity, noiseScale, noiseSpeed, color } = {}) {
+    if (typeof enabled === 'boolean') {
+      this._dreamEffectConfig.fogEnabled = enabled;
+    }
+    if (Number.isFinite(density)) {
+      this._dreamEffectConfig.fogDensity = Math.max(0, Math.min(1, density));
+    }
+    if (Number.isFinite(intensity)) {
+      this._dreamEffectConfig.fogIntensity = Math.max(0, Math.min(1, intensity));
+    }
+    if (Number.isFinite(noiseScale)) {
+      this._dreamEffectConfig.fogNoiseScale = Math.max(0.1, Math.min(8, noiseScale));
+    }
+    if (Number.isFinite(noiseSpeed)) {
+      this._dreamEffectConfig.fogNoiseSpeed = Math.max(0, Math.min(2, noiseSpeed));
+    }
+    if (typeof color === 'string' && color.length > 0) {
+      this._dreamEffectConfig.fogColor = color;
+    }
+    if (this._dreamFogPass?.uniforms) {
+      this._dreamFogPass.uniforms.uDensity.value = this._dreamEffectConfig.fogDensity;
+      this._dreamFogPass.uniforms.uIntensity.value = (this._dreamEffectConfig.enabled && this._dreamEffectConfig.fogEnabled)
+        ? this._dreamEffectConfig.fogIntensity
+        : 0;
+      this._dreamFogPass.uniforms.uNoiseScale.value = this._dreamEffectConfig.fogNoiseScale;
+      this._dreamFogPass.uniforms.uNoiseSpeed.value = this._dreamEffectConfig.fogNoiseSpeed;
+      this._dreamFogPass.uniforms.uFogColor.value.set(this._dreamEffectConfig.fogColor);
+    }
+  }
+
+  setDreamTriggerSettings({ clickBoost, decayDuration } = {}) {
+    if (Number.isFinite(clickBoost)) {
+      this._dreamEffectConfig.clickBoost = Math.max(0, Math.min(1.5, clickBoost));
+    }
+    if (Number.isFinite(decayDuration)) {
+      this._dreamEffectConfig.decayDuration = Math.max(0.1, Math.min(6, decayDuration));
+    }
+  }
+
+  setDreamEffectSettings(config = {}) {
+    this.setDreamEffectEnabled(config.enabled ?? this._dreamEffectConfig.enabled);
+    this.setDreamBloomSettings({
+      strength: config.bloomStrength,
+      radius: config.bloomRadius,
+      threshold: config.bloomThreshold
+    });
+    this.setDreamFogSettings({
+      enabled: config.fogEnabled,
+      density: config.fogDensity,
+      intensity: config.fogIntensity,
+      noiseScale: config.fogNoiseScale,
+      noiseSpeed: config.fogNoiseSpeed,
+      color: config.fogColor
+    });
+    this.setDreamTriggerSettings({
+      clickBoost: config.clickBoost,
+      decayDuration: config.decayDuration
+    });
+  }
+
+  triggerDreamEffect() {
+    if (!this._dreamEffectConfig.enabled) return;
+    this._dreamTargetBoost = Math.min(1, this._dreamTargetBoost + this._dreamEffectConfig.clickBoost);
+    this._dreamBoost = Math.max(this._dreamBoost, this._dreamTargetBoost * 0.6);
+  }
+
+  fadeOutDreamEffect() {
+    this._dreamTargetBoost = 0;
   }
 
   startDetailRenderLoop() {
@@ -386,12 +612,18 @@ class RenderSystem {
     return percentages[slotIndex] ?? percentages[0] ?? 0.3;
   }
 
-  getSlotWidthPx(slotIndex) {
+  getConfiguredSlotWidthsPx() {
     const configuredWidths = TIMELINE_LAYOUT_CONFIG.IMAGE_WIDTHS_PX;
+    if (!Array.isArray(configuredWidths) || configuredWidths.length < 3) return null;
+    if (!configuredWidths.every((value) => Number.isFinite(value) && value > 0)) return null;
+    return configuredWidths;
+  }
+
+  getBaseSlotWidthPx(slotIndex) {
     const safeIndex = Math.abs(slotIndex) % 3;
-    const configuredWidth = configuredWidths?.[safeIndex];
-    if (Number.isFinite(configuredWidth) && configuredWidth > 0) {
-      return configuredWidth;
+    const configuredWidths = this.getConfiguredSlotWidthsPx();
+    if (configuredWidths) {
+      return configuredWidths[safeIndex];
     }
 
     const viewportWidth = Math.max(1, window.innerWidth || 1);
@@ -405,6 +637,40 @@ class RenderSystem {
     const weightSum = Math.max(0.001, weights[0] + weights[1] + weights[2]);
     const usableWidth = Math.max(1, viewportWidth - leftPaddingPx - (columnGapPx * 2));
     return usableWidth * (weights[safeIndex] ?? weights[0]) / weightSum;
+  }
+
+  getViewportResponsiveScaleFactor() {
+    const viewportWidth = Math.max(1, window.innerWidth || 1);
+    const viewportHeight = Math.max(1, window.innerHeight || 1);
+    const leftPaddingPx = TIMELINE_LAYOUT_CONFIG.FIRST_IMAGE_LEFT_PADDING_PX ?? 50;
+    const columnGapPx = TIMELINE_LAYOUT_CONFIG.COLUMN_GAP_PX ?? 12;
+    const firstTopPx = TIMELINE_LAYOUT_CONFIG.FIRST_IMAGE_TOP_PX ?? 76;
+    const metaSafeSpacePx = TIMELINE_LAYOUT_CONFIG.META_SAFE_SPACE_PX ?? 170;
+    const metaOffsetPx = TIMELINE_LAYOUT_CONFIG.META_OFFSET_PX ?? 14;
+
+    const baseWidths = [this.getBaseSlotWidthPx(0), this.getBaseSlotWidthPx(1), this.getBaseSlotWidthPx(2)];
+    const clusterWidth = baseWidths[0] + baseWidths[1] + baseWidths[2] + (columnGapPx * 2);
+    const usableWidth = Math.max(1, viewportWidth - leftPaddingPx - (columnGapPx * 2));
+
+    let widthScale = 1;
+    if (this.getConfiguredSlotWidthsPx()) {
+      widthScale = Math.min(1, usableWidth / Math.max(1, clusterWidth));
+    }
+
+    const baseFirstHeight = baseWidths[0] * IMAGE_ASPECT_RATIO;
+    const maxColumnStackHeight = baseFirstHeight;
+    const availableHeightForStack = Math.max(
+      1,
+      viewportHeight - firstTopPx - metaOffsetPx - metaSafeSpacePx
+    );
+    const heightScale = Math.min(1, availableHeightForStack / Math.max(1, maxColumnStackHeight));
+
+    return Math.max(0.35, Math.min(widthScale, heightScale));
+  }
+
+  getSlotWidthPx(slotIndex) {
+    const responsiveScale = this.getViewportResponsiveScaleFactor();
+    return this.getBaseSlotWidthPx(slotIndex) * responsiveScale;
   }
 
   getColumnMetrics() {
@@ -504,15 +770,9 @@ class RenderSystem {
     return baseOverflowScale + ((1 - baseOverflowScale) * easedBlend);
   }
 
-  getAnchorIndex(offset, spacing, firstPosition, yearCount) {
-    const safeSpacing = Math.max(0.0001, Number.isFinite(spacing) ? spacing : 1);
-    const safeOffset = Number.isFinite(offset) ? offset : firstPosition;
-    const raw = Math.round((safeOffset - firstPosition) / safeSpacing);
-    return Math.max(0, Math.min(yearCount - 1, raw));
-  }
-
-  getRelativeSlotIndex(index, anchorIndex) {
-    return ((index - anchorIndex) % 3 + 3) % 3;
+  getSlotIndexFromRelativeIndex(relativeIndex) {
+    const discreteIndex = Number.isFinite(relativeIndex) ? Math.round(relativeIndex) : 0;
+    return ((discreteIndex % 3) + 3) % 3;
   }
 
   getAlternatingRowSlotIndex(index, slotWorldY = []) {
@@ -563,9 +823,9 @@ class RenderSystem {
     const firstSlot = getTimelineLayoutSlot(0);
     const secondSlot = getTimelineLayoutSlot(1);
     const thirdSlot = getTimelineLayoutSlot(2);
-    const firstHeightPx = this.getSlotWidthPx(0) * 0.75;
-    const secondHeightPx = this.getSlotWidthPx(1) * 0.75;
-    const thirdHeightPx = this.getSlotWidthPx(2) * 0.75;
+    const firstHeightPx = this.getSlotWidthPx(0) * IMAGE_ASPECT_RATIO;
+    const secondHeightPx = this.getSlotWidthPx(1) * IMAGE_ASPECT_RATIO;
+    const thirdHeightPx = this.getSlotWidthPx(2) * IMAGE_ASPECT_RATIO;
 
     const firstTopPx = TIMELINE_LAYOUT_CONFIG.FIRST_IMAGE_TOP_PX ?? 80;
     const firstBottomPx = firstTopPx + firstHeightPx;
@@ -593,8 +853,6 @@ class RenderSystem {
 
     const spacing = this.state.get('calculatedSpacing') || 1.8;
     const firstPosition = TIMELINE_CONFIG.FIRST_POSITION || -4.5;
-    const yearCount = TIMELINE_CONFIG.YEAR_COUNT || 10;
-    const anchorIndex = this.getAnchorIndex(safeOffset, spacing, firstPosition, yearCount);
     const progress = (safeOffset - firstPosition) / Math.max(0.0001, spacing);
     const cullDistance = 15;
     const slotWorldY = this.getLayoutSlotWorldY(allPlanes);
@@ -602,12 +860,12 @@ class RenderSystem {
     allPlanes.forEach((plane, index) => {
       if (!plane) return;
       if (plane.userData?.isFrozen || plane.userData?.animatingFromFullscreen || plane.userData?.isTransitioning) return;
-      const slotIndex = this.getRelativeSlotIndex(index, anchorIndex);
+      const relativeIndex = index - progress;
+      const slotIndex = this.getSlotIndexFromRelativeIndex(relativeIndex);
       const rowSlotIndex = this.getAlternatingRowSlotIndex(index, slotWorldY);
       const slot = getTimelineLayoutSlot(slotIndex);
       const rowSlot = getTimelineLayoutSlot(rowSlotIndex);
-      const relativeIndex = index - progress;
-      const targetCenterPx = this.getInterpolatedSlotCenterPx(index - progress);
+      const targetCenterPx = this.getInterpolatedSlotCenterPx(relativeIndex);
       const targetWorldX = this.pixelXToWorldX(targetCenterPx, slot.z, this.camera);
       const baseScale = this.getSlotScaleForIndex(slotIndex, plane);
       // Keep contiguous columns: avoid extra per-image scaling that introduces
@@ -776,6 +1034,7 @@ class RenderSystem {
       if (closest) {
         console.log(`✅ Clicked image ${closest.index} (${closest.distance.toFixed(0)}px away)`);
         console.log(`   Image year: ${closest.imageData.year}`);
+        this.triggerDreamEffect();
         
         // Get current centered image index from state
         const currentIndex = this.state.get('currentImageIndex') || 0;
@@ -786,6 +1045,9 @@ class RenderSystem {
         const startSeamlessHandoff = () => {
           const animatingPlane = closest.plane;
           const imageDataForDetail = closest.imageData;
+          // Hide timeline overlay/dividers immediately so they do not bleed through
+          // while the clicked image animates toward fullscreen.
+          document.body.classList.add('detail-view-open', 'is-fullscreen');
           // FIRST: Pause systems so we store a clean, settled state.
           this.pauseTimelineSystems();
 
@@ -1088,6 +1350,7 @@ class RenderSystem {
     this.imagePlanes = this.imagePlanes || window.app?.imagePlanes;
 
     console.log('🔴 ========== CLOSING DETAIL ==========');
+    this.fadeOutDreamEffect();
 
     const fullscreenPlane =
       this.currentAnimatingPlane ||
@@ -1116,6 +1379,7 @@ class RenderSystem {
         detailOverlay.style.display = 'none';
       }, 300);
     }
+    this.unlockGlobalScrollLock();
 
     console.log('🌊 Starting reverse animation');
 
@@ -1563,11 +1827,15 @@ class RenderSystem {
     }
 
     const state = this.savedTimelineState;
+    this.unlockGlobalScrollLock();
 
     // Remove hiding classes
     document.body.classList.remove('detail-view-open', 'is-fullscreen');
     this.state.setState({ isImageEnlarged: false, enlargedImageId: null });
     this.effects.backgroundBlurEffect?.deactivate?.();
+    // TimelineController.resumeTimeline() does not emit timeline:resume,
+    // so restore timeline UI explicitly on detail close.
+    this.showTimelineUI();
 
     // Re-add hidden planes to scene FIRST
     if (this.hiddenPlanes) {
@@ -1798,9 +2066,12 @@ class RenderSystem {
         }
         if (window.app?.timelineController) {
           window.app.timelineController.resumeTimeline?.();
+          this.eventBus.emit('timeline:resume', {});
+          this.paused = false;
           window.app.timelineController.cameraSystem?.unfreezeCamera?.();
           if (window.app.timelineController.inputSystem) {
             window.app.timelineController.inputSystem.enabled = true;
+            window.app.timelineController.inputSystem.wheelCooldownMs = 0;
             console.log('  ✓ InputSystem enabled');
           }
         }
@@ -1941,6 +2212,7 @@ class RenderSystem {
    */
   hideTimelineUI() {
     if (typeof document === 'undefined') return;
+    if (this.timelineUIHiddenByRenderSystem) return;
     const selectors = ['.timeline-ui-wrapper', '.project-title', '.year-overlay', '#timeline-navigation', '#timeline-meta-overlay'];
     const elements = selectors
       .map((selector) => document.querySelector(selector))
@@ -1958,15 +2230,14 @@ class RenderSystem {
       el.style.visibility = 'hidden';
       el.style.pointerEvents = 'none';
     });
+    this.timelineUIHiddenByRenderSystem = true;
   }
 
   /**
    * Restore timeline UI elements hidden by hideTimelineUI().
    */
   showTimelineUI() {
-    if (!Array.isArray(this.hiddenTimelineUIState) || this.hiddenTimelineUIState.length === 0) {
-      return;
-    }
+    if (!this.timelineUIHiddenByRenderSystem && (!Array.isArray(this.hiddenTimelineUIState) || this.hiddenTimelineUIState.length === 0)) return;
 
     this.hiddenTimelineUIState.forEach((item) => {
       const { el, opacity, visibility, pointerEvents } = item;
@@ -1977,6 +2248,27 @@ class RenderSystem {
     });
 
     this.hiddenTimelineUIState = [];
+    this.timelineUIHiddenByRenderSystem = false;
+    this.refreshTimelineMetaOverlay();
+  }
+
+  unlockGlobalScrollLock() {
+    if (typeof document === 'undefined') return;
+    document.body.style.removeProperty('overflow');
+    document.body.style.removeProperty('pointer-events');
+    document.documentElement?.style?.removeProperty('overflow');
+    document.documentElement?.style?.removeProperty('pointer-events');
+  }
+
+  refreshTimelineMetaOverlay() {
+    const eventsPanel = window.app?.eventsPanel;
+    if (!eventsPanel) return;
+
+    // Force divider regeneration in case the detail sequence cleared cached positions.
+    eventsPanel.lastDividerPositionsKey = '';
+    requestAnimationFrame(() => {
+      eventsPanel.updateAnchoredLayout?.();
+    });
   }
 
   /**

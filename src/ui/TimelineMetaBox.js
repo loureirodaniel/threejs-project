@@ -21,6 +21,7 @@ export class TimelineMetaBox {
     this.element = null;
     this.yearEl = null;
     this.titleEl = null;
+    this.descriptionEl = null;
     this.ghostYearEl = null;
 
     this.create();
@@ -40,8 +41,13 @@ export class TimelineMetaBox {
     title.className = 'timeline-meta-title';
     title.textContent = 'Event name';
 
+    const description = document.createElement('p');
+    description.className = 'timeline-meta-description';
+    description.textContent = '';
+
     content.appendChild(year);
     content.appendChild(title);
+    content.appendChild(description);
 
     let ghostYear = null;
     if (this.includeGhostAndComments) {
@@ -81,6 +87,7 @@ export class TimelineMetaBox {
     this.element = card;
     this.yearEl = year;
     this.titleEl = title;
+    this.descriptionEl = description;
     this.ghostYearEl = ghostYear;
   }
 
@@ -88,12 +95,15 @@ export class TimelineMetaBox {
     return this.element;
   }
 
-  setContent({ year, title, ghostYear } = {}) {
+  setContent({ year, title, description, ghostYear } = {}) {
     if (typeof year !== 'undefined' && this.yearEl) {
       this.yearEl.textContent = String(year);
     }
     if (typeof title !== 'undefined' && this.titleEl) {
       this.titleEl.textContent = title || 'Event name';
+    }
+    if (typeof description !== 'undefined' && this.descriptionEl) {
+      this.descriptionEl.textContent = description || '';
     }
     if (this.ghostYearEl && typeof ghostYear !== 'undefined') {
       this.ghostYearEl.textContent = String(ghostYear);

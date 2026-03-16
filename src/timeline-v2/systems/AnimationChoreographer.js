@@ -5,7 +5,7 @@
 
 import * as THREE from 'three';
 import { gsap } from 'gsap';
-import { EFFECTS_CONFIG, TIMELINE_CONFIG, TIMELINE_LAYOUT_CONFIG, SCENE_CONFIG, getTimelineLayoutSlot } from '../utils/TimelineConstants.js';
+import { EFFECTS_CONFIG, TIMELINE_CONFIG, TIMELINE_LAYOUT_CONFIG, SCENE_CONFIG, IMAGE_ASPECT_RATIO, getTimelineLayoutSlot } from '../utils/TimelineConstants.js';
 
 class AnimationChoreographer {
   constructor(state, eventBus, camera, scene) {
@@ -16,6 +16,7 @@ class AnimationChoreographer {
     
     this.gatheringTimeline = null;
     this.gatherRetryCount = 0;
+    this.gatherSnapshot = null;
     this.unsubscribeFns = [];
     
     this.init();
@@ -79,7 +80,10 @@ class AnimationChoreographer {
     const viewportWidth = Math.max(1, window.innerWidth || 1);
     const viewportHeight = Math.max(1, window.innerHeight || 1);
     const fovRad = ((this.camera.fov || 30) * Math.PI) / 180;
-    const distance = Math.max(0.001, Math.abs((this.camera.position?.z ?? 2.5) - zDepth));
+    // Keep layout sizing anchored to the timeline baseline camera Z so
+    // gather animation sizes exactly match runtime timeline sizes.
+    const layoutReferenceZ = SCENE_CONFIG?.timeline?.position?.z ?? 2.5;
+    const distance = Math.max(0.001, Math.abs(layoutReferenceZ - zDepth));
     const visibleHeight = 2 * Math.tan(fovRad / 2) * distance;
     return visibleHeight * ((this.camera.aspect && Number.isFinite(this.camera.aspect)) ? this.camera.aspect : (viewportWidth / viewportHeight));
   }
@@ -89,12 +93,18 @@ class AnimationChoreographer {
     return percentages[slotIndex] ?? percentages[0] ?? 0.3;
   }
 
-  getSlotWidthPx(slotIndex) {
+  getConfiguredSlotWidthsPx() {
     const configuredWidths = TIMELINE_LAYOUT_CONFIG.IMAGE_WIDTHS_PX;
+    if (!Array.isArray(configuredWidths) || configuredWidths.length < 3) return null;
+    if (!configuredWidths.every((value) => Number.isFinite(value) && value > 0)) return null;
+    return configuredWidths;
+  }
+
+  getBaseSlotWidthPx(slotIndex) {
     const safeIndex = Math.abs(slotIndex) % 3;
-    const configuredWidth = configuredWidths?.[safeIndex];
-    if (Number.isFinite(configuredWidth) && configuredWidth > 0) {
-      return configuredWidth;
+    const configuredWidths = this.getConfiguredSlotWidthsPx();
+    if (configuredWidths) {
+      return configuredWidths[safeIndex];
     }
 
     const viewportWidth = Math.max(1, window.innerWidth || 1);
@@ -108,6 +118,40 @@ class AnimationChoreographer {
     const weightSum = Math.max(0.001, weights[0] + weights[1] + weights[2]);
     const usableWidth = Math.max(1, viewportWidth - leftPaddingPx - (columnGapPx * 2));
     return usableWidth * (weights[safeIndex] ?? weights[0]) / weightSum;
+  }
+
+  getViewportResponsiveScaleFactor() {
+    const viewportWidth = Math.max(1, window.innerWidth || 1);
+    const viewportHeight = Math.max(1, window.innerHeight || 1);
+    const leftPaddingPx = TIMELINE_LAYOUT_CONFIG.FIRST_IMAGE_LEFT_PADDING_PX ?? 50;
+    const columnGapPx = TIMELINE_LAYOUT_CONFIG.COLUMN_GAP_PX ?? 12;
+    const firstTopPx = TIMELINE_LAYOUT_CONFIG.FIRST_IMAGE_TOP_PX ?? 76;
+    const metaSafeSpacePx = TIMELINE_LAYOUT_CONFIG.META_SAFE_SPACE_PX ?? 170;
+    const metaOffsetPx = TIMELINE_LAYOUT_CONFIG.META_OFFSET_PX ?? 14;
+
+    const baseWidths = [this.getBaseSlotWidthPx(0), this.getBaseSlotWidthPx(1), this.getBaseSlotWidthPx(2)];
+    const clusterWidth = baseWidths[0] + baseWidths[1] + baseWidths[2] + (columnGapPx * 2);
+    const usableWidth = Math.max(1, viewportWidth - leftPaddingPx - (columnGapPx * 2));
+
+    let widthScale = 1;
+    if (this.getConfiguredSlotWidthsPx()) {
+      widthScale = Math.min(1, usableWidth / Math.max(1, clusterWidth));
+    }
+
+    const baseFirstHeight = baseWidths[0] * IMAGE_ASPECT_RATIO;
+    const maxColumnStackHeight = baseFirstHeight;
+    const availableHeightForStack = Math.max(
+      1,
+      viewportHeight - firstTopPx - metaOffsetPx - metaSafeSpacePx
+    );
+    const heightScale = Math.min(1, availableHeightForStack / Math.max(1, maxColumnStackHeight));
+
+    return Math.max(0.35, Math.min(widthScale, heightScale));
+  }
+
+  getSlotWidthPx(slotIndex) {
+    const responsiveScale = this.getViewportResponsiveScaleFactor();
+    return this.getBaseSlotWidthPx(slotIndex) * responsiveScale;
   }
 
   getColumnMetrics() {
@@ -142,6 +186,11 @@ class AnimationChoreographer {
     const lowerCenter = this.getDiscreteSlotCenterPx(lower);
     const upperCenter = this.getDiscreteSlotCenterPx(upper);
     return THREE.MathUtils.lerp(lowerCenter, upperCenter, progress);
+  }
+
+  getSlotIndexFromRelativeIndex(relativeIndex) {
+    const discreteIndex = Number.isFinite(relativeIndex) ? Math.round(relativeIndex) : 0;
+    return ((discreteIndex % 3) + 3) % 3;
   }
 
   pixelXToWorldX(pixelX, zDepth) {
@@ -209,7 +258,8 @@ class AnimationChoreographer {
     if (!this.camera) return 0;
     const viewportHeight = Math.max(1, window.innerHeight || 1);
     const fovRad = ((this.camera.fov || 30) * Math.PI) / 180;
-    const distance = Math.max(0.001, Math.abs((this.camera.position?.z ?? 2.5) - zDepth));
+    const layoutReferenceZ = SCENE_CONFIG?.timeline?.position?.z ?? 2.5;
+    const distance = Math.max(0.001, Math.abs(layoutReferenceZ - zDepth));
     const visibleHeight = 2 * Math.tan(fovRad / 2) * distance;
     return (0.5 - (pixelY / viewportHeight)) * visibleHeight;
   }
@@ -220,9 +270,9 @@ class AnimationChoreographer {
     const firstSlot = getTimelineLayoutSlot(0);
     const secondSlot = getTimelineLayoutSlot(1);
     const thirdSlot = getTimelineLayoutSlot(2);
-    const firstHeightPx = this.getSlotWidthPx(0) * 0.75;
-    const secondHeightPx = this.getSlotWidthPx(1) * 0.75;
-    const thirdHeightPx = this.getSlotWidthPx(2) * 0.75;
+    const firstHeightPx = this.getSlotWidthPx(0) * IMAGE_ASPECT_RATIO;
+    const secondHeightPx = this.getSlotWidthPx(1) * IMAGE_ASPECT_RATIO;
+    const thirdHeightPx = this.getSlotWidthPx(2) * IMAGE_ASPECT_RATIO;
 
     const firstTopPx = TIMELINE_LAYOUT_CONFIG.FIRST_IMAGE_TOP_PX ?? 80;
     const firstBottomPx = firstTopPx + firstHeightPx;
@@ -301,6 +351,7 @@ class AnimationChoreographer {
     const offset = this.state.get('timelineOffset') || firstPosition;
     const slotWorldY = this.getLayoutSlotWorldY(planes);
     const progress = (offset - firstPosition) / Math.max(0.0001, spacing);
+    this.gatherSnapshot = { offset, spacing, progress };
     
     // Transition timing is intentionally longer so users can clearly perceive
     // the initial scene -> timeline handoff choreography.
@@ -314,21 +365,22 @@ class AnimationChoreographer {
     // Create master timeline
     this.gatheringTimeline = gsap.timeline({
       onComplete: () => {
+        this.applyFinalTimelineLayout(planes, progress);
         console.log('✅ Gathering sequence complete');
         console.log(`📷 Camera z after gathering: ${this.camera.position.z.toFixed(2)}`);
-        this.completeGathering();
+        this.completeGathering({ landingOffset: offset, spacing });
       }
     });
     
     // === ANIMATE IMAGES ===
     planes.forEach((plane, index) => {
-      const slot = getTimelineLayoutSlot(index);
-      const slotIndex = Math.abs(index) % slotWorldY.length;
-      const rowSlotIndex = this.getAlternatingRowSlotIndex(index, slotWorldY);
       const relativeIndex = index - progress;
+      const slotIndex = this.getSlotIndexFromRelativeIndex(relativeIndex);
+      const slot = getTimelineLayoutSlot(slotIndex);
+      const rowSlotIndex = this.getAlternatingRowSlotIndex(index, slotWorldY);
       const targetCenterPx = this.getInterpolatedSlotCenterPx(relativeIndex);
       const targetX = this.pixelXToWorldX(targetCenterPx, slot.z);
-      const baseScale = this.getSlotScale(Math.abs(index) % 3, plane?.geometry?.parameters?.width ?? 2.5, slot.z);
+      const baseScale = this.getSlotScale(slotIndex, plane?.geometry?.parameters?.width ?? 2.5, slot.z);
       // Keep contiguous columns during gather animation as well.
       const targetScale = baseScale;
       // Ensure first four images settle early and consistently.
@@ -402,17 +454,73 @@ class AnimationChoreographer {
     
     console.log(`⏱️ Total animation duration: ${this.gatheringTimeline.duration().toFixed(2)}s`);
   }
+
+  /**
+   * Ensure final transforms exactly match timeline runtime layout to avoid
+   * a visible correction on handoff to RenderSystem.
+   * @param {Array} planes
+   * @param {number} progress
+   */
+  applyFinalTimelineLayout(planes, progress) {
+    if (!Array.isArray(planes) || planes.length === 0) return;
+
+    const slotWorldY = this.getLayoutSlotWorldY(planes);
+    planes.forEach((plane, index) => {
+      if (!plane) return;
+      const relativeIndex = index - progress;
+      const slotIndex = this.getSlotIndexFromRelativeIndex(relativeIndex);
+      const rowSlotIndex = this.getAlternatingRowSlotIndex(index, slotWorldY);
+      const slot = getTimelineLayoutSlot(slotIndex);
+      const targetCenterPx = this.getInterpolatedSlotCenterPx(relativeIndex);
+      const targetX = this.pixelXToWorldX(targetCenterPx, slot.z);
+      const targetScale = this.getSlotScale(slotIndex, plane?.geometry?.parameters?.width ?? 2.5, slot.z);
+
+      plane.position.set(
+        targetX,
+        slotWorldY[rowSlotIndex] ?? slotWorldY[slotIndex] ?? slot.y,
+        slot.z
+      );
+      plane.scale.setScalar(targetScale);
+      plane.visible = true;
+      if (plane.material) {
+        plane.material.opacity = 1;
+      }
+    });
+  }
   
   /**
    * Complete the gathering animation
    */
-  completeGathering() {
+  completeGathering({ landingOffset, spacing } = {}) {
     this.gatheringTimeline = null;
+    const firstPosition = TIMELINE_CONFIG.FIRST_POSITION || -4.5;
+    const safeSpacing = Number.isFinite(spacing) && spacing > 0
+      ? spacing
+      : (this.gatherSnapshot?.spacing ?? this.state.get('calculatedSpacing') ?? 1.8);
+    const resolvedOffset = Number.isFinite(landingOffset)
+      ? landingOffset
+      : (this.gatherSnapshot?.offset ?? this.state.get('timelineOffset') ?? firstPosition);
+    const approxIndex = Math.max(0, Math.round((resolvedOffset - firstPosition) / Math.max(0.0001, safeSpacing)));
+
+    // Keep offset + camera target in perfect sync for the first timeline frame.
+    const cameraSystem = window.app?.timelineController?.cameraSystem;
+    if (cameraSystem?.lookAtTarget && cameraSystem?.lookAtCurrent && this.camera) {
+      cameraSystem.lookAtTarget.set(-resolvedOffset, 0, 0);
+      cameraSystem.lookAtCurrent.set(-resolvedOffset, 0, 0);
+      this.camera.lookAt(cameraSystem.lookAtCurrent);
+      this.camera.updateMatrixWorld(true);
+    }
     
     this.state.setState({
       imagesGathering: false,
-      imagesGathered: true
+      imagesGathered: true,
+      timelineOffset: resolvedOffset,
+      targetOffset: resolvedOffset,
+      currentSnapIndex: approxIndex,
+      scrollVelocity: 0,
+      isScrolling: false
     });
+    this.gatherSnapshot = null;
     
     this.eventBus.emit('images:gather:complete');
   
