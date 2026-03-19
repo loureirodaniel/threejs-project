@@ -9,20 +9,6 @@ export class AppStateManager {
             isTransitioning: false,
             debugPanelOpen: true,
             effects: {
-                spotlight: { 
-                    radius: 2, 
-                    vignetteOpacity: 1.0, 
-                    gridOpacity: 0.4 
-                },
-                liquid: { 
-                    active: false, 
-                    strength: 0.02,
-                    rippleSpeed: 2.0,
-                    rippleScale: 50,
-                    falloffDistance: 0.3,
-                    noiseScale: 10,
-                    noiseStrength: 0.01
-                },
                 backgroundBlur: {
                     amount: 5,
                     opacity: 0.8,
@@ -124,20 +110,6 @@ export class AppStateManager {
     resetToDefaults() {
         this.setState({
             effects: {
-                spotlight: { 
-                    radius: 2, 
-                    vignetteOpacity: 1.0, 
-                    gridOpacity: 0.4 
-                },
-                liquid: { 
-                    active: false, 
-                    strength: 0.02,
-                    rippleSpeed: 2.0,
-                    rippleScale: 50,
-                    falloffDistance: 0.3,
-                    noiseScale: 10,
-                    noiseStrength: 0.01
-                },
                 backgroundBlur: {
                     amount: 5,
                     opacity: 0.8,

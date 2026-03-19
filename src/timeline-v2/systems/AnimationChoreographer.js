@@ -276,11 +276,12 @@ class AnimationChoreographer {
 
     const firstTopPx = TIMELINE_LAYOUT_CONFIG.FIRST_IMAGE_TOP_PX ?? 80;
     const firstBottomPx = firstTopPx + firstHeightPx;
+    const upshift = TIMELINE_LAYOUT_CONFIG.BOTTOM_SLOT_UPSHIFT_PX ?? 20;
     // Diagram layout:
-    // - image2 top aligned to image1 bottom
-    // - image3 bottom aligned to image1 bottom
-    const secondCenterPx = firstBottomPx + (secondHeightPx / 2);
-    const thirdCenterPx = firstBottomPx - (thirdHeightPx / 2);
+    // - image2 top aligned to image1 bottom (shifted up to prevent metadata overlap)
+    // - image3 bottom aligned to image1 bottom (shifted up to prevent metadata overlap)
+    const secondCenterPx = firstBottomPx + (secondHeightPx / 2) - upshift;
+    const thirdCenterPx = firstBottomPx - (thirdHeightPx / 2) - upshift;
     const firstCenterPx = firstTopPx + (firstHeightPx / 2);
 
     return [

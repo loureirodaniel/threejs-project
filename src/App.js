@@ -8,14 +8,11 @@ import { ImagePlanes } from './scene/ImagePlanes.js';
 import { TimelineScene } from './scene/TimelineScene.js';
 import { GridEffect } from './effects/GridEffect.js';
 import { VignetteEffect } from './effects/VignetteEffect.js';
-import { SpotlightEffect } from './effects/SpotlightEffect.js';
 import { BackgroundBlurEffect } from './effects/BackgroundBlurEffect.js';
-import { LiquidDistortionEffect } from './effects/LiquidDistortionEffect.js';
 import { TitleOverlay } from './ui/TitleOverlay.js';
 import { DebugPanel } from './ui/DebugPanel.js';
 import { EventsPanel } from './ui/EventsPanel.js';
 import { TimelineNavigation } from './ui/TimelineNavigation.js';
-import { MouseController } from './controls/MouseController.js';
 import { TimelineController } from './timeline-v2/core/TimelineController.js';
 import { AppStateManager } from './core/AppStateManager.js';
 import { eventBus } from './core/EventBus.js';
@@ -49,9 +46,7 @@ export class App {
         // Effects
         this.gridEffect = null;
         this.vignetteEffect = null;
-        this.spotlightEffect = null;
         this.backgroundBlurEffect = null;
-        this.liquidDistortionEffect = null;
         
         // UI components
         this.titleOverlay = null;
@@ -62,7 +57,6 @@ export class App {
         this.timelineUIWrapper = null;
         
         // Controllers
-        this.mouseController = null;
         this.timelineController = null;
         this.glitchController = null;
         this.lenis = null;
@@ -144,9 +138,7 @@ export class App {
         
         this.gridEffect = new GridEffect(scene);
         this.vignetteEffect = new VignetteEffect(scene);
-        this.spotlightEffect = new SpotlightEffect(scene);
         this.backgroundBlurEffect = new BackgroundBlurEffect(scene, camera, this.sceneManager.getRenderer());
-        this.liquidDistortionEffect = new LiquidDistortionEffect(scene, camera, this.sceneManager.getRenderer());
         this.titleOverlay = new TitleOverlay();
         this.debugPanel = new DebugPanel();
         this.eventsPanel = new EventsPanel(this.imageData);
@@ -170,7 +162,6 @@ export class App {
             this.timelineNavigation.hide();
         }, 1000);
         
-        this.mouseController = new MouseController(camera);
         console.log('🆕 Using NEW timeline controller (v2 architecture)');
         this.timelineController = new TimelineController(
             camera,
@@ -178,7 +169,6 @@ export class App {
             this.timelineScene,
             {
                 vignetteEffect: this.vignetteEffect,
-                liquidDistortionEffect: this.liquidDistortionEffect,
                 backgroundBlurEffect: this.backgroundBlurEffect
             }
         );
@@ -297,9 +287,6 @@ export class App {
             // Don't hide initial scene images immediately - let the transition handle it
             // The timeline scene will handle the image layout transition
             
-            // Hide spotlight effect
-            this.spotlightEffect.hide();
-            
             // Hide scroll hint
             this.hideScrollHint();
             
@@ -318,7 +305,6 @@ export class App {
             
             // Show initial scene elements
             this.imagePlanes.show();
-            this.spotlightEffect.show();
             
             // Animate title back to center
             this.titleOverlay.animateToCenter();
@@ -449,14 +435,8 @@ export class App {
 
     
     onWindowResize() {
-        // Update background blur effect on window resize
         if (this.backgroundBlurEffect) {
             this.backgroundBlurEffect.onWindowResize();
-        }
-        
-        // Update liquid distortion effect on window resize
-        if (this.liquidDistortionEffect) {
-            this.liquidDistortionEffect.onWindowResize();
         }
     }
 
@@ -546,12 +526,6 @@ export class App {
             this.enableCanvasInteraction();
         }
         
-        // Update spotlight position based on mouse (only in initial scene)
-        if (this.timelineController.getCurrentSceneIndex() === 0) {
-            const worldPos = this.mouseController.getWorldPosition();
-            this.spotlightEffect.setPosition(worldPos.x, worldPos.y);
-        }
-        
         // Animate image planes (only in initial scene, and not during timeline gathering)
         if (this.timelineController.getCurrentSceneIndex() === 0) {
             const timelineState = this.timelineController?.getState?.();
@@ -564,19 +538,12 @@ export class App {
         // Update timeline scene
         this.timelineScene.update(currentTimestamp, this.sceneManager.getCamera());
         
-        // Update liquid distortion effect
-        if (this.liquidDistortionEffect) {
-            this.liquidDistortionEffect.update(deltaTime);
-        }
-        
         // Update controls regardless of renderer
         this.sceneManager.updateControls();
         
         // ALWAYS render
         if (this.timelineController && this.timelineController.renderSystem) {
             this.timelineController.renderSystem.render();
-        } else if (this.liquidDistortionEffect && this.liquidDistortionEffect.isActive) {
-            this.liquidDistortionEffect.render();
         } else {
             this.sceneManager.render();
         }

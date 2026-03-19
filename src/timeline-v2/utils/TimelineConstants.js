@@ -64,7 +64,7 @@ export const PHYSICS_CONFIG = Object.freeze({
   /** Accumulated wheel/trackpad delta required to move exactly one timeline step. */
   SCROLL_STEP_THRESHOLD: 0.9,
   /** Duration (seconds) for each wheel/trackpad step snap. */
-  SCROLL_STEP_DURATION: 0.4,
+  SCROLL_STEP_DURATION: 0.72,
 
   // Snapping
   /** Distance threshold for snapping. */
@@ -121,6 +121,59 @@ export const TIMELINE_CONFIG = Object.freeze({
 /** Aspect ratio (height / width) for timeline image planes. Derived from 738×427 target. */
 export const IMAGE_ASPECT_RATIO = 427 / 738;
 
+// -----------------------------------------------------------------------------
+// Scene margins (viewport-responsive top/bottom inset for the timeline scene)
+// -----------------------------------------------------------------------------
+
+/**
+ * Base margin values (in px) at the reference viewport height.
+ * The top margin scales with viewport height for proportional breathing room.
+ * The bottom margin is fixed so it always clears the navigation component.
+ *
+ * Navigation layout (all fixed px, independent of viewport height):
+ *   NAVIGATION_BOTTOM_OFFSET_PX  – distance from viewport bottom to nav bottom edge
+ *   NAVIGATION_HEIGHT_PX         – height of the navigation component
+ *   IMAGES_BOTTOM_GAP_PX         – required gap between image bottom and nav top edge
+ *
+ * Effective bottom reserved area = NAVIGATION_BOTTOM_OFFSET_PX
+ *                                 + NAVIGATION_HEIGHT_PX
+ *                                 + IMAGES_BOTTOM_GAP_PX
+ *                                 = 40 + 60 + 16 = 116 px
+ */
+export const SCENE_MARGIN = Object.freeze({
+  TOP_PX: 80,
+  BOTTOM_PX: 80,
+  REFERENCE_VIEWPORT_HEIGHT: 900,
+  NAVIGATION_BOTTOM_OFFSET_PX: 40,
+  NAVIGATION_HEIGHT_PX: 60,
+  IMAGES_BOTTOM_GAP_PX: 16
+});
+
+/**
+ * Compute viewport-responsive scene margins.
+ * Top margin scales proportionally with viewport height.
+ * Bottom margin is fixed at the navigation clearance value so that
+ * bottom-aligned images are always exactly IMAGES_BOTTOM_GAP_PX above
+ * the navigation component, regardless of viewport size.
+ * @returns {{ top: number, bottom: number }} margins in current pixels
+ */
+export function getSceneMargins() {
+  const vh = Math.max(1, typeof window !== 'undefined' ? window.innerHeight : SCENE_MARGIN.REFERENCE_VIEWPORT_HEIGHT);
+  const scale = vh / SCENE_MARGIN.REFERENCE_VIEWPORT_HEIGHT;
+  const fixedBottom = SCENE_MARGIN.NAVIGATION_BOTTOM_OFFSET_PX
+    + SCENE_MARGIN.NAVIGATION_HEIGHT_PX
+    + SCENE_MARGIN.IMAGES_BOTTOM_GAP_PX;
+  return {
+    top: SCENE_MARGIN.TOP_PX * scale,
+    bottom: fixedBottom
+  };
+}
+
+/** Per-slot overrides for the second timeline column (slot index 1). 0 = use percentage-based sizing. */
+export const SLOT_1_WIDTH_PX = 0;
+export const SLOT_1_HEIGHT_PX = 0;
+export const SLOT_1_TOP_PX = 200;
+
 /** Right padding (px) between viewport edge and first timeline image. */
 export const TIMELINE_LAYOUT_CONFIG = Object.freeze({
   FIRST_IMAGE_RIGHT_PADDING_PX: 50,
@@ -130,9 +183,12 @@ export const TIMELINE_LAYOUT_CONFIG = Object.freeze({
   COLUMN_GAP_PX: 0,
   // Reserve space below timeline cards so metadata remains visible.
   META_SAFE_SPACE_PX: 100,
-  // Gap between image bottom and metadata card top (kept in sync with EventsPanel).
-  META_OFFSET_PX: 14,
-  IMAGE_WIDTH_PERCENTAGES: Object.freeze([0.53, 0.27, 0.20]),
+  // Gap between image bottom and metadata card top (kept in sync with TimelineColumn).
+  META_OFFSET_PX: 10,
+  // Upward shift (px) applied to slot-1 and slot-2 images so the metadata card
+  // below them does not overlap with the image bottom edge.
+  BOTTOM_SLOT_UPSHIFT_PX: 20,
+  IMAGE_WIDTH_PERCENTAGES: Object.freeze([1, 1, 1]),
   IMAGE_WIDTHS_PX: Object.freeze([])
 });
 
@@ -232,16 +288,16 @@ export const CAMERA_CONFIG = Object.freeze({
   /** Scene transition duration in seconds. */
   TRANSITION_DURATION: 1.5,
 
-  // Scroll zoom
+  // Scroll zoom – camera pulls back during scroll and returns after the snap lands
   SCROLL_ZOOM_ENABLED: true,
-  SCROLL_ZOOM_MAX_PULLBACK: 1.8,             // strong extra z added while scrolling (world units)
-  SCROLL_ZOOM_VELOCITY_SCALE: 1.2,           // stronger velocity to pullback mapping
-  SCROLL_ZOOM_LERP_SPEED: 10.5,              // responsive positional smoothing speed in update loop
-  SCROLL_ZOOM_DELTA_FOR_MAX_INTENSITY: 1.2,  // normalized wheel delta that maps to full input intensity
-  SCROLL_ZOOM_MIN_KICK_FACTOR: 0.85,         // guaranteed strong dolly factor per gesture
-  SCROLL_ZOOM_HOLD_MS: 260,                  // keep strong pullback visible slightly longer
-  SCROLL_ZOOM_DOLLY_OUT_DURATION: 0.16,      // faster dolly-back punch
-  SCROLL_ZOOM_DOLLY_RETURN_DURATION: 0.7     // slower cinematic return-to-base
+  SCROLL_ZOOM_MAX_PULLBACK: 2.0,             // extra z added while scrolling (world units)
+  SCROLL_ZOOM_VELOCITY_SCALE: 1.6,           // velocity to pullback mapping
+  SCROLL_ZOOM_LERP_SPEED: 6.0,              // positional smoothing speed in update loop
+  SCROLL_ZOOM_DELTA_FOR_MAX_INTENSITY: 0.8,  // normalized wheel delta that maps to full input intensity
+  SCROLL_ZOOM_MIN_KICK_FACTOR: 0.5,          // minimum dolly factor per snap start (held during burst)
+  SCROLL_ZOOM_HOLD_MS: 260,                  // fallback hold (snap lifecycle controls main return)
+  SCROLL_ZOOM_DOLLY_OUT_DURATION: 0.28,      // dolly-out punch speed
+  SCROLL_ZOOM_DOLLY_RETURN_DURATION: 0.65    // cinematic return-to-base after last snap
 });
 
 // -----------------------------------------------------------------------------
@@ -258,6 +314,9 @@ export const EFFECTS_CONFIG = Object.freeze({
   VIGNETTE_FALLOFF_WIDTH: 4.0, // Distance over which opacity fades
   VIGNETTE_MIN_OPACITY: 0.3, // Minimum opacity for far images
   VIGNETTE_STRENGTH: 0.7, // Overall vignette strength (0-1)
+
+  // Smooth scale transitions (Lenis-style temporal lerp speed)
+  SCALE_LERP_SPEED: 6.0,
 
   // Image scaling
   FOCUS_SCALE: 0.85, // Scale for focused (center) image

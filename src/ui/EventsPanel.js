@@ -1,62 +1,24 @@
-import { TimelineMetaBox } from './TimelineMetaBox.js';
-import { SCENE_CONFIG, IMAGE_ASPECT_RATIO } from '../timeline-v2/utils/TimelineConstants.js';
+/**
+ * EventsPanel (TimelineColumnManager)
+ *
+ * Manages the full set of TimelineColumn instances – one per 3D plane.
+ * On every year change it activates the three visible columns (focused year
+ * + two neighbours) and deactivates the rest. A single RAF loop calls each
+ * active column's updateLayout() so the metadata cards track the 3D planes.
+ *
+ * Phase 2 additions: subscribes to RenderSystem hover/click events via the
+ * timelineEventBus and forwards them to the correct TimelineColumn instance.
+ */
+
+import { TimelineColumn } from './TimelineColumn.js';
+import { getSceneMargins } from '../timeline-v2/utils/TimelineConstants.js';
+import { timelineEventBus } from '../timeline-v2/core/EventBus.js';
 
 const PRIMARY_COMMENT_ITEMS = [
   { date: '24/06/26', text: 'Comment1' },
   { date: '24/06/26', text: 'Comment 2' },
   { date: '24/06/26', text: 'Comment3' }
 ];
-const META_BOX_OFFSET_PX = 14;
-const META_VIEWPORT_MARGIN_PX = 12;
-
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
-}
-
-function projectToScreen(position, camera, viewportWidth, viewportHeight) {
-  const projected = position.clone().project(camera);
-  return {
-    x: (projected.x * 0.5 + 0.5) * viewportWidth,
-    y: (-projected.y * 0.5 + 0.5) * viewportHeight
-  };
-}
-
-function resolveTimelineReferenceZ(camera) {
-  const cameraSystem = window.app?.timelineController?.cameraSystem;
-  if (typeof cameraSystem?.getTimelineDefaultZ === 'function') {
-    const timelineDefaultZ = cameraSystem.getTimelineDefaultZ();
-    if (Number.isFinite(timelineDefaultZ)) return timelineDefaultZ;
-  }
-
-  const configuredTimelineZ = SCENE_CONFIG?.timeline?.position?.z;
-  if (Number.isFinite(configuredTimelineZ)) return configuredTimelineZ;
-
-  return Number.isFinite(camera?.position?.z) ? camera.position.z : 2.5;
-}
-
-function planePixelSize(plane, camera, viewportHeight, useTimelineReferenceDistance = true) {
-  const geometryWidth = plane?.geometry?.parameters?.width ?? 2.5;
-  const geometryHeight = plane?.geometry?.parameters?.height ?? (geometryWidth * IMAGE_ASPECT_RATIO);
-  const scaleX = plane?.scale?.x ?? 1;
-  const scaleY = plane?.scale?.y ?? 1;
-  const worldWidth = geometryWidth * scaleX;
-  const worldHeight = geometryHeight * scaleY;
-
-  // Metadata boxes use timeline baseline distance so temporary scroll pullback/return
-  // doesn't squash or crop text while the cards keep a stable reading size.
-  const cameraZ = useTimelineReferenceDistance
-    ? resolveTimelineReferenceZ(camera)
-    : (Number.isFinite(camera?.position?.z) ? camera.position.z : resolveTimelineReferenceZ(camera));
-  const distance = Math.max(0.001, Math.abs(cameraZ - (plane.position?.z ?? 0)));
-  const fovRad = ((camera.fov || 30) * Math.PI) / 180;
-  const visibleHeight = 2 * Math.tan(fovRad / 2) * distance;
-  const pixelsPerUnit = viewportHeight / visibleHeight;
-
-  return {
-    width: Math.max(1, worldWidth * pixelsPerUnit),
-    height: Math.max(1, worldHeight * pixelsPerUnit)
-  };
-}
 
 export class EventsPanel {
   constructor(imageData = []) {
@@ -67,13 +29,15 @@ export class EventsPanel {
     this.isVisible = false;
     this.rafId = null;
 
+    /** @type {TimelineColumn[]} One column per timeline plane */
+    this.columns = [];
+
     this.panel = null;
-    this.header = null;
-    this.primaryMetaBox = null;
-    this.secondaryMetaBox = null;
-    this.tertiaryMetaBox = null;
     this.dividerLayer = null;
     this.lastDividerPositionsKey = '';
+
+    // Phase 2 – event bus unsubscribe handles
+    this._busUnsubs = [];
 
     this.boundOnYearChange = this.onYearChange.bind(this);
     this.boundOnSceneChange = this.onSceneChange.bind(this);
@@ -90,6 +54,10 @@ export class EventsPanel {
     this.hide();
   }
 
+  // ---------------------------------------------------------------------------
+  // Panel / column creation
+  // ---------------------------------------------------------------------------
+
   createPanel() {
     this.panel = document.createElement('div');
     this.panel.id = 'timeline-meta-overlay';
@@ -97,23 +65,46 @@ export class EventsPanel {
 
     this.dividerLayer = document.createElement('div');
     this.dividerLayer.className = 'timeline-meta-divider-layer';
-
-
-    this.primaryMetaBox = new TimelineMetaBox({
-      variant: 'primary',
-      includeGhostAndComments: true,
-      comments: PRIMARY_COMMENT_ITEMS
-    });
-    this.secondaryMetaBox = new TimelineMetaBox({ variant: 'secondary' });
-    this.tertiaryMetaBox = new TimelineMetaBox({ variant: 'tertiary' });
-
     this.panel.appendChild(this.dividerLayer);
-    this.panel.appendChild(this.primaryMetaBox.getElement());
-    this.panel.appendChild(this.secondaryMetaBox.getElement());
-    this.panel.appendChild(this.tertiaryMetaBox.getElement());
 
     document.body.appendChild(this.panel);
+
+    // Build columns now if planes are already available; otherwise they will be
+    // created lazily the first time updateEvents() is called.
+    this._ensureColumns();
   }
+
+  /**
+   * Build one TimelineColumn per plane. Safe to call multiple times – skips
+   * if the column count already matches the plane count.
+   * @returns {boolean} true when columns are ready
+   */
+  _ensureColumns() {
+    const planes = window.app?.imagePlanes?.planes;
+    if (!Array.isArray(planes) || planes.length === 0) return false;
+    if (this.columns.length === planes.length) return true;
+
+    // Destroy stale columns before rebuilding
+    this.columns.forEach((col) => col.destroy());
+
+    this.columns = planes.map((plane, index) =>
+      new TimelineColumn({
+        panel: this.panel,
+        plane,
+        index,
+        // All columns are built with ghost+comments in the DOM.
+        // CSS hides ghost/comments for non-primary variants.
+        includeGhostAndComments: true,
+        comments: PRIMARY_COMMENT_ITEMS
+      })
+    );
+
+    return true;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Styles
+  // ---------------------------------------------------------------------------
 
   injectStyles() {
     if (document.getElementById('timeline-meta-overlay-styles')) return;
@@ -183,10 +174,11 @@ export class EventsPanel {
       #timeline-meta-overlay .timeline-meta-card {
         position: fixed;
         background: transparent;
-        border-top: 1px solid rgba(255, 255, 255, 0.07);
+        border-top: none;
         padding: 8px 10px 10px;
         box-sizing: border-box;
         overflow: hidden;
+        transition: transform 0.25s ease, opacity 0.25s ease;
       }
 
       #timeline-meta-overlay .timeline-meta-content {
@@ -202,6 +194,11 @@ export class EventsPanel {
         color: rgba(255, 255, 255, 0.52);
         line-height: 1;
         margin-bottom: 7px;
+        transition: opacity 0.2s ease;
+      }
+
+      #timeline-meta-overlay .timeline-meta-text-stack {
+        margin-top: 10px;
       }
 
       #timeline-meta-overlay .timeline-meta-title {
@@ -209,6 +206,7 @@ export class EventsPanel {
         font-weight: 300;
         letter-spacing: -0.01em;
         font-size: clamp(22px, 1.7vw, 35px);
+        transition: opacity 0.2s ease, transform 0.25s ease;
       }
 
       #timeline-meta-overlay .timeline-meta-description {
@@ -221,6 +219,7 @@ export class EventsPanel {
         -webkit-line-clamp: 3;
         -webkit-box-orient: vertical;
         overflow: hidden;
+        transition: opacity 0.2s ease;
       }
 
       #timeline-meta-overlay .timeline-meta-card-secondary .timeline-meta-title,
@@ -271,6 +270,40 @@ export class EventsPanel {
         font-weight: 300;
       }
 
+      /* Hide ghost year and comments on non-primary variants (all columns have
+         these DOM nodes but only primary should render them visually). */
+      #timeline-meta-overlay .timeline-meta-card-secondary .timeline-meta-ghost-year,
+      #timeline-meta-overlay .timeline-meta-card-tertiary .timeline-meta-ghost-year,
+      #timeline-meta-overlay .timeline-meta-card-secondary .timeline-meta-comments-container,
+      #timeline-meta-overlay .timeline-meta-card-tertiary .timeline-meta-comments-container {
+        display: none;
+      }
+
+      /* ── Phase 2: hover state ─────────────────────────────────────────── */
+      #timeline-meta-overlay .timeline-meta-card.timeline-column--hovered .timeline-meta-title {
+        opacity: 1;
+        transform: translateY(-2px);
+      }
+
+      #timeline-meta-overlay .timeline-meta-card.timeline-column--hovered .timeline-meta-year {
+        opacity: 1;
+        color: rgba(255, 255, 255, 0.72);
+      }
+
+      #timeline-meta-overlay .timeline-meta-card.timeline-column--hovered .timeline-meta-description {
+        opacity: 1;
+      }
+
+      /* ── Phase 2: focus / click state ────────────────────────────────── */
+      #timeline-meta-overlay .timeline-meta-card.timeline-column--focused .timeline-meta-title {
+        opacity: 1;
+        transform: translateY(-3px);
+      }
+
+      #timeline-meta-overlay .timeline-meta-card.timeline-column--focused .timeline-meta-year {
+        color: rgba(255, 255, 255, 0.9);
+      }
+
       @media (max-width: 980px) {
         #timeline-meta-overlay .timeline-meta-divider {
           display: none;
@@ -291,16 +324,53 @@ export class EventsPanel {
     document.head.appendChild(style);
   }
 
+  // ---------------------------------------------------------------------------
+  // Event listeners
+  // ---------------------------------------------------------------------------
+
   setupEventListeners() {
     window.addEventListener('timelineYearChange', this.boundOnYearChange);
     window.addEventListener('sceneChange', this.boundOnSceneChange);
     window.addEventListener('sceneTransitionComplete', this.boundOnTransitionComplete);
+
+    // Phase 2 – RenderSystem hover broadcast
+    this._busUnsubs.push(
+      timelineEventBus.on('timeline:plane:hover', ({ planeIndex, isHovered }) => {
+        const col = this.columns[planeIndex];
+        if (col) col.onHoverChange(isHovered);
+      })
+    );
+
+    // Phase 2 – RenderSystem click broadcast
+    this._busUnsubs.push(
+      timelineEventBus.on('timeline:plane:click', ({ planeIndex }) => {
+        this.columns.forEach((col) => col.onFocusChange(false));
+        if (Number.isFinite(planeIndex) && this.columns[planeIndex]) {
+          this.columns[planeIndex].onFocusChange(true);
+        }
+      })
+    );
+
+    // Phase 2 – detail view closed → clear all focus
+    this._busUnsubs.push(
+      timelineEventBus.on('timeline:plane:focus:clear', () => {
+        this.columns.forEach((col) => col.onFocusChange(false));
+      })
+    );
   }
+
+  // ---------------------------------------------------------------------------
+  // Data
+  // ---------------------------------------------------------------------------
 
   setImageData(imageData = []) {
     this.imageData = Array.isArray(imageData) ? imageData : [];
     this.updateEvents(this.currentYear);
   }
+
+  // ---------------------------------------------------------------------------
+  // Year / scene event handlers
+  // ---------------------------------------------------------------------------
 
   onYearChange(event) {
     const year = event?.detail?.year;
@@ -327,168 +397,146 @@ export class EventsPanel {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Content helpers
+  // ---------------------------------------------------------------------------
+
   getCardDataForYear(year) {
     const byYear = this.imageData.filter((item) => Number(item.year) === Number(year));
     if (byYear.length > 0) {
       return byYear.sort((a, b) => (a.order || 0) - (b.order || 0))[0];
     }
-
-    return {
-      year,
-      title: 'Event name',
-      description: ''
-    };
+    return { year, title: 'Event name', description: '' };
   }
 
+  // ---------------------------------------------------------------------------
+  // Column activation
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Activate up to three columns (focused year + two neighbours) and
+   * deactivate everything else. Updates content for all active columns.
+   * @param {number} year - The currently focused year
+   */
   updateEvents(year) {
     this.currentYear = year;
 
-    const year1 = this.currentYear;
-    const year2 = Math.min(this.maxYear, year1 + 1);
-    const year3 = Math.min(this.maxYear, year1 + 2);
+    if (!this._ensureColumns()) {
+      // Planes not ready yet – retry on next RAF tick
+      return;
+    }
 
-    const primaryEntry = this.getCardDataForYear(year1);
-    const secondaryEntry = this.getCardDataForYear(year2);
-    const tertiaryEntry = this.getCardDataForYear(year3);
+    const focusedIndex = this.currentYear - this.minYear;
 
-    this.primaryMetaBox?.setContent({
-      year: year1,
-      title: primaryEntry.title,
-      description: primaryEntry.description,
-      ghostYear: year1
-    });
-    this.secondaryMetaBox?.setContent({
-      year: year2,
-      title: secondaryEntry.title,
-      description: secondaryEntry.description
-    });
-    this.tertiaryMetaBox?.setContent({
-      year: year3,
-      title: tertiaryEntry.title,
-      description: tertiaryEntry.description
+    // Determine the three active indices; no duplicates, no out-of-range
+    const candidateIndices = [focusedIndex, focusedIndex + 1, focusedIndex + 2];
+    const activeIndices = [...new Set(
+      candidateIndices.filter((i) => i >= 0 && i < this.columns.length)
+    )];
+
+    // Deactivate all columns first
+    this.columns.forEach((col) => col.setActive(false));
+
+    // Activate the visible ones with the correct variant and content
+    activeIndices.forEach((colIndex, position) => {
+      const col = this.columns[colIndex];
+      const displayYear = this.minYear + colIndex;
+      const entry = this.getCardDataForYear(displayYear);
+
+      const variant = position === 0 ? 'primary' : position === 1 ? 'secondary' : 'tertiary';
+      col.setVariant(variant);
+      col.setActive(true);
+      col.setContent({
+        year: displayYear,
+        title: entry.title,
+        description: entry.description,
+        ghostYear: position === 0 ? displayYear : undefined
+      });
     });
 
     this.updateAnchoredLayout();
   }
 
-  getAllTimelinePlanes() {
-    // Keep in sync with RenderSystem, which positions and renders window.app.imagePlanes.planes.
-    const imagePlanes = window.app?.imagePlanes;
-    if (!imagePlanes) return [];
-    if (Array.isArray(imagePlanes.planes) && imagePlanes.planes.length > 0) {
-      return imagePlanes.planes;
-    }
-    return imagePlanes.getPlanes?.() || [];
-  }
+  // ---------------------------------------------------------------------------
+  // Layout (RAF loop)
+  // ---------------------------------------------------------------------------
 
+  /**
+   * Reproject all active columns and update divider lines.
+   * Called every animation frame while the panel is visible.
+   */
   updateAnchoredLayout() {
     if (!this.isVisible) return;
 
     const camera = window.app?.camera;
     if (!camera) return;
 
-    const allPlanes = this.getAllTimelinePlanes();
-    if (!Array.isArray(allPlanes) || allPlanes.length === 0) return;
+    if (!this._ensureColumns()) return;
 
     const viewportWidth = Math.max(1, window.innerWidth || 1);
     const viewportHeight = Math.max(1, window.innerHeight || 1);
 
-    const index1 = Math.max(0, Math.min(allPlanes.length - 1, this.currentYear - this.minYear));
-    const index2 = Math.max(0, Math.min(allPlanes.length - 1, index1 + 1));
-    const index3 = Math.max(0, Math.min(allPlanes.length - 1, index1 + 2));
+    const focusedIndex = this.currentYear - this.minYear;
 
-    const primaryBounds = this.placeMetaUnderPlane(this.primaryMetaBox, allPlanes[index1], camera, viewportWidth, viewportHeight, true);
-    const secondaryBounds = this.placeMetaUnderPlane(this.secondaryMetaBox, allPlanes[index2], camera, viewportWidth, viewportHeight, false);
-    const tertiaryBounds = this.placeMetaUnderPlane(this.tertiaryMetaBox, allPlanes[index3], camera, viewportWidth, viewportHeight, false);
+    // Update layout for each active column
+    let primaryBounds = null;
+    let secondaryBounds = null;
+    let tertiaryBounds = null;
 
-    this.updateColumnGuides(
-      viewportWidth,
-      primaryBounds,
-      secondaryBounds,
-      tertiaryBounds,
-      allPlanes,
-      camera,
-      viewportHeight
-    );
-  }
-
-  placeMetaUnderPlane(metaBox, plane, camera, viewportWidth, viewportHeight, isPrimary) {
-    if (!metaBox || !plane || !plane.visible) {
-      if (metaBox) metaBox.setLayout({ visible: false });
-      return null;
-    }
-
-    const center = projectToScreen(plane.position, camera, viewportWidth, viewportHeight);
-    const size = planePixelSize(plane, camera, viewportHeight, true);
-
-    const requestedLeft = Math.round(center.x - (size.width / 2));
-    const requestedTop = Math.round(center.y + (size.height / 2) + META_BOX_OFFSET_PX);
-    const cardWidth = Math.max(1, Math.min(Math.round(size.width), viewportWidth - (META_VIEWPORT_MARGIN_PX * 2)));
-    const maxLeft = Math.max(META_VIEWPORT_MARGIN_PX, viewportWidth - cardWidth - META_VIEWPORT_MARGIN_PX);
-    const left = clamp(requestedLeft, META_VIEWPORT_MARGIN_PX, maxLeft);
-    const right = left + cardWidth;
-    const desiredMinHeight = isPrimary
-      ? Math.max(120, Math.min(230, Math.round(size.height * 0.8)))
-      : 96;
-    const maxTopFromMinHeight = Math.max(
-      META_VIEWPORT_MARGIN_PX,
-      viewportHeight - desiredMinHeight - META_VIEWPORT_MARGIN_PX
-    );
-    let top = clamp(requestedTop, META_VIEWPORT_MARGIN_PX, maxTopFromMinHeight);
-
-    metaBox.setLayout({
-      left,
-      top,
-      width: cardWidth,
-      minHeight: desiredMinHeight,
-      visible: true
+    this.columns.forEach((col, index) => {
+      if (!col.isActive) return;
+      const position = index - focusedIndex; // 0 = primary, 1 = secondary, 2 = tertiary
+      const isPrimary = position === 0;
+      const bounds = col.updateLayout(camera, viewportWidth, viewportHeight, isPrimary);
+      if (position === 0) primaryBounds = bounds;
+      else if (position === 1) secondaryBounds = bounds;
+      else if (position === 2) tertiaryBounds = bounds;
     });
 
-    const element = typeof metaBox.getElement === 'function' ? metaBox.getElement() : null;
-    if (element) {
-      const rect = element.getBoundingClientRect();
-      if (rect.bottom > viewportHeight - META_VIEWPORT_MARGIN_PX) {
-        top -= (rect.bottom - (viewportHeight - META_VIEWPORT_MARGIN_PX));
-      }
-      if (rect.top < META_VIEWPORT_MARGIN_PX) {
-        top += (META_VIEWPORT_MARGIN_PX - rect.top);
-      }
-      const clampedTop = clamp(
-        Math.round(top),
-        META_VIEWPORT_MARGIN_PX,
-        Math.max(META_VIEWPORT_MARGIN_PX, viewportHeight - Math.ceil(rect.height) - META_VIEWPORT_MARGIN_PX)
-      );
-      if (clampedTop !== Math.round(element.offsetTop || 0)) {
-        metaBox.setLayout({
-          left,
-          top: clampedTop,
-          width: cardWidth,
-          minHeight: desiredMinHeight,
-          visible: true
-        });
-      }
-      top = clampedTop;
-    }
-
-    return {
-      left,
-      right,
-      top,
-      bottom: top + Math.round(desiredMinHeight)
-    };
+    this.updateColumnGuides(viewportWidth, primaryBounds, secondaryBounds, tertiaryBounds, camera, viewportHeight);
   }
 
-  getPlaneBounds(plane, camera, viewportWidth, viewportHeight) {
-    if (!plane || !plane.visible) return null;
-    const center = projectToScreen(plane.position, camera, viewportWidth, viewportHeight);
-    // Divider lines should reflect live image width while scrolling.
-    const size = planePixelSize(plane, camera, viewportHeight, false);
-    const left = Math.floor(center.x - (size.width / 2));
-    const right = Math.ceil(center.x + (size.width / 2));
-    return { left, right };
+  // ---------------------------------------------------------------------------
+  // Divider lines
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Lightweight divider-only sync called every Three.js frame from RenderSystem.
+   * Reads plane bounds directly (no card layout, no getBoundingClientRect) so it
+   * can be called in the same RAF as updateImagePositions without causing a
+   * double forced-layout that would misplace the second image's metadata card.
+   */
+  syncDividers() {
+    if (!this.isVisible) return;
+    const camera = window.app?.camera;
+    if (!camera || !this._ensureColumns()) return;
+
+    const viewportWidth = Math.max(1, window.innerWidth || 1);
+    const viewportHeight = Math.max(1, window.innerHeight || 1);
+    const focusedIndex = this.currentYear - this.minYear;
+
+    let primaryBounds = null;
+    let secondaryBounds = null;
+    let tertiaryBounds = null;
+
+    this.columns.forEach((col, index) => {
+      if (!col.isActive) return;
+      const position = index - focusedIndex;
+      const bounds = col.getPlaneBounds(camera, viewportWidth, viewportHeight);
+      if (!bounds) return;
+      if (position === 0) primaryBounds = bounds;
+      else if (position === 1) secondaryBounds = bounds;
+      else if (position === 2) tertiaryBounds = bounds;
+    });
+
+    this.updateColumnGuides(viewportWidth, primaryBounds, secondaryBounds, tertiaryBounds, camera, viewportHeight);
   }
 
-  updateColumnGuides(viewportWidth, primaryBounds, secondaryBounds, tertiaryBounds, allPlanes, camera, viewportHeight) {
+  /**
+   * Compute vertical divider positions from all visible plane bounds and
+   * update the CSS custom properties and divider DOM nodes.
+   */
+  updateColumnGuides(viewportWidth, primaryBounds, secondaryBounds, tertiaryBounds, camera, viewportHeight) {
     if (!this.panel || !Number.isFinite(viewportWidth) || viewportWidth <= 0) return;
 
     const fallbackDividerOne = Math.round(viewportWidth * 0.42);
@@ -500,60 +548,77 @@ export class EventsPanel {
     this.panel.style.setProperty('--timeline-divider-one', `${dividerOnePx}px`);
     this.panel.style.setProperty('--timeline-divider-two', `${dividerTwoPx}px`);
 
-    if (!this.dividerLayer || !Array.isArray(allPlanes)) return;
+    if (!this.dividerLayer) return;
 
-    const visibleBounds = allPlanes
-      .map((plane, index) => ({ bounds: this.getPlaneBounds(plane, camera, viewportWidth, viewportHeight), index }))
+    // Collect bounds for ALL columns (not just active) to draw column-boundary dividers
+    const allBoundsEntries = this.columns
+      .map((col, index) => ({ bounds: col.getPlaneBounds(camera, viewportWidth, viewportHeight), index }))
       .filter((entry) => Boolean(entry.bounds));
 
     const visibleBoundsByIndex = new Map(
-      visibleBounds.map(({ bounds, index }) => [index, bounds])
+      allBoundsEntries.map(({ bounds, index }) => [index, bounds])
     );
 
-    const dividerPositions = visibleBounds
+    // Sub-pixel helper: round to 0.5px so dividers track the image at 0.5px
+    // granularity rather than integer steps, keeping them in sync with the
+    // smooth Three.js scale/position animation every frame.
+    const snap = (v) => Math.round(v * 2) / 2;
+
+    const dividerPositions = allBoundsEntries
       .flatMap(({ bounds, index }) => {
         const positions = [];
 
-        // Align cluster boundary dividers (4th, 7th, ...) to the incoming card left edge.
-        // Keep this marker AND the card's own right edge so the 4th-column right divider is visible.
+        // Cluster boundary divider: align to left edge of 4th, 7th, … card
         if (index > 0 && (index % 3) === 0) {
-          positions.push(Math.round(bounds.left));
+          positions.push(snap(bounds.left));
         }
 
-        // Avoid duplicate boundary lines between the 3rd and 4th cards in each cluster.
-        // Only suppress the 3rd card right edge when the 4th card left edge is on-screen.
+        // Suppress right edge of cluster-tail when the next cluster starts on-screen
         const isClusterTail = (index % 3) === 2;
         if (isClusterTail) {
           const nextBounds = visibleBoundsByIndex.get(index + 1);
-          const nextLeftPx = Number.isFinite(nextBounds?.left) ? Math.round(nextBounds.left) : null;
-          const nextBoundaryIsOnScreen = Number.isFinite(nextLeftPx) && nextLeftPx > 0 && nextLeftPx < viewportWidth;
-          if (!nextBoundaryIsOnScreen) {
-            positions.push(Math.round(bounds.right));
+          const nextLeftPx = Number.isFinite(nextBounds?.left) ? snap(nextBounds.left) : null;
+          const nextBoundaryOnScreen = Number.isFinite(nextLeftPx) && nextLeftPx > 0 && nextLeftPx < viewportWidth;
+          if (!nextBoundaryOnScreen) {
+            positions.push(snap(bounds.right));
           }
           return positions;
         }
 
-        positions.push(Math.round(bounds.right));
+        positions.push(snap(bounds.right));
         return positions;
       })
       .filter((x) => Number.isFinite(x) && x > 0 && x < viewportWidth)
       .sort((a, b) => a - b)
-      .filter((x, index, arr) => index === 0 || Math.abs(x - arr[index - 1]) > 2);
+      .filter((x, i, arr) => i === 0 || Math.abs(x - arr[i - 1]) > 1);
 
     const key = dividerPositions.join(',');
     if (key === this.lastDividerPositionsKey) return;
     this.lastDividerPositionsKey = key;
 
-    this.dividerLayer.replaceChildren();
-    const fragment = document.createDocumentFragment();
-    dividerPositions.forEach((x) => {
-      const divider = document.createElement('div');
-      divider.className = 'timeline-meta-divider';
-      divider.style.left = `${x}px`;
-      fragment.appendChild(divider);
-    });
-    this.dividerLayer.appendChild(fragment);
+    // Reuse existing divider elements when the count stays the same to avoid
+    // layout thrash; only rebuild the DOM when the count changes.
+    const existing = this.dividerLayer.children;
+    if (existing.length === dividerPositions.length) {
+      dividerPositions.forEach((x, i) => {
+        existing[i].style.left = `${x}px`;
+      });
+    } else {
+      this.dividerLayer.replaceChildren();
+      const fragment = document.createDocumentFragment();
+      dividerPositions.forEach((x) => {
+        const divider = document.createElement('div');
+        divider.className = 'timeline-meta-divider';
+        divider.style.left = `${x}px`;
+        fragment.appendChild(divider);
+      });
+      this.dividerLayer.appendChild(fragment);
+    }
   }
+
+  // ---------------------------------------------------------------------------
+  // RAF tracking
+  // ---------------------------------------------------------------------------
 
   startTracking() {
     if (this.rafId) return;
@@ -575,6 +640,10 @@ export class EventsPanel {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Show / hide
+  // ---------------------------------------------------------------------------
+
   show() {
     if (this.isVisible) return;
     this.isVisible = true;
@@ -590,14 +659,23 @@ export class EventsPanel {
     this.stopTracking();
   }
 
+  // ---------------------------------------------------------------------------
+  // Cleanup
+  // ---------------------------------------------------------------------------
+
   destroy() {
     window.removeEventListener('timelineYearChange', this.boundOnYearChange);
     window.removeEventListener('sceneChange', this.boundOnSceneChange);
     window.removeEventListener('sceneTransitionComplete', this.boundOnTransitionComplete);
 
-    this.hide();
+    this._busUnsubs.forEach((unsub) => unsub());
+    this._busUnsubs = [];
 
-    if (this.panel && this.panel.parentNode) {
+    this.hide();
+    this.columns.forEach((col) => col.destroy());
+    this.columns = [];
+
+    if (this.panel?.parentNode) {
       this.panel.parentNode.removeChild(this.panel);
     }
   }

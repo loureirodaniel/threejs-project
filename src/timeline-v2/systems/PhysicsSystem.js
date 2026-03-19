@@ -42,6 +42,8 @@ class PhysicsSystem {
     this.lastWheelEventAt = 0;
     this.lastGestureAt = 0;
     this.burstCount = 0;
+    this.snapStartTime = 0;
+    this.accumulatedScrollDelta = 0;
 
     // Timers
     this.scrollStopTimeout = null;
@@ -127,57 +129,80 @@ class PhysicsSystem {
   }
 
   /**
-   * Handle scroll events from InputSystem
+   * Handle scroll events from InputSystem.
+   *
+   * Strategy: accumulate normalized wheel delta and trigger exactly one
+   * snap step when the accumulated value crosses SCROLL_STEP_THRESHOLD.
+   * While a snap animation is playing, at most one additional step may
+   * be queued (only after the snap has been running for ≥250 ms so that
+   * a single trackpad swipe never double-fires).
+   *
    * @param {object} data - { delta, timestamp, deltaX, deltaY }
    */
   onScroll({ delta, timestamp }) {
-    // Check if scrolling is enabled
-    if (!this.scrollEnabled) {
-      // console.log('🔒 Scroll event blocked - system disabled');
-      return; // Exit early
-    }
+    if (!this.scrollEnabled) return;
 
-    console.debug('PhysicsSystem: Scroll event, delta:', delta);
-
-    const threshold = PHYSICS_CONFIG.SCROLL_STEP_THRESHOLD ?? 0.9;
-    const deadzone = threshold * 0.08;
-    if (Math.abs(delta) < deadzone) {
-      return;
-    }
+    if (Math.abs(delta) < 0.08) return;
 
     const now = performance.now();
-    const gestureGapMs = 18;
-    const burstWindowMs = 700;
-    const isNewGesture = (now - this.lastWheelEventAt) > gestureGapMs;
-    this.lastWheelEventAt = now;
+    const direction = Math.sign(delta);
+    if (direction === 0) return;
 
-    if (isNewGesture) {
-      const direction = Math.sign(delta);
-      if (direction !== 0) {
-        // Burst acceleration applies to rapid repeated gestures in either direction.
-        if ((now - this.lastGestureAt) <= burstWindowMs) {
-          this.burstCount = Math.min(14, this.burstCount + 1);
+    // --- Guard: while a snap is playing, or during the post-snap cooldown ---
+    if (this.isSnapping) {
+      // Only queue the next step if the delta is large enough to indicate
+      // a deliberate new gesture. Trackpad coast/momentum events are small
+      // and decaying; a genuine new swipe always peaks higher than 0.25.
+      if (this.pendingScrollSteps.length === 0 && Math.abs(delta) >= 0.25) {
+        this.pendingScrollSteps = [direction];
+
+        if ((now - this.lastGestureAt) <= 1000) {
+          this.burstCount = Math.min(6, this.burstCount + 1);
         } else {
           this.burstCount = 1;
         }
         this.lastGestureAt = now;
-
-        // Always move one adjacent image per gesture (no skipping).
-        // Burst speed is handled by shorter snap duration, not multi-step queuing.
-        if (this.pendingScrollSteps.length < 24) {
-          this.pendingScrollSteps.push(direction);
-        }
-
-        this.processNextScrollStep();
       }
+      this.state.setState({ isScrolling: true });
+      return;
+    }
+
+    if (this.snapCooldownUntil && now < this.snapCooldownUntil) {
+      return;
+    }
+
+    // --- Not snapping: accumulate delta toward threshold ---
+    if ((now - this.lastWheelEventAt) > 300) {
+      this.accumulatedScrollDelta = 0;
+    }
+    this.lastWheelEventAt = now;
+
+    this.accumulatedScrollDelta += delta;
+
+    const threshold = PHYSICS_CONFIG.SCROLL_STEP_THRESHOLD ?? 0.9;
+
+    if (Math.abs(this.accumulatedScrollDelta) >= threshold) {
+      const stepDirection = Math.sign(this.accumulatedScrollDelta);
+      this.accumulatedScrollDelta = 0;
+
+      if ((now - this.lastGestureAt) <= 800) {
+        this.burstCount = Math.min(5, this.burstCount + 1);
+      } else {
+        this.burstCount = 1;
+      }
+      this.lastGestureAt = now;
+
+      this.pendingScrollSteps = [stepDirection];
+      this.processNextScrollStep();
     }
 
     this.state.setState({ isScrolling: true });
 
     clearTimeout(this.snapCheckTimeout);
-
     clearTimeout(this.scrollStopTimeout);
     this.scrollStopTimeout = setTimeout(() => {
+      this.accumulatedScrollDelta = 0;
+      this.burstCount = 0;
       this.state.setState({ isScrolling: false });
       this.checkSnapAfterScroll();
     }, TIMING_CONFIG.SCROLL_STOP_DELAY ?? 400);
@@ -202,14 +227,12 @@ class PhysicsSystem {
     const targetOffset = firstPosition + (targetIndex * calculatedSpacing);
 
     if (targetIndex === baseIndex) {
-      this.processNextScrollStep();
       return;
     }
 
-    const baseDuration = PHYSICS_CONFIG.SCROLL_STEP_DURATION ?? 0.4;
-    const queueBoost = Math.min(0.45, this.pendingScrollSteps.length * 0.10);
-    const burstBoost = Math.min(0.55, Math.max(0, this.burstCount - 1) * 0.12);
-    const dynamicDuration = Math.max(0.12, baseDuration * (1 - queueBoost - burstBoost));
+    const baseDuration = PHYSICS_CONFIG.SCROLL_STEP_DURATION ?? 0.72;
+    const burstBoost = Math.min(0.58, Math.max(0, this.burstCount - 1) * 0.12);
+    const dynamicDuration = Math.max(0.28, baseDuration * (1 - burstBoost));
 
     this.snapToOffset(
       targetOffset,
@@ -445,6 +468,8 @@ class PhysicsSystem {
     console.debug('PhysicsSystem: Snapping to offset', targetOffset, 'index', targetIndex);
 
     this.isSnapping = true;
+    this.snapStartTime = performance.now();
+    this.snapCooldownUntil = 0;
     this.velocity = 0;
 
     const fromOffset = this.state.get('timelineOffset');
@@ -466,26 +491,43 @@ class PhysicsSystem {
       duration,
       ease: 'sine.inOut',
       onUpdate: () => {
-        this.state.setState({ timelineOffset: animTarget.value });
+        const prevOffset = this.state.get('timelineOffset') || 0;
+        const newOffset = animTarget.value;
+        const snapVelocity = Math.abs(newOffset - prevOffset);
+        this.state.setState({
+          timelineOffset: newOffset,
+          scrollVelocity: snapVelocity
+        });
       },
       onComplete: () => {
         this.isSnapping = false;
         this.snapAnimation = null;
 
+        const hasPendingSteps = this.pendingScrollSteps.length > 0;
+
+        // Apply cooldown and reset accumulator only after the final step of a
+        // burst, not between queued steps — so the camera stays pulled back
+        // and rapid navigation continues without interruption.
+        if (!hasPendingSteps) {
+          this.snapCooldownUntil = performance.now() + 320;
+          this.accumulatedScrollDelta = 0;
+        }
+
         this.state.setState({
           currentSnapIndex: targetIndex,
-          targetOffset: targetOffset
+          targetOffset: targetOffset,
+          scrollVelocity: 0
         });
 
         this.eventBus.emit('timeline:snap:complete', {
           offset: targetOffset,
-          index: targetIndex
+          index: targetIndex,
+          hasPendingSteps
         });
 
         this.triggerHaptic('snap');
         console.debug('PhysicsSystem: Snap complete to index', targetIndex);
 
-        // Continue queued wheel/trackpad steps smoothly, one image at a time.
         this.processNextScrollStep();
       }
     });

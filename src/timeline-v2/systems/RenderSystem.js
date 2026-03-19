@@ -24,8 +24,10 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { RippleAnimation } from './RippleAnimation.js';
 import * as TimelineUtils from '../utils/TimelineUtils.js';
-import { EFFECTS_CONFIG, SCENE_CONFIG, TIMELINE_CONFIG, TIMELINE_LAYOUT_CONFIG, IMAGE_ASPECT_RATIO, getTimelineLayoutSlot } from '../utils/TimelineConstants.js';
+import { EFFECTS_CONFIG, SCENE_CONFIG, TIMELINE_CONFIG, TIMELINE_LAYOUT_CONFIG, IMAGE_ASPECT_RATIO, SLOT_1_WIDTH_PX, SLOT_1_HEIGHT_PX, SLOT_1_TOP_PX, getTimelineLayoutSlot, getSceneMargins } from '../utils/TimelineConstants.js';
 import { GlitchShader } from '../../shaders/GlitchShader.js';
+import { UIManager } from '../../ui/UIManager.js';
+import { LayoutEngine } from '../utils/LayoutEngine.js';
 
 const DreamFogShader = {
   uniforms: {
@@ -93,7 +95,7 @@ class RenderSystem {
     this.state = state;
     this.eventBus = eventBus;
     this.timelineScene = timelineScene;
-    this.effects = effects; // { vignetteEffect, liquidDistortionEffect, backgroundBlurEffect }
+    this.effects = effects; // { vignetteEffect, backgroundBlurEffect }
 
     // Render state
     this.lastVignetteUpdate = 0;
@@ -107,18 +109,13 @@ class RenderSystem {
     // One reusable raycaster + vector (avoid allocations on each click)
     this.raycaster = new THREE.Raycaster();
     this.mouseNDC = new THREE.Vector2();
+    this._hoveredPlane = null;
+    this._onMouseMove = this._onMouseMove.bind(this);
     this.paused = false;
-    this.detailRenderInterval = null;
-    this.currentAnimatingPlane = null;
-    this.currentImageData = null;
-    this.hiddenTimelineUIState = [];
-    this.timelineUIHiddenByRenderSystem = false;
-    this.timelineStateBeforeDetail = null;
-    this.savedTimelineState = null;
-    this.savedTimelineConfig = null;
-    this.boundHandleKeydown = null;
-    this.isHandlingImageClose = false;
-    this.suppressNextImageCloseEvent = false;
+    this.uiManager = new UIManager();
+    this.layoutEngine = new LayoutEngine();
+    // imageDetailController is set by TimelineController after construction
+    this.imageDetailController = null;
     this._glitchTimeStep = 0.016;
     this._dreamEffectConfig = {
       enabled: true,
@@ -159,10 +156,8 @@ class RenderSystem {
       this.state.subscribe('isDragging', this.onDraggingChange.bind(this))
     );
 
-    // Subscribe to events
+    // Subscribe to events owned by RenderSystem
     this.unsubscribeFns.push(
-      this.eventBus.on('timeline:click', this.onTimelineClick.bind(this)),
-      this.eventBus.on('timeline:image:close', this.onImageClose.bind(this)),
       this.eventBus.on('timeline:snap:complete', this.onSnapComplete.bind(this)),
       this.eventBus.on('timeline:pause', () => {
         this.paused = true;
@@ -171,87 +166,18 @@ class RenderSystem {
       this.eventBus.on('timeline:resume', () => {
         this.paused = false;
         this.fadeOutDreamEffect();
-        this.stopDetailRenderLoop();
+        // stopDetailRenderLoop is now owned by ImageDetailController which also
+        // listens for timeline:resume; RenderSystem only handles its own paused flag.
         this.showTimelineUI();
         console.log('👁️ Title and year visible again');
         console.log('▶️ Timeline rendering resumed');
       })
     );
+    // timeline:click and timeline:image:close are handled by ImageDetailController
 
-    // Listen for signal to hide 3D plane when detail page takes over
-    this.onHidePlaneForDetailPage = () => {
-      // Find currently animating plane and hide it
-      if (this.currentAnimatingPlane) {
-        this.currentAnimatingPlane.visible = false;
-        console.log('🙈 3D plane hidden on detail page signal');
-      }
-    };
-    window.addEventListener('hidePlaneForDetailPage', this.onHidePlaneForDetailPage);
-
-    // Listen for animation handoff signal
-    this.onImageExpandHandoff = (event) => {
-      const { plane } = event.detail;
-      
-      console.log('🎨 Handoff signal received - hiding plane and revealing detail');
-      
-      // Simply hide the 3D plane
-      if (this.currentAnimatingPlane) {
-        this.currentAnimatingPlane.visible = false;
-        console.log('🙈 3D plane hidden');
-      }
-      
-      // Reveal detail page with smooth fade
-      const detailPage = window.app.timelineController?.imageDetailPage;
-      if (detailPage) {
-        detailPage.open({
-          plane: this.currentAnimatingPlane,
-          imageData: this.currentImageData, // Store this when animation starts
-          reveal: true
-        });
-        this.hideTimelineUI();
-        console.log('🙈 Title and year hidden via CSS class');
-        console.log('📋 Body classes:', document.body.className);
-        console.log('🎨 Using safe CSS-only approach');
-
-        // Check if elements are actually hidden
-        setTimeout(() => {
-          const title = document.querySelector('h1');
-          const year = document.querySelector('[class*="year"]');
-
-          console.log('🔍 Title element:', {
-            exists: !!title,
-            text: title?.textContent.substring(0, 30),
-            opacity: title ? window.getComputedStyle(title).opacity : 'N/A',
-            visibility: title ? window.getComputedStyle(title).visibility : 'N/A'
-          });
-
-          console.log('🔍 Year element:', {
-            exists: !!year,
-            opacity: year ? window.getComputedStyle(year).opacity : 'N/A',
-            visibility: year ? window.getComputedStyle(year).visibility : 'N/A'
-          });
-        }, 100);
-        console.log('👁️ Detail page reveal triggered');
-      }
-    };
-    window.addEventListener('imageExpandHandoff', this.onImageExpandHandoff);
-
-    this.setupKeyboardListeners();
+    window.addEventListener('mousemove', this._onMouseMove, { passive: true });
 
     console.log('RenderSystem initialized');
-  }
-
-  setupKeyboardListeners() {
-    this.handleKeydown = this.handleKeydown.bind(this);
-    window.addEventListener('keydown', this.handleKeydown);
-    console.log('⌨️ ESC key listener added');
-  }
-
-  handleKeydown(event) {
-    if (event.key === 'Escape' || event.keyCode === 27) {
-      console.log('ESC pressed - closing detail');
-      this.onImageClose();
-    }
   }
 
   /**
@@ -300,7 +226,13 @@ class RenderSystem {
     if (currentSceneIndex !== 1) return;
 
     // Update image positions based on offset
-    this.updateImagePositions(timelineOffset);
+    this.updateImagePositions(timelineOffset, deltaTime);
+
+    // Drive only the column-guide dividers from the Three.js RAF so they always
+    // read freshly-updated plane positions/scales. Card text layout (which calls
+    // getBoundingClientRect) stays in the EventsPanel's own RAF to avoid a
+    // double forced-layout cycle that would misplace the second image's card.
+    window.app?.eventsPanel?.syncDividers?.();
 
     // Update vignette (throttled)
     const now = Date.now();
@@ -330,8 +262,9 @@ class RenderSystem {
       this.initComposer(this.renderer, this.scene, this.camera);
     }
 
-    const fullscreenPlane = this.currentAnimatingPlane?.userData?.isFullscreen
-      ? this.currentAnimatingPlane
+    const _animatingPlane = this.imageDetailController?.currentAnimatingPlane;
+    const fullscreenPlane = _animatingPlane?.userData?.isFullscreen
+      ? _animatingPlane
       : null;
 
     if (fullscreenPlane) {
@@ -354,6 +287,7 @@ class RenderSystem {
     if (this._composer) {
       this.updateDreamEffectState();
       this._glitchPass.uniforms.uTime.value += this._glitchTimeStep;
+      this.updateGlitchFocusMask();
       this._composer.render();
     } else {
       this.renderer.render(this.scene, this.camera);
@@ -433,6 +367,67 @@ class RenderSystem {
     if (this._glitchPass) {
       this._glitchPass.uniforms.uGlitchIntensity.value = Math.max(0, Math.min(1, value));
     }
+  }
+
+  /**
+   * Compute the screen-space UV bounding box of the focused (centered) image
+   * and upload it to the glitch shader so that region is protected from glitch.
+   */
+  updateGlitchFocusMask() {
+    if (!this._glitchPass) return;
+
+    const camera = this.camera || window.app?.camera;
+    const allPlanes = window.app?.imagePlanes?.planes;
+    if (!camera || !allPlanes || allPlanes.length === 0) {
+      this._glitchPass.uniforms.uFocusRect.value = { x: -1, y: -1, z: -1, w: -1 };
+      return;
+    }
+
+    // Find the plane closest to center X (the focused image)
+    let closestPlane = null;
+    let closestDist = Infinity;
+    for (const plane of allPlanes) {
+      if (!plane.visible) continue;
+      if (plane.userData?.isFullscreen) continue;
+      const dist = Math.abs(plane.position.x);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closestPlane = plane;
+      }
+    }
+
+    if (!closestPlane) {
+      this._glitchPass.uniforms.uFocusRect.value = { x: -1, y: -1, z: -1, w: -1 };
+      return;
+    }
+
+    // Project the plane's four corners into NDC, then convert to UV (0–1).
+    const geom = closestPlane.geometry;
+    const halfW = (geom?.parameters?.width ?? 2.5) / 2;
+    const halfH = (geom?.parameters?.height ?? (2.5 * (IMAGE_ASPECT_RATIO || 1.5))) / 2;
+
+    const corners = [
+      new THREE.Vector3(-halfW, -halfH, 0),
+      new THREE.Vector3( halfW, -halfH, 0),
+      new THREE.Vector3( halfW,  halfH, 0),
+      new THREE.Vector3(-halfW,  halfH, 0)
+    ];
+
+    let minU = 1, maxU = 0, minV = 1, maxV = 0;
+    closestPlane.updateMatrixWorld(true);
+
+    for (const corner of corners) {
+      const world = corner.applyMatrix4(closestPlane.matrixWorld);
+      const ndc = world.project(camera);
+      const u = (ndc.x * 0.5) + 0.5;
+      const v = (ndc.y * 0.5) + 0.5;
+      minU = Math.min(minU, u);
+      maxU = Math.max(maxU, u);
+      minV = Math.min(minV, v);
+      maxV = Math.max(maxV, v);
+    }
+
+    this._glitchPass.uniforms.uFocusRect.value = { x: minU, y: minV, z: maxU, w: maxV };
   }
 
   setGlitchTimeStep(value) {
@@ -536,21 +531,14 @@ class RenderSystem {
     this._dreamTargetBoost = 0;
   }
 
+  /** @deprecated delegate to ImageDetailController */
   startDetailRenderLoop() {
-    if (this.detailRenderInterval) return;
-    
-    console.log('🔄 Starting continuous render loop for detail view');
-    this.detailRenderInterval = setInterval(() => {
-      this.render();
-    }, 16); // 60fps
+    this.imageDetailController?.startDetailRenderLoop();
   }
 
+  /** @deprecated delegate to ImageDetailController */
   stopDetailRenderLoop() {
-    if (this.detailRenderInterval) {
-      clearInterval(this.detailRenderInterval);
-      this.detailRenderInterval = null;
-      console.log('⏹️ Stopped continuous render loop');
-    }
+    this.imageDetailController?.stopDetailRenderLoop();
   }
 
   /**
@@ -568,288 +556,41 @@ class RenderSystem {
     };
   }
 
-  /**
-   * Compute world-space X shift so the focused image starts with a fixed
-   * left viewport padding in pixels.
-   * @param {Array<THREE.Mesh>} allPlanes
-   * @returns {number}
-   */
-  getViewportAnchorShift(allPlanes) {
-    const camera = this.camera || window.app?.camera;
-    if (!camera || !Array.isArray(allPlanes) || allPlanes.length === 0) return 0;
+  // ─── Layout methods — delegate to LayoutEngine ───────────────────────────────
 
-    const firstPlane = allPlanes[0];
-    const viewportWidth = Math.max(1, window.innerWidth || 1);
-    const slotZ = getTimelineLayoutSlot(0).z;
-    const visibleWidth = this.getVisibleWidthAtDepth(slotZ);
-    const unitsPerPixel = visibleWidth / viewportWidth;
-
-    const configuredPaddingPx = TIMELINE_LAYOUT_CONFIG.FIRST_IMAGE_LEFT_PADDING_PX ?? 50;
-    const firstScale = this.getSlotScaleForIndex(0, firstPlane);
-    const geometryWidth = firstPlane?.geometry?.parameters?.width ?? 2.5;
-    const planeWidthWorld = geometryWidth * firstScale;
-
-    return (-visibleWidth / 2) + (configuredPaddingPx * unitsPerPixel) + (planeWidthWorld / 2);
-  }
-
-  getVisibleWidthAtDepth(zDepth) {
-    const camera = this.camera || window.app?.camera;
-    if (!camera) return 1;
-    const viewportWidth = Math.max(1, window.innerWidth || 1);
-    const viewportHeight = Math.max(1, window.innerHeight || 1);
-    const fovRad = THREE.MathUtils.degToRad(camera.fov || 30);
-    // IMPORTANT: Keep layout calculations anchored to timeline baseline camera Z.
-    // If we use live camera Z here, scroll dolly gets visually canceled because
-    // plane sizes/positions are recomputed to preserve screen-space size.
-    const layoutReferenceZ = SCENE_CONFIG?.timeline?.position?.z ?? 2.5;
-    const distance = Math.max(0.001, Math.abs(layoutReferenceZ - zDepth));
-    const visibleHeight = 2 * Math.tan(fovRad / 2) * distance;
-    return visibleHeight * ((camera.aspect && Number.isFinite(camera.aspect)) ? camera.aspect : (viewportWidth / viewportHeight));
-  }
-
-  getSlotWidthPercentage(slotIndex) {
-    const percentages = TIMELINE_LAYOUT_CONFIG.IMAGE_WIDTH_PERCENTAGES || [0.3, 0.2, 0.15];
-    return percentages[slotIndex] ?? percentages[0] ?? 0.3;
-  }
-
-  getConfiguredSlotWidthsPx() {
-    const configuredWidths = TIMELINE_LAYOUT_CONFIG.IMAGE_WIDTHS_PX;
-    if (!Array.isArray(configuredWidths) || configuredWidths.length < 3) return null;
-    if (!configuredWidths.every((value) => Number.isFinite(value) && value > 0)) return null;
-    return configuredWidths;
-  }
-
-  getBaseSlotWidthPx(slotIndex) {
-    const safeIndex = Math.abs(slotIndex) % 3;
-    const configuredWidths = this.getConfiguredSlotWidthsPx();
-    if (configuredWidths) {
-      return configuredWidths[safeIndex];
-    }
-
-    const viewportWidth = Math.max(1, window.innerWidth || 1);
-    const leftPaddingPx = TIMELINE_LAYOUT_CONFIG.FIRST_IMAGE_LEFT_PADDING_PX ?? 50;
-    const columnGapPx = TIMELINE_LAYOUT_CONFIG.COLUMN_GAP_PX ?? 12;
-    const weights = [
-      this.getSlotWidthPercentage(0),
-      this.getSlotWidthPercentage(1),
-      this.getSlotWidthPercentage(2)
-    ];
-    const weightSum = Math.max(0.001, weights[0] + weights[1] + weights[2]);
-    const usableWidth = Math.max(1, viewportWidth - leftPaddingPx - (columnGapPx * 2));
-    return usableWidth * (weights[safeIndex] ?? weights[0]) / weightSum;
-  }
-
-  getViewportResponsiveScaleFactor() {
-    const viewportWidth = Math.max(1, window.innerWidth || 1);
-    const viewportHeight = Math.max(1, window.innerHeight || 1);
-    const leftPaddingPx = TIMELINE_LAYOUT_CONFIG.FIRST_IMAGE_LEFT_PADDING_PX ?? 50;
-    const columnGapPx = TIMELINE_LAYOUT_CONFIG.COLUMN_GAP_PX ?? 12;
-    const firstTopPx = TIMELINE_LAYOUT_CONFIG.FIRST_IMAGE_TOP_PX ?? 76;
-    const metaSafeSpacePx = TIMELINE_LAYOUT_CONFIG.META_SAFE_SPACE_PX ?? 170;
-    const metaOffsetPx = TIMELINE_LAYOUT_CONFIG.META_OFFSET_PX ?? 14;
-
-    const baseWidths = [this.getBaseSlotWidthPx(0), this.getBaseSlotWidthPx(1), this.getBaseSlotWidthPx(2)];
-    const clusterWidth = baseWidths[0] + baseWidths[1] + baseWidths[2] + (columnGapPx * 2);
-    const usableWidth = Math.max(1, viewportWidth - leftPaddingPx - (columnGapPx * 2));
-
-    let widthScale = 1;
-    if (this.getConfiguredSlotWidthsPx()) {
-      widthScale = Math.min(1, usableWidth / Math.max(1, clusterWidth));
-    }
-
-    const baseFirstHeight = baseWidths[0] * IMAGE_ASPECT_RATIO;
-    const maxColumnStackHeight = baseFirstHeight;
-    const availableHeightForStack = Math.max(
-      1,
-      viewportHeight - firstTopPx - metaOffsetPx - metaSafeSpacePx
-    );
-    const heightScale = Math.min(1, availableHeightForStack / Math.max(1, maxColumnStackHeight));
-
-    return Math.max(0.35, Math.min(widthScale, heightScale));
-  }
-
-  getSlotWidthPx(slotIndex) {
-    const responsiveScale = this.getViewportResponsiveScaleFactor();
-    return this.getBaseSlotWidthPx(slotIndex) * responsiveScale;
-  }
-
-  getColumnMetrics() {
-    const widths = [this.getSlotWidthPx(0), this.getSlotWidthPx(1), this.getSlotWidthPx(2)];
-    const leftPaddingPx = TIMELINE_LAYOUT_CONFIG.FIRST_IMAGE_LEFT_PADDING_PX ?? 50;
-    const columnGapPx = TIMELINE_LAYOUT_CONFIG.COLUMN_GAP_PX ?? 12;
-    const centers = [
-      leftPaddingPx + (widths[0] / 2),
-      leftPaddingPx + widths[0] + columnGapPx + (widths[1] / 2),
-      leftPaddingPx + widths[0] + columnGapPx + widths[1] + columnGapPx + (widths[2] / 2)
-    ];
-
-    return {
-      centers,
-      clusterWidth: widths[0] + widths[1] + widths[2] + (columnGapPx * 2)
-    };
-  }
-
-  getDiscreteSlotCenterPx(relativeIndex) {
-    const safeIndex = Number.isFinite(relativeIndex) ? Math.floor(relativeIndex) : 0;
-    const { centers, clusterWidth } = this.getColumnMetrics();
-    const slotIndex = ((safeIndex % 3) + 3) % 3;
-    const clusterIndex = Math.floor(safeIndex / 3);
-    return centers[slotIndex] + (clusterIndex * clusterWidth);
-  }
-
-  getInterpolatedSlotCenterPx(relativeIndex) {
-    const safeIndex = Number.isFinite(relativeIndex) ? relativeIndex : 0;
-    const lower = Math.floor(safeIndex);
-    const upper = lower + 1;
-    const progress = safeIndex - lower;
-    const lowerCenter = this.getDiscreteSlotCenterPx(lower);
-    const upperCenter = this.getDiscreteSlotCenterPx(upper);
-    return THREE.MathUtils.lerp(lowerCenter, upperCenter, progress);
-  }
-
-  pixelXToWorldX(pixelX, zDepth, camera) {
-    const activeCamera = camera || this.camera || window.app?.camera;
-    if (!activeCamera) return 0;
-    const viewportWidth = Math.max(1, window.innerWidth || 1);
-    const visibleWidth = this.getVisibleWidthAtDepth(zDepth);
-    const normalizedX = (pixelX / viewportWidth) - 0.5;
-    return normalizedX * visibleWidth;
-  }
-
-  getSlotScaleForIndex(index, plane) {
-    const slot = getTimelineLayoutSlot(index);
-    const slotIndex = Math.abs(index) % 3;
-    const geometryWidth = plane?.geometry?.parameters?.width ?? 2.5;
-    // Compute scale at the slot's own depth so screen-space column widths stay
-    // exactly contiguous (edge-to-edge) across columns.
-    const visibleWidth = this.getVisibleWidthAtDepth(slot.z);
-    const viewportWidth = Math.max(1, window.innerWidth || 1);
-    const unitsPerPixel = visibleWidth / viewportWidth;
-    const targetWorldWidth = this.getSlotWidthPx(slotIndex) * unitsPerPixel;
-
-    return Math.max(0.001, targetWorldWidth / Math.max(0.001, geometryWidth));
-  }
-
-  /**
-   * Scale multiplier by timeline distance (center stays largest).
-   * @param {number} worldX
-   * @returns {number}
-   */
-  getDistanceScaleMultiplier(worldX) {
-    const minScale = EFFECTS_CONFIG.TIMELINE_DISTANCE_MIN_SCALE ?? EFFECTS_CONFIG.NORMAL_SCALE ?? 0.75;
-    const falloffDistance = EFFECTS_CONFIG.TIMELINE_DISTANCE_SCALE_RANGE ?? 6.0;
-    const safeRange = Math.max(0.001, falloffDistance);
-    const distance = Math.abs((Number.isFinite(worldX) ? worldX : 0) - 0);
-    const t = Math.min(1, distance / safeRange);
-    // Smoothstep for natural shrink progression.
-    const eased = t * t * (3 - 2 * t);
-    return 1 - eased * (1 - minScale);
-  }
-
-  /**
-   * Additional scale decay for images beyond the first 3 timeline slots.
-   * Decay is relaxed near focus so overflow cards can grow while scrolling.
-   * @param {number} relativeIndex
-   * @returns {number}
-   */
-  getSequenceScaleMultiplier(relativeIndex) {
-    const safeIndex = Math.abs(Number.isFinite(relativeIndex) ? relativeIndex : 0);
-    const overflowStart = EFFECTS_CONFIG.TIMELINE_OVERFLOW_DECAY_START_INDEX ?? 2;
-    const extraSteps = Math.max(0, safeIndex - overflowStart);
-    if (extraSteps <= 0) return 1;
-
-    const perStepDecay = EFFECTS_CONFIG.TIMELINE_SEQUENCE_DECAY_PER_STEP ?? 0.94;
-    const minSequenceScale = EFFECTS_CONFIG.TIMELINE_SEQUENCE_MIN_SCALE ?? 0.65;
-    const baseOverflowScale = Math.max(minSequenceScale, Math.pow(perStepDecay, extraSteps));
-
-    const focusBlendRange = Math.max(0.001, EFFECTS_CONFIG.TIMELINE_OVERFLOW_FOCUS_BLEND_RANGE ?? 1.2);
-    const focusBlendRaw = ((overflowStart + focusBlendRange) - safeIndex) / focusBlendRange;
-    const focusBlend = Math.min(1, Math.max(0, focusBlendRaw));
-    const easedBlend = focusBlend * focusBlend * (3 - (2 * focusBlend));
-
-    return baseOverflowScale + ((1 - baseOverflowScale) * easedBlend);
-  }
-
-  getSlotIndexFromRelativeIndex(relativeIndex) {
-    const discreteIndex = Number.isFinite(relativeIndex) ? Math.round(relativeIndex) : 0;
-    return ((discreteIndex % 3) + 3) % 3;
-  }
-
-  getAlternatingRowSlotIndex(index, slotWorldY = []) {
-    const fallbackTopIndex = 0;
-    const fallbackBottomIndex = 1;
-    const rowValues = [0, 1, 2]
-      .map((slotIndex) => ({ slotIndex, y: slotWorldY?.[slotIndex] }))
-      .filter((entry) => Number.isFinite(entry.y));
-
-    if (rowValues.length < 2) {
-      return index % 2 === 0 ? fallbackTopIndex : fallbackBottomIndex;
-    }
-
-    const topIndex = rowValues.reduce((best, current) => (current.y > best.y ? current : best)).slotIndex;
-    const bottomIndex = rowValues.reduce((best, current) => (current.y < best.y ? current : best)).slotIndex;
-    return index % 2 === 0 ? topIndex : bottomIndex;
-  }
-
-  /**
-   * Convert a screen Y (px) to world Y for a specific z depth.
-   * @param {number} pixelY
-   * @param {number} zDepth
-   * @param {THREE.PerspectiveCamera} camera
-   * @returns {number}
-   */
-  pixelYToWorldY(pixelY, zDepth, camera) {
-    const viewportHeight = Math.max(1, window.innerHeight || 1);
-    const fovRad = THREE.MathUtils.degToRad(camera.fov || 30);
-    const layoutReferenceZ = SCENE_CONFIG?.timeline?.position?.z ?? 2.5;
-    const distance = Math.max(0.001, Math.abs(layoutReferenceZ - zDepth));
-    const visibleHeight = 2 * Math.tan(fovRad / 2) * distance;
-    const normalizedY = 0.5 - (pixelY / viewportHeight);
-    return normalizedY * visibleHeight;
-  }
-
-  /**
-   * Compute world-space Y for each layout slot so:
-   * - first image top = 80px from viewport top
-   * - second is 15% smaller and bottom-aligned with first
-   * - third top-aligned with second
-   * @param {Array<THREE.Mesh>} allPlanes
-   * @returns {number[]}
-   */
-  getLayoutSlotWorldY(allPlanes) {
-    const camera = this.camera || window.app?.camera;
-    if (!camera || !Array.isArray(allPlanes) || allPlanes.length === 0) return [0, 0, 0];
-
-    const firstSlot = getTimelineLayoutSlot(0);
-    const secondSlot = getTimelineLayoutSlot(1);
-    const thirdSlot = getTimelineLayoutSlot(2);
-    const firstHeightPx = this.getSlotWidthPx(0) * IMAGE_ASPECT_RATIO;
-    const secondHeightPx = this.getSlotWidthPx(1) * IMAGE_ASPECT_RATIO;
-    const thirdHeightPx = this.getSlotWidthPx(2) * IMAGE_ASPECT_RATIO;
-
-    const firstTopPx = TIMELINE_LAYOUT_CONFIG.FIRST_IMAGE_TOP_PX ?? 80;
-    const firstBottomPx = firstTopPx + firstHeightPx;
-    // Diagram layout:
-    // - image2 top aligned to image1 bottom
-    // - image3 bottom aligned to image1 bottom
-    const secondCenterPx = firstBottomPx + (secondHeightPx / 2);
-    const thirdCenterPx = firstBottomPx - (thirdHeightPx / 2);
-    const firstCenterPx = firstTopPx + (firstHeightPx / 2);
-
-    const slot0Y = this.pixelYToWorldY(firstCenterPx, firstSlot.z, camera);
-    const slot1Y = this.pixelYToWorldY(secondCenterPx, secondSlot.z, camera);
-    const slot2Y = this.pixelYToWorldY(thirdCenterPx, thirdSlot.z, camera);
-
-    return [slot0Y, slot1Y, slot2Y];
-  }
+  getViewportAnchorShift(allPlanes)                  { return this.layoutEngine.getViewportAnchorShift(allPlanes); }
+  getVisibleWidthAtDepth(zDepth)                     { return this.layoutEngine.getVisibleWidthAtDepth(zDepth); }
+  getSlotWidthPercentage(slotIndex)                  { return this.layoutEngine.getSlotWidthPercentage(slotIndex); }
+  getConfiguredSlotWidthsPx()                        { return this.layoutEngine.getConfiguredSlotWidthsPx(); }
+  getBaseSlotWidthPx(slotIndex)                      { return this.layoutEngine.getBaseSlotWidthPx(slotIndex); }
+  getViewportResponsiveScaleFactor()                 { return this.layoutEngine.getViewportResponsiveScaleFactor(); }
+  getSlotWidthPx(slotIndex)                          { return this.layoutEngine.getSlotWidthPx(slotIndex); }
+  getColumnMetrics()                                 { return this.layoutEngine.getColumnMetrics(); }
+  getDiscreteSlotCenterPx(relativeIndex)             { return this.layoutEngine.getDiscreteSlotCenterPx(relativeIndex); }
+  getInterpolatedSlotCenterPx(relativeIndex)         { return this.layoutEngine.getInterpolatedSlotCenterPx(relativeIndex); }
+  pixelXToWorldX(pixelX, zDepth)                     { return this.layoutEngine.pixelXToWorldX(pixelX, zDepth); }
+  getSlotScaleForIndex(index, plane)                 { return this.layoutEngine.getSlotScaleForIndex(index, plane); }
+  getDistanceScaleMultiplier(worldX)                 { return this.layoutEngine.getDistanceScaleMultiplier(worldX); }
+  getSequenceScaleMultiplier(relativeIndex)          { return this.layoutEngine.getSequenceScaleMultiplier(relativeIndex); }
+  getSlotYScaleCorrection(slotIndex)                 { return this.layoutEngine.getSlotYScaleCorrection(slotIndex); }
+  getSlotIndexFromRelativeIndex(relativeIndex)       { return this.layoutEngine.getSlotIndexFromRelativeIndex(relativeIndex); }
+  getAlternatingRowSlotIndex(index, slotWorldY = []) { return this.layoutEngine.getAlternatingRowSlotIndex(index, slotWorldY); }
+  pixelYToWorldY(pixelY, zDepth, camera)             { return this.layoutEngine.pixelYToWorldY(pixelY, zDepth, camera); }
+  getLayoutSlotWorldY(allPlanes)                     { return this.layoutEngine.getLayoutSlotWorldY(allPlanes); }
 
   /**
    * Update all image positions based on timeline offset.
+   * Uses smooth interpolation between layout slot states (scale & z-depth)
+   * and Lenis-style temporal lerping for a staggered, buttery transition.
+   *
    * @param {number} offset - Current timeline offset
+   * @param {number} [deltaTime] - Frame delta in seconds. When omitted or 0,
+   *   positions/scales snap immediately (used during restoration).
    */
-  updateImagePositions(offset) {
+  updateImagePositions(offset, deltaTime) {
     const safeOffset = Number.isFinite(offset) ? offset : 0;
     const allPlanes = window.app?.imagePlanes?.planes || [];
+    const dt = Number.isFinite(deltaTime) && deltaTime > 0 ? deltaTime : 0;
 
     const spacing = this.state.get('calculatedSpacing') || 1.8;
     const firstPosition = TIMELINE_CONFIG.FIRST_POSITION || -4.5;
@@ -857,25 +598,136 @@ class RenderSystem {
     const cullDistance = 15;
     const slotWorldY = this.getLayoutSlotWorldY(allPlanes);
 
+    const scaleLerpSpeed = EFFECTS_CONFIG.SCALE_LERP_SPEED ?? 6.0;
+    const lerpFactor = dt > 0 ? (1 - Math.exp(-scaleLerpSpeed * dt)) : 1.0;
+
+    // Pre-pass A: stamp every plane with its array index so push-source detection
+    // is always reliable, regardless of how `planes` is accessed.
+    for (let i = 0; i < allPlanes.length; i++) {
+      if (allPlanes[i]) allPlanes[i].userData._timelineIndex = i;
+    }
+
+    // Pre-pass B: compute a fresh _hoverMult for every plane using the CURRENT
+    // GSAP _hoverProgress tick (rather than last frame's stamped value).
+    // This ensures pushSources below — and therefore each plane's pushX offset —
+    // are derived from the same animation frame as the scale, eliminating the
+    // 1-frame lag that caused the divider to trail behind the image right edge.
+    for (let i = 0; i < allPlanes.length; i++) {
+      const plane = allPlanes[i];
+      if (!plane || plane.userData?.isFrozen || plane.userData?.animatingFromFullscreen || plane.userData?.isTransitioning) continue;
+      const hovProgress = plane.userData._hoverProgress ?? 0;
+      const prevSx = plane.userData._smoothScale || 1;
+      if (hovProgress > 0.001 && prevSx > 0) {
+        const mult = this._computeHoverScaleMultiplier(plane, prevSx);
+        plane.userData._hoverMult = 1.0 + (mult - 1.0) * hovProgress;
+      } else {
+        plane.userData._hoverMult = 1.0;
+      }
+    }
+
+    // Collect ALL planes that are currently expanding or collapsing as push sources.
+    // Using multiple sources simultaneously prevents the jag when hover transitions
+    // from plane A to plane A+1: A's collapsing push and A+1's expanding push both
+    // contribute smoothly instead of A's contribution being dropped the moment
+    // _hoveredPlane switches, causing A+1 to snap left before its own growth kicks in.
+    // pushSources now uses the freshly-computed _hoverMult values from pre-pass B.
+    const pushSources = [];
+    for (let i = 0; i < allPlanes.length; i++) {
+      const p = allPlanes[i];
+      if (!p || !p.geometry?.parameters?.width) continue;
+      const pMult = p.userData._hoverMult ?? 1;
+      if (pMult <= 1.001) continue;
+      const pSx = p.userData._smoothScale || 1;
+      const pExtra = pSx * p.geometry.parameters.width * (pMult - 1.0);
+      const pZ = p.userData._smoothZ ?? p.position.z ?? 0;
+      const pVisW = Math.max(0.001, this.getVisibleWidthAtDepth(pZ));
+      pushSources.push({ index: i, extraWorld: pExtra, visW: pVisW });
+    }
+
     allPlanes.forEach((plane, index) => {
       if (!plane) return;
       if (plane.userData?.isFrozen || plane.userData?.animatingFromFullscreen || plane.userData?.isTransitioning) return;
-      const relativeIndex = index - progress;
-      const slotIndex = this.getSlotIndexFromRelativeIndex(relativeIndex);
-      const rowSlotIndex = this.getAlternatingRowSlotIndex(index, slotWorldY);
-      const slot = getTimelineLayoutSlot(slotIndex);
-      const rowSlot = getTimelineLayoutSlot(rowSlotIndex);
-      const targetCenterPx = this.getInterpolatedSlotCenterPx(relativeIndex);
-      const targetWorldX = this.pixelXToWorldX(targetCenterPx, slot.z, this.camera);
-      const baseScale = this.getSlotScaleForIndex(slotIndex, plane);
-      // Keep contiguous columns: avoid extra per-image scaling that introduces
-      // visual horizontal gaps between adjacent timeline images.
-      const targetScale = baseScale;
 
-      plane.position.x = targetWorldX;
+      const relativeIndex = index - progress;
+      const rowSlotIndex = this.getAlternatingRowSlotIndex(index, slotWorldY);
+      const rowSlot = getTimelineLayoutSlot(rowSlotIndex);
+
+      // Smoothstep interpolation between adjacent slot states so scale and
+      // z-depth transition continuously instead of jumping at slot boundaries.
+      const lowerRel = Math.floor(relativeIndex);
+      const upperRel = lowerRel + 1;
+      const fraction = relativeIndex - lowerRel;
+      const smoothFraction = fraction * fraction * (3 - 2 * fraction);
+
+      const lowerSlotIdx = ((lowerRel % 3) + 3) % 3;
+      const upperSlotIdx = ((upperRel % 3) + 3) % 3;
+
+      const lowerSlot = getTimelineLayoutSlot(lowerSlotIdx);
+      const upperSlot = getTimelineLayoutSlot(upperSlotIdx);
+
+      const interpScale = THREE.MathUtils.lerp(
+        this.getSlotScaleForIndex(lowerSlotIdx, plane),
+        this.getSlotScaleForIndex(upperSlotIdx, plane),
+        smoothFraction
+      );
+      const interpZ = THREE.MathUtils.lerp(lowerSlot.z, upperSlot.z, smoothFraction);
+      const interpYCorrection = THREE.MathUtils.lerp(
+        this.getSlotYScaleCorrection(lowerSlotIdx),
+        this.getSlotYScaleCorrection(upperSlotIdx),
+        smoothFraction
+      );
+
+      // Temporal smoothing (frame-rate independent) for staggered feel
+      if (plane.userData._smoothScale == null) plane.userData._smoothScale = interpScale;
+      if (plane.userData._smoothZ == null) plane.userData._smoothZ = interpZ;
+      if (plane.userData._smoothYCorrection == null) plane.userData._smoothYCorrection = interpYCorrection;
+
+      plane.userData._smoothScale = THREE.MathUtils.lerp(plane.userData._smoothScale, interpScale, lerpFactor);
+      plane.userData._smoothZ = THREE.MathUtils.lerp(plane.userData._smoothZ, interpZ, lerpFactor);
+      plane.userData._smoothYCorrection = THREE.MathUtils.lerp(plane.userData._smoothYCorrection, interpYCorrection, lerpFactor);
+
+      const targetCenterPx = this.getInterpolatedSlotCenterPx(relativeIndex);
+      const targetWorldX = this.pixelXToWorldX(targetCenterPx, plane.userData._smoothZ, this.camera);
+
+      // Push-right: accumulate contributions from every active push source.
+      // Each source keeps its own left edge fixed (contributes extraWorld/2 to itself)
+      // and pushes planes to its right by the full extra width (z-depth corrected).
+      // Summing all sources lets a collapsing plane (A) and an expanding plane (A+1)
+      // blend their forces simultaneously, eliminating the leftward snap when hover
+      // transitions between adjacent images.
+      const planeIdx = plane.userData._timelineIndex ?? index;
+      let pushX = 0;
+      if (pushSources.length > 0) {
+        const targetZ = plane.userData._smoothZ ?? plane.position.z ?? 0;
+        const targetVisW = Math.max(0.001, this.getVisibleWidthAtDepth(targetZ));
+        for (const src of pushSources) {
+          if (planeIdx === src.index) {
+            // This plane is the source — shift right by half extra to keep left edge fixed.
+            pushX += src.extraWorld / 2;
+          } else if (planeIdx > src.index) {
+            // Plane is right of this source — full z-corrected push.
+            pushX += src.extraWorld * (targetVisW / src.visW);
+          }
+          // planeIdx < src.index → source never pushes planes to its left.
+        }
+      }
+
+      plane.position.x = targetWorldX + pushX;
       plane.position.y = slotWorldY[rowSlotIndex] ?? rowSlot.y;
-      plane.position.z = slot.z;
-      plane.scale.setScalar(targetScale);
+      plane.position.z = plane.userData._smoothZ;
+      const sx = plane.userData._smoothScale;
+
+      // GSAP-driven hover scale: _hoverProgress (0→1) is animated by _triggerHoverAnimation.
+      // Left edge stays fixed because pushX shifts the plane right by half the extra width.
+      const hovProgress = plane.userData._hoverProgress ?? 0;
+      let hoverMult = 1.0;
+      if (hovProgress > 0.001) {
+        hoverMult = 1.0 + (this._computeHoverScaleMultiplier(plane, sx) - 1.0) * hovProgress;
+      }
+      plane.userData._hoverMult = hoverMult;
+      const finalSx = sx * hoverMult;
+
+      plane.scale.set(finalSx, finalSx * plane.userData._smoothYCorrection, finalSx);
       plane.visible = Math.abs(plane.position.x) < cullDistance;
     });
   }
@@ -915,6 +767,122 @@ class RenderSystem {
 
       // Scale is enforced in updateImagePositions (slot width + distance falloff).
     });
+  }
+
+  /**
+   * Detect which timeline plane (if any) the mouse is over using raycasting.
+   * Updates this._hoveredPlane so updateImagePositions can apply the hover scale.
+   * @param {MouseEvent} event
+   */
+  _onMouseMove(event) {
+    const camera = this.camera || window.app?.camera;
+    if (!camera) return;
+
+    if (this.state.get('currentSceneIndex') !== 1 || this.paused) {
+      if (this._hoveredPlane) this._hoveredPlane = null;
+      return;
+    }
+
+    const allPlanes = window.app?.imagePlanes?.planes || [];
+    if (!allPlanes.length) return;
+
+    const normalizedX = (event.clientX / window.innerWidth) * 2 - 1;
+    const normalizedY = -(event.clientY / window.innerHeight) * 2 + 1;
+    this.mouseNDC.set(normalizedX, normalizedY);
+    this.raycaster.setFromCamera(this.mouseNDC, camera);
+
+    const visiblePlanes = allPlanes.filter(p => p && p.visible && !p.userData?.isFrozen && !p.userData?.isTransitioning);
+    const intersects = this.raycaster.intersectObjects(visiblePlanes, false);
+
+    const newHovered = intersects.length > 0 ? intersects[0].object : null;
+    if (newHovered !== this._hoveredPlane) {
+      this._triggerHoverAnimation(this._hoveredPlane, newHovered);
+      this._hoveredPlane = newHovered;
+    }
+  }
+
+  /**
+   * Fire GSAP tweens when the hovered plane changes.
+   * - Hovered plane: _hoverProgress 0→1 over 1.5 s (power2.out) — controls left-to-right expansion.
+   * - Neighbours: _pushWeight 0→1 with stagger delay based on distance so near planes react first.
+   * - Un-hover collapses everything back smoothly.
+   * @param {THREE.Mesh|null} oldPlane  Previously hovered plane (may be null)
+   * @param {THREE.Mesh|null} newPlane  Newly hovered plane (may be null)
+   */
+  _triggerHoverAnimation(oldPlane, newPlane) {
+    const allPlanes = window.app?.imagePlanes?.planes || [];
+
+    // Stamp timeline indices so pushSourceIndex detection is reliable.
+    allPlanes.forEach((p, i) => { if (p) p.userData._timelineIndex = i; });
+
+    // ── Un-hover old plane ──────────────────────────────────────────────────
+    if (oldPlane && oldPlane !== newPlane) {
+      if (oldPlane.userData._hoverProgress == null) oldPlane.userData._hoverProgress = 1;
+      gsap.killTweensOf(oldPlane.userData, '_hoverProgress');
+      gsap.to(oldPlane.userData, {
+        _hoverProgress: 0,
+        duration: 0.85,
+        ease: 'power2.inOut',
+      });
+
+      // Notify column components so they can update their CSS hover state
+      const oldIndex = oldPlane.userData._timelineIndex;
+      if (Number.isFinite(oldIndex)) {
+        this.eventBus.emit('timeline:plane:hover', { planeIndex: oldIndex, isHovered: false });
+      }
+    }
+
+    // ── Hover new plane ─────────────────────────────────────────────────────
+    if (newPlane) {
+      if (newPlane.userData._hoverProgress == null) newPlane.userData._hoverProgress = 0;
+      gsap.killTweensOf(newPlane.userData, '_hoverProgress');
+      gsap.to(newPlane.userData, {
+        _hoverProgress: 1,
+        duration: 1.5,
+        ease: 'power2.out',
+      });
+
+      // Notify column components so they can update their CSS hover state
+      const newIndex = newPlane.userData._timelineIndex;
+      if (Number.isFinite(newIndex)) {
+        this.eventBus.emit('timeline:plane:hover', { planeIndex: newIndex, isHovered: true });
+      }
+    }
+
+    // Neighbours track pushExtraWorld directly (computed from _hoverMult each frame),
+    // so they move in perfect sync with the hovered plane — no per-plane delay needed.
+  }
+
+  /**
+   * Compute the scale multiplier needed to make a plane reach 65% of viewport
+   * height, respecting the scene top/bottom margins.
+   * @param {THREE.Mesh} plane
+   * @param {number} baseSx - Current base scale of the plane
+   * @returns {number} Multiplier to apply on top of baseSx
+   */
+  _computeHoverScaleMultiplier(plane, baseSx) {
+    const camera = this.camera || window.app?.camera;
+    if (!camera || !baseSx || !plane.geometry?.parameters?.width) return 1.0;
+
+    const vh = Math.max(1, window.innerHeight);
+    const vw = Math.max(1, window.innerWidth);
+    const margins = getSceneMargins();
+    const availableHeight = vh - margins.top - margins.bottom;
+    // Cap at 50% of viewport; never exceed the padded area so the image stays
+    // inside the top and bottom margins at all times.
+    const expandedHeightPx = Math.min(0.50 * vh, availableHeight);
+    // IMAGE_ASPECT_RATIO = height/width, so width = height / aspectRatio
+    const expandedWidthPx = expandedHeightPx / IMAGE_ASPECT_RATIO;
+
+    const zDepth = plane.userData._smoothZ ?? plane.position.z;
+    const visibleWidth = this.getVisibleWidthAtDepth(zDepth);
+    const unitsPerPixel = visibleWidth / vw;
+    const targetWorldWidth = expandedWidthPx * unitsPerPixel;
+
+    const geometryWidth = plane.geometry.parameters.width;
+    const expandedScale = targetWorldWidth / Math.max(0.001, geometryWidth);
+
+    return expandedScale / Math.max(0.001, baseSx);
   }
 
   /**
@@ -962,17 +930,29 @@ class RenderSystem {
    * @param {{newValue: boolean}} payload
    */
   onDraggingChange({ newValue }) {
-    if (newValue) {
-      this.effects.liquidDistortionEffect?.setControlMode?.('external');
-      return;
-    }
-    this.effects.liquidDistortionEffect?.fadeOutEffect?.();
   }
 
+  // ─── Backward-compat wrappers ─────────────────────────────────────────────
+  // These methods are called by ImageDetailPage.js and internal code that
+  // predates ImageDetailController.  They stay here so external call-sites
+  // do not break; all logic lives in ImageDetailController.
+
   /**
-   * Handle timeline clicks - Proximity-based detection (more reliable)
+   * Getter mirrors ImageDetailController.hiddenPlanes so ImageDetailPage.js
+   * can still read/write renderSystem.hiddenPlanes.
    */
-  onTimelineClick(data) {
+  get hiddenPlanes() { return this.imageDetailController?.hiddenPlanes; }
+  set hiddenPlanes(v) { if (this.imageDetailController) this.imageDetailController.hiddenPlanes = v; }
+
+  handleCloseButton() { this.imageDetailController?.handleCloseButton(); }
+  closeDetailView(plane) { this.imageDetailController?.closeDetailView(plane); }
+
+  // All image-click / detail / restore logic now lives in ImageDetailController.
+  // Backward-compat wrappers (handleCloseButton, closeDetailView, hiddenPlanes)
+  // are above this comment.
+
+  /** @deprecated dead code — will be removed after validation */
+  _deadOnTimelineClick(data) {
     console.log('🖱️ CLICK at screen:', data.clientX, data.clientY);
     
     try {
@@ -1035,6 +1015,9 @@ class RenderSystem {
         console.log(`✅ Clicked image ${closest.index} (${closest.distance.toFixed(0)}px away)`);
         console.log(`   Image year: ${closest.imageData.year}`);
         this.triggerDreamEffect();
+
+        // Notify column components so they can apply their CSS focus state
+        this.eventBus.emit('timeline:plane:click', { planeIndex: closest.index });
         
         // Get current centered image index from state
         const currentIndex = this.state.get('currentImageIndex') || 0;
@@ -1338,7 +1321,7 @@ class RenderSystem {
   /**
    * Handle close request from InputSystem/UI.
    */
-  onImageClose() {
+  _removedOnImageClose() {
     if (this.suppressNextImageCloseEvent) {
       this.suppressNextImageCloseEvent = false;
       return;
@@ -1348,6 +1331,9 @@ class RenderSystem {
     }
     this.isHandlingImageClose = true;
     this.imagePlanes = this.imagePlanes || window.app?.imagePlanes;
+
+    // Clear column focus state when detail view closes
+    this.eventBus.emit('timeline:plane:focus:clear', {});
 
     console.log('🔴 ========== CLOSING DETAIL ==========');
     this.fadeOutDreamEffect();
@@ -1394,24 +1380,23 @@ class RenderSystem {
     });
   }
 
-  closeDetailView(plane) {
+  _removedCloseDetailView(plane) {
     if (plane && !plane.userData?.isFullscreen) {
       console.log('⚠️ No fullscreen plane to close');
       return;
     }
-    this.onImageClose();
+    this._removedOnImageClose();
   }
 
-  // When close button is clicked
-  handleCloseButton() {
-    this.onImageClose();
+  _removedHandleCloseButton() {
+    this._removedOnImageClose();
   }
 
-  handleDetailClose() {
-    this.onImageClose();
+  _removedHandleDetailClose() {
+    this._removedOnImageClose();
   }
 
-  restoreExactTimelineConfig() {
+  _removedRestoreExactTimelineConfig() {
     console.log('🔄 ========== RESTORING EXACT TIMELINE ==========');
 
     // Remove ALL classes that might hide UI
@@ -1818,7 +1803,7 @@ class RenderSystem {
     setTimeout(() => forceVisibility(), 200);
   }
 
-  restoreCompleteTimelineState() {
+  _removedRestoreCompleteTimelineState() {
     console.log('🔄 ========== RESTORING TIMELINE ==========');
 
     if (!this.savedTimelineState) {
@@ -2112,91 +2097,24 @@ class RenderSystem {
     console.log('✅ ========== RESTORATION COMPLETE ==========');
   }
 
-  restoreTimelineState() {
-    // Backward-compatible alias
-    this.restoreCompleteTimelineState();
+  _removedRestoreTimelineState() {
+    this._removedRestoreCompleteTimelineState();
   }
 
   pauseTimelineSystems() {
-    const timelineController = window.app?.timelineController;
-    this.physicsSystem = timelineController?.physicsSystem || this.physicsSystem;
-    this.inputSystem = timelineController?.inputSystem || this.inputSystem;
-    this.cameraSystem = timelineController?.cameraSystem || this.cameraSystem;
-    this.animationChoreographer = timelineController?.animationChoreographer || this.animationChoreographer;
-
-    if (this.physicsSystem) {
-      if ('enabled' in this.physicsSystem) {
-        this.physicsSystem.enabled = false;
-      }
-      if ('scrollEnabled' in this.physicsSystem) {
-        this.physicsSystem.scrollEnabled = false;
-      }
-      this.physicsSystem.velocity = 0;
-    }
-    if (this.inputSystem && 'enabled' in this.inputSystem) {
-      this.inputSystem.enabled = false;
-    }
-    if (this.animationChoreographer && 'enabled' in this.animationChoreographer) {
-      this.animationChoreographer.enabled = false;
-    }
-    if (this.cameraSystem?.freeze) {
-      this.cameraSystem.freeze();
-    } else if (this.cameraSystem?.freezeCamera) {
-      this.cameraSystem.freezeCamera();
-    }
-
-    console.log('⏸️ Timeline systems paused');
+    // Delegate to TimelineController (the orchestrator) via event bus.
+    // TimelineController.pauseTimeline() owns all sibling-system references.
+    this.eventBus.emit('systems:pause', {});
   }
 
   resumeTimelineSystems() {
-    console.log('▶️ Resuming timeline systems');
-
-    const timelineController = window.app?.timelineController;
-    this.physicsSystem = timelineController?.physicsSystem || this.physicsSystem;
-    this.inputSystem = timelineController?.inputSystem || this.inputSystem;
-    this.cameraSystem = timelineController?.cameraSystem || this.cameraSystem;
-    this.animationChoreographer = timelineController?.animationChoreographer || this.animationChoreographer;
-
-    // Re-enable physics
-    if (this.physicsSystem) {
-      if ('enabled' in this.physicsSystem) {
-        this.physicsSystem.enabled = true;
-      }
-      if ('scrollEnabled' in this.physicsSystem) {
-        this.physicsSystem.scrollEnabled = true;
-      }
-    }
-
-    // Re-enable input
-    if (this.inputSystem && 'enabled' in this.inputSystem) {
-      this.inputSystem.enabled = true;
-    }
-
-    // Unfreeze camera
-    if (this.cameraSystem?.unfreeze) {
-      this.cameraSystem.unfreeze();
-    } else if (this.cameraSystem?.unfreezeCamera) {
-      this.cameraSystem.unfreezeCamera();
-    }
-
-    // Resume animation choreographer
-    if (this.animationChoreographer && 'enabled' in this.animationChoreographer) {
-      this.animationChoreographer.enabled = true;
-    }
-
-    if (timelineController?.resumeTimeline) {
-      timelineController.resumeTimeline();
-    } else {
-      this.paused = false;
-      this.showTimelineUI();
-      this.eventBus.emit('timeline:resume', {});
-    }
-
-    console.log('✅ Timeline systems resumed');
+    // Delegate to TimelineController via event bus.
+    // TimelineController.resumeTimeline() re-enables systems and emits timeline:resume.
+    this.eventBus.emit('systems:resume', {});
   }
 
   stopContinuousRender() {
-    this.stopDetailRenderLoop();
+    this.imageDetailController?.stopDetailRenderLoop();
   }
 
   /**
@@ -2207,68 +2125,24 @@ class RenderSystem {
     this.updateVignette(offset);
   }
 
-  /**
-   * Safely hide only timeline UI elements.
-   */
+  /** Hide timeline UI elements (delegates to UIManager). */
   hideTimelineUI() {
-    if (typeof document === 'undefined') return;
-    if (this.timelineUIHiddenByRenderSystem) return;
-    const selectors = ['.timeline-ui-wrapper', '.project-title', '.year-overlay', '#timeline-navigation', '#timeline-meta-overlay'];
-    const elements = selectors
-      .map((selector) => document.querySelector(selector))
-      .filter(Boolean);
-
-    this.hiddenTimelineUIState = [];
-    elements.forEach((el) => {
-      this.hiddenTimelineUIState.push({
-        el,
-        opacity: el.style.opacity,
-        visibility: el.style.visibility,
-        pointerEvents: el.style.pointerEvents
-      });
-      el.style.opacity = '0';
-      el.style.visibility = 'hidden';
-      el.style.pointerEvents = 'none';
-    });
-    this.timelineUIHiddenByRenderSystem = true;
+    this.uiManager.hideTimelineUI();
   }
 
-  /**
-   * Restore timeline UI elements hidden by hideTimelineUI().
-   */
+  /** Restore timeline UI elements hidden by hideTimelineUI() (delegates to UIManager). */
   showTimelineUI() {
-    if (!this.timelineUIHiddenByRenderSystem && (!Array.isArray(this.hiddenTimelineUIState) || this.hiddenTimelineUIState.length === 0)) return;
-
-    this.hiddenTimelineUIState.forEach((item) => {
-      const { el, opacity, visibility, pointerEvents } = item;
-      if (!el) return;
-      el.style.opacity = opacity || '';
-      el.style.visibility = visibility || '';
-      el.style.pointerEvents = pointerEvents || '';
-    });
-
-    this.hiddenTimelineUIState = [];
-    this.timelineUIHiddenByRenderSystem = false;
-    this.refreshTimelineMetaOverlay();
+    this.uiManager.showTimelineUI();
   }
 
+  /** Remove body/html scroll locks (delegates to UIManager). */
   unlockGlobalScrollLock() {
-    if (typeof document === 'undefined') return;
-    document.body.style.removeProperty('overflow');
-    document.body.style.removeProperty('pointer-events');
-    document.documentElement?.style?.removeProperty('overflow');
-    document.documentElement?.style?.removeProperty('pointer-events');
+    this.uiManager.unlockGlobalScrollLock();
   }
 
+  /** Force the events-panel to regenerate dividers (delegates to UIManager). */
   refreshTimelineMetaOverlay() {
-    const eventsPanel = window.app?.eventsPanel;
-    if (!eventsPanel) return;
-
-    // Force divider regeneration in case the detail sequence cleared cached positions.
-    eventsPanel.lastDividerPositionsKey = '';
-    requestAnimationFrame(() => {
-      eventsPanel.updateAnchoredLayout?.();
-    });
+    this.uiManager.refreshTimelineMetaOverlay();
   }
 
   /**
@@ -2280,11 +2154,14 @@ class RenderSystem {
       this.enlargeAnimation = null;
     }
 
-    // Remove any in-flight tweens from plane scales
+    // Remove any in-flight tweens from plane scales and hover userData
     const { allPlanes } = this.getPlaneCollections();
     for (const plane of allPlanes) {
       if (plane?.scale) {
         gsap.killTweensOf(plane.scale);
+      }
+      if (plane?.userData) {
+        gsap.killTweensOf(plane.userData, '_hoverProgress');
       }
     }
 
@@ -2310,15 +2187,11 @@ class RenderSystem {
     if (this.handleKeydown) {
       window.removeEventListener('keydown', this.handleKeydown);
     }
-    if (this.boundHandleKeydown) {
-      window.removeEventListener('keydown', this.boundHandleKeydown);
-      this.boundHandleKeydown = null;
+    if (this._onMouseMove) {
+      window.removeEventListener('mousemove', this._onMouseMove);
     }
-    this.stopDetailRenderLoop();
-    this.currentAnimatingPlane = null;
-    this.currentImageData = null;
+    this._hoveredPlane = null;
     this.showTimelineUI();
-    this.hiddenTimelineUIState = [];
     this.rippleAnimation = null;
     this.timelineScene = null;
     this.effects = null;

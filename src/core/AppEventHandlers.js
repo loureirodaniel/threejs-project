@@ -47,27 +47,6 @@ export class AppEventHandlers {
             this.handleResetToDefaults();
         });
 
-        // Spotlight effect controls
-        controls.spotlightRadiusSlider.addEventListener('input', () => {
-            this.updateSpotlightEffect();
-        });
-        
-        controls.vignetteSlider.addEventListener('input', () => {
-            this.updateSpotlightEffect();
-        });
-        
-        controls.gridSlider.addEventListener('input', () => {
-            this.updateSpotlightEffect();
-        });
-
-        // Timeline vignette controls
-        controls.timelineVignetteStrengthSlider.addEventListener('input', () => {
-            this.updateTimelineVignetteControls();
-        });
-        controls.timelineVignetteWidthSlider.addEventListener('input', () => {
-            this.updateTimelineVignetteControls();
-        });
-
         // Camera controls
         controls.cameraXSlider.addEventListener('input', (e) => {
             this.updateTimelineCamera();
@@ -163,35 +142,6 @@ export class AppEventHandlers {
         
         controls.scrollToYearBtn2.addEventListener('click', () => {
             this.app.timelineController.animateToYear(2019, 14);
-        });
-
-        // Liquid distortion controls
-        controls.toggleLiquidDistortionBtn.addEventListener('click', () => {
-            this.toggleLiquidDistortion();
-        });
-        
-        controls.distortionStrengthSlider.addEventListener('input', (e) => {
-            this.updateLiquidDistortion();
-        });
-        
-        controls.rippleSpeedSlider.addEventListener('input', (e) => {
-            this.updateLiquidDistortion();
-        });
-        
-        controls.rippleScaleSlider.addEventListener('input', (e) => {
-            this.updateLiquidDistortion();
-        });
-        
-        controls.falloffDistanceSlider.addEventListener('input', (e) => {
-            this.updateLiquidDistortion();
-        });
-        
-        controls.noiseScaleSlider.addEventListener('input', (e) => {
-            this.updateLiquidDistortion();
-        });
-        
-        controls.noiseStrengthSlider.addEventListener('input', (e) => {
-            this.updateLiquidDistortion();
         });
 
         // Glitch controls
@@ -302,53 +252,6 @@ export class AppEventHandlers {
     }
 
     /**
-     * Update spotlight effect based on current state
-     */
-    updateSpotlightEffect() {
-        const controls = this.app.debugPanel.getControls();
-        const state = this.stateManager.getState();
-        
-        const radius = parseFloat(controls.spotlightRadiusSlider.value);
-        const vignetteOpacity = parseFloat(controls.vignetteSlider.value);
-        const gridOpacity = parseFloat(controls.gridSlider.value);
-        
-        // Update state
-        this.stateManager.updateEffect('spotlight', {
-            radius,
-            vignetteOpacity,
-            gridOpacity
-        });
-        
-        // Update displays
-        controls.spotlightRadiusDisplay.textContent = radius;
-        controls.vignetteOpacityDisplay.textContent = vignetteOpacity;
-        controls.gridOpacityDisplay.textContent = gridOpacity;
-        
-        // Update effects
-        this.app.spotlightEffect.updateSpotlight(radius, vignetteOpacity);
-        this.app.vignetteEffect.setOpacity(vignetteOpacity);
-        this.app.gridEffect.setOpacity(gridOpacity);
-    }
-
-    /**
-     * Update timeline vignette controls
-     */
-    updateTimelineVignetteControls() {
-        const controls = this.app.debugPanel.getControls();
-        const strength = parseFloat(controls.timelineVignetteStrengthSlider.value);
-        const width = parseFloat(controls.timelineVignetteWidthSlider.value);
-        
-        controls.timelineVignetteStrengthDisplay.textContent = strength.toFixed(2);
-        controls.timelineVignetteWidthDisplay.textContent = width.toFixed(1);
-        
-        if (this.app.timelineController) {
-            this.app.timelineController.timelineVignetteStrength = Math.max(0, Math.min(1, strength));
-            this.app.timelineController.timelineVignetteWidth = Math.max(0.1, width);
-            this.app.timelineController.updateTimelineVignette();
-        }
-    }
-
-    /**
      * Update background blur effect
      */
     updateBackgroundBlur() {
@@ -404,77 +307,6 @@ export class AppEventHandlers {
         if (this.app.timelineController) {
             this.app.timelineController.setSmoothScrollSensitivity(sensitivity);
             this.app.timelineController.setSmoothScrollFriction(friction);
-        }
-    }
-
-    /**
-     * Toggle liquid distortion effect
-     */
-    toggleLiquidDistortion() {
-        const controls = this.app.debugPanel.getControls();
-        const state = this.stateManager.getState();
-        
-        console.log('App: Toggle liquid distortion called');
-        console.log('App: Effect exists:', !!this.app.liquidDistortionEffect);
-        console.log('App: Effect is active:', this.app.liquidDistortionEffect?.isActive);
-        
-        const newActiveState = !state.effects.liquid.active;
-        
-        // Update state
-        this.stateManager.updateEffect('liquid', { active: newActiveState });
-        
-        if (newActiveState) {
-            this.app.liquidDistortionEffect.activate();
-            controls.toggleLiquidDistortionBtn.textContent = 'Disable Liquid Effect';
-            controls.toggleLiquidDistortionBtn.style.background = '#ff6b6b';
-            controls.toggleLiquidDistortionBtn.style.color = 'white';
-        } else {
-            this.app.liquidDistortionEffect.deactivate();
-            controls.toggleLiquidDistortionBtn.textContent = 'Enable Liquid Effect';
-            controls.toggleLiquidDistortionBtn.style.background = '#00ff88';
-            controls.toggleLiquidDistortionBtn.style.color = 'black';
-        }
-    }
-
-    /**
-     * Update liquid distortion settings
-     */
-    updateLiquidDistortion() {
-        const controls = this.app.debugPanel.getControls();
-        
-        const distortionStrength = parseFloat(controls.distortionStrengthSlider.value);
-        const rippleSpeed = parseFloat(controls.rippleSpeedSlider.value);
-        const rippleScale = parseFloat(controls.rippleScaleSlider.value);
-        const falloffDistance = parseFloat(controls.falloffDistanceSlider.value);
-        const noiseScale = parseFloat(controls.noiseScaleSlider.value);
-        const noiseStrength = parseFloat(controls.noiseStrengthSlider.value);
-        
-        // Update state
-        this.stateManager.updateEffect('liquid', {
-            strength: distortionStrength,
-            rippleSpeed,
-            rippleScale,
-            falloffDistance,
-            noiseScale,
-            noiseStrength
-        });
-        
-        // Update displays
-        controls.distortionStrengthDisplay.textContent = distortionStrength.toFixed(3);
-        controls.rippleSpeedDisplay.textContent = rippleSpeed.toFixed(1);
-        controls.rippleScaleDisplay.textContent = rippleScale.toFixed(1);
-        controls.falloffDistanceDisplay.textContent = falloffDistance.toFixed(2);
-        controls.noiseScaleDisplay.textContent = noiseScale.toFixed(1);
-        controls.noiseStrengthDisplay.textContent = noiseStrength.toFixed(3);
-        
-        // Update liquid distortion effect
-        if (this.app.liquidDistortionEffect) {
-            this.app.liquidDistortionEffect.setDistortionStrength(distortionStrength);
-            this.app.liquidDistortionEffect.setRippleSpeed(rippleSpeed);
-            this.app.liquidDistortionEffect.setRippleScale(rippleScale);
-            this.app.liquidDistortionEffect.setFalloffDistance(falloffDistance);
-            this.app.liquidDistortionEffect.setNoiseScale(noiseScale);
-            this.app.liquidDistortionEffect.setNoiseStrength(noiseStrength);
         }
     }
 
@@ -740,12 +572,6 @@ export class AppEventHandlers {
         controls.headerSize.textContent = state.typography.headerSize;
         controls.bodySize.textContent = state.typography.bodySize;
         
-        // Reset spotlight effect
-        controls.spotlightRadiusSlider.value = state.effects.spotlight.radius;
-        controls.vignetteSlider.value = state.effects.spotlight.vignetteOpacity;
-        controls.gridSlider.value = state.effects.spotlight.gridOpacity;
-        this.updateSpotlightEffect();
-        
         // Reset background blur
         controls.backgroundBlurSlider.value = state.effects.backgroundBlur.amount;
         controls.blurOpacitySlider.value = state.effects.backgroundBlur.opacity;
@@ -773,15 +599,6 @@ export class AppEventHandlers {
         controls.cameraFarSlider.value = state.camera.far;
         controls.cameraZoomSlider.value = state.camera.zoom;
         this.updateTimelineCamera();
-
-        // Reset liquid distortion settings
-        controls.distortionStrengthSlider.value = state.effects.liquid.strength;
-        controls.rippleSpeedSlider.value = state.effects.liquid.rippleSpeed;
-        controls.rippleScaleSlider.value = state.effects.liquid.rippleScale;
-        controls.falloffDistanceSlider.value = state.effects.liquid.falloffDistance;
-        controls.noiseScaleSlider.value = state.effects.liquid.noiseScale;
-        controls.noiseStrengthSlider.value = state.effects.liquid.noiseStrength;
-        this.updateLiquidDistortion();
 
         // Reset glitch settings
         controls.glitchNavPeakSlider.value = state.effects.glitch.navPeak;

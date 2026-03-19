@@ -37,6 +37,9 @@ export class TimelineMetaBox {
     const year = document.createElement('div');
     year.className = 'timeline-meta-year';
 
+    const textStack = document.createElement('div');
+    textStack.className = 'timeline-meta-text-stack';
+
     const title = document.createElement('h3');
     title.className = 'timeline-meta-title';
     title.textContent = 'Event name';
@@ -45,9 +48,11 @@ export class TimelineMetaBox {
     description.className = 'timeline-meta-description';
     description.textContent = '';
 
+    textStack.appendChild(title);
+    textStack.appendChild(description);
+
     content.appendChild(year);
-    content.appendChild(title);
-    content.appendChild(description);
+    content.appendChild(textStack);
 
     let ghostYear = null;
     if (this.includeGhostAndComments) {

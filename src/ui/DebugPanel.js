@@ -7,11 +7,9 @@ export class DebugPanel {
         this.isCollapsed = false;
         this.sectionStates = {
             typography: false,
-            spotlight: false,
             camera: false,
             enlargement: false,
             smoothScroll: false,
-            liquidDistortion: false,
             glitch: false,
             dreamEffect: false,
         };
@@ -56,42 +54,6 @@ export class DebugPanel {
                     <div style="margin-bottom: 15px;">
                         <label style="display: block; margin-bottom: 5px;">Body Font Size: <span id="bodySize">24</span>px</label>
                         <input type="range" id="bodySlider" min="12" max="40" value="24" style="width: 100%;">
-                    </div>
-                </div>
-            </div>
-            
-             <!-- Spotlight Effect Section -->
-            <div class="debug-section" style="margin-bottom: 15px;">
-                <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; padding: 8px 0; border-bottom: 1px solid #333;">
-                    <h4 style="margin: 0; color: #00ff88;">Spotlight Effect</h4>
-                    <button class="section-toggle" data-section="spotlight" style="background: #333; color: white; border: 1px solid #555; padding: 2px 6px; border-radius: 3px; cursor: pointer; font-family: inherit; font-size: 10px;">+</button>
-                </div>
-                <div class="section-content" id="spotlight-content" style="display: none; padding-top: 10px;">
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px;">Spotlight Radius: <span id="spotlightRadius">2</span></label>
-                        <input type="range" id="spotlightRadiusSlider" min="0.5" max="5" step="0.1" value="2" style="width: 100%;">
-                    </div>
-                    
-
-                    
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px;">Vignette Opacity: <span id="vignetteOpacity">1.0</span></label>
-                        <input type="range" id="vignetteSlider" min="0.5" max="1.0" step="0.1" value="1.0" style="width: 100%;">
-                    </div>
-                    
-                    <!-- Timeline Vignette Controls -->
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px;">Timeline Vignette Strength: <span id="timelineVignetteStrengthDisplay">0.60</span></label>
-                        <input type="range" id="timelineVignetteStrengthSlider" min="0" max="1" step="0.01" value="0.60" style="width: 100%;">
-                    </div>
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px;">Timeline Vignette Width: <span id="timelineVignetteWidthDisplay">4.0</span></label>
-                        <input type="range" id="timelineVignetteWidthSlider" min="1" max="10" step="0.1" value="4.0" style="width: 100%;">
-                    </div>
-                    
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px;">Grid Opacity: <span id="gridOpacity">0.4</span></label>
-                        <input type="range" id="gridSlider" min="0.1" max="1.0" step="0.1" value="0.4" style="width: 100%;">
                     </div>
                 </div>
             </div>
@@ -220,43 +182,6 @@ export class DebugPanel {
                 </div>
             </div>
             
-            <!-- Liquid Distortion Section -->
-            <div class="debug-section" style="margin-bottom: 15px;">
-                <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; padding: 8px 0; border-bottom: 1px solid #333;">
-                    <h4 style="margin: 0; color: #00ff88;">Liquid Distortion</h4>
-                    <button class="section-toggle" data-section="liquidDistortion" style="background: #333; color: white; border: 1px solid #555; padding: 2px 6px; border-radius: 3px; cursor: pointer; font-family: inherit; font-size: 10px;">+</button>
-                </div>
-                <div class="section-content" id="liquidDistortion-content" style="display: none; padding-top: 10px;">
-                    <div style="margin-bottom: 10px;">
-                        <button id="toggleLiquidDistortionBtn" style="background: #00ff88; color: black; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-family: inherit; width: 100%; margin-bottom: 10px;">Enable Liquid Effect</button>
-                    </div>
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px;">Distortion Strength: <span id="distortionStrengthDisplay">0.02</span></label>
-                        <input type="range" id="distortionStrengthSlider" min="0.001" max="0.1" step="0.001" value="0.02" style="width: 100%;">
-                    </div>
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px;">Ripple Speed: <span id="rippleSpeedDisplay">2.0</span></label>
-                        <input type="range" id="rippleSpeedSlider" min="0.5" max="5.0" step="0.1" value="2.0" style="width: 100%;">
-                    </div>
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px;">Ripple Scale: <span id="rippleScaleDisplay">50.0</span></label>
-                        <input type="range" id="rippleScaleSlider" min="10" max="100" step="1" value="50" style="width: 100%;">
-                    </div>
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px;">Falloff Distance: <span id="falloffDistanceDisplay">0.3</span></label>
-                        <input type="range" id="falloffDistanceSlider" min="0.1" max="1.0" step="0.05" value="0.3" style="width: 100%;">
-                    </div>
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px;">Noise Scale: <span id="noiseScaleDisplay">10.0</span></label>
-                        <input type="range" id="noiseScaleSlider" min="1" max="20" step="0.5" value="10" style="width: 100%;">
-                    </div>
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px;">Noise Strength: <span id="noiseStrengthDisplay">0.01</span></label>
-                        <input type="range" id="noiseStrengthSlider" min="0.001" max="0.05" step="0.001" value="0.01" style="width: 100%;">
-                    </div>
-                </div>
-            </div>
-
             <!-- Glitch Section -->
             <div class="debug-section" style="margin-bottom: 15px;">
                 <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; padding: 8px 0; border-bottom: 1px solid #333;">
@@ -376,21 +301,6 @@ export class DebugPanel {
         this.controls.bodySize = document.getElementById('bodySize');
         this.controls.resetBtn = document.getElementById('resetBtn');
         
-        // Spotlight effect controls
-        this.controls.spotlightRadiusSlider = document.getElementById('spotlightRadiusSlider');
-        this.controls.blurSlider = document.getElementById('blurSlider');
-        this.controls.vignetteSlider = document.getElementById('vignetteSlider');
-        this.controls.gridSlider = document.getElementById('gridSlider');
-        this.controls.spotlightRadiusDisplay = document.getElementById('spotlightRadius');
-
-        this.controls.vignetteOpacityDisplay = document.getElementById('vignetteOpacity');
-        this.controls.gridOpacityDisplay = document.getElementById('gridOpacity');
-        // Timeline vignette controls
-        this.controls.timelineVignetteStrengthSlider = document.getElementById('timelineVignetteStrengthSlider');
-        this.controls.timelineVignetteWidthSlider = document.getElementById('timelineVignetteWidthSlider');
-        this.controls.timelineVignetteStrengthDisplay = document.getElementById('timelineVignetteStrengthDisplay');
-        this.controls.timelineVignetteWidthDisplay = document.getElementById('timelineVignetteWidthDisplay');
-        
         // Timeline camera controls
         this.controls.cameraXSlider = document.getElementById('cameraXSlider');
         this.controls.cameraYSlider = document.getElementById('cameraYSlider');
@@ -442,21 +352,6 @@ export class DebugPanel {
         this.controls.scrollToYearBtn = document.getElementById('scrollToYearBtn');
         this.controls.scrollToYearBtn2 = document.getElementById('scrollToYearBtn2');
         
-        // Liquid distortion controls
-        this.controls.toggleLiquidDistortionBtn = document.getElementById('toggleLiquidDistortionBtn');
-        this.controls.distortionStrengthSlider = document.getElementById('distortionStrengthSlider');
-        this.controls.rippleSpeedSlider = document.getElementById('rippleSpeedSlider');
-        this.controls.rippleScaleSlider = document.getElementById('rippleScaleSlider');
-        this.controls.falloffDistanceSlider = document.getElementById('falloffDistanceSlider');
-        this.controls.noiseScaleSlider = document.getElementById('noiseScaleSlider');
-        this.controls.noiseStrengthSlider = document.getElementById('noiseStrengthSlider');
-        this.controls.distortionStrengthDisplay = document.getElementById('distortionStrengthDisplay');
-        this.controls.rippleSpeedDisplay = document.getElementById('rippleSpeedDisplay');
-        this.controls.rippleScaleDisplay = document.getElementById('rippleScaleDisplay');
-        this.controls.falloffDistanceDisplay = document.getElementById('falloffDistanceDisplay');
-        this.controls.noiseScaleDisplay = document.getElementById('noiseScaleDisplay');
-        this.controls.noiseStrengthDisplay = document.getElementById('noiseStrengthDisplay');
-        
         // Glitch controls
         this.controls.glitchNavPeakSlider = document.getElementById('glitchNavPeakSlider');
         this.controls.glitchScrollPeakSlider = document.getElementById('glitchScrollPeakSlider');
@@ -491,12 +386,6 @@ export class DebugPanel {
         this.controls.dreamFogNoiseSpeedDisplay = document.getElementById('dreamFogNoiseSpeedDisplay');
         this.controls.dreamClickBoostDisplay = document.getElementById('dreamClickBoostDisplay');
         this.controls.dreamDecayDurationDisplay = document.getElementById('dreamDecayDurationDisplay');
-        
-        // Fog effect controls
-        
-        // Debug liquid distortion controls
-        console.log('DebugPanel: Toggle button found:', !!this.controls.toggleLiquidDistortionBtn);
-        console.log('DebugPanel: Distortion strength slider found:', !!this.controls.distortionStrengthSlider);
         
         // Debug panel toggle
         this.controls.toggleDebugPanel = document.getElementById('toggleDebugPanel');

@@ -40,6 +40,7 @@ class CameraSystem {
     this.scrollDollyFactor = 0;
     this.scrollDollyTween = null;
     this.scrollReturnTween = null;
+    this.dollyFallbackTimeout = null;
 
     this.unsubscribeFns = [];
     this.init();
@@ -52,7 +53,9 @@ class CameraSystem {
       this.eventBus.on('scene:transition', this.onSceneTransition.bind(this)),
       this.eventBus.on('timeline:drag:start', this.onDragStart.bind(this)),
       this.eventBus.on('timeline:drag:end', this.onDragEnd.bind(this)),
-      this.eventBus.on('timeline:scroll', this.onTimelineScroll.bind(this))
+      this.eventBus.on('timeline:scroll', this.onTimelineScroll.bind(this)),
+      this.eventBus.on('timeline:snap:start', this.onSnapStart.bind(this)),
+      this.eventBus.on('timeline:snap:complete', this.onSnapComplete.bind(this))
     );
 
     console.log('✅ CameraSystem initialized');
@@ -543,6 +546,10 @@ class CameraSystem {
 
   /**
    * Track wheel/trackpad activity for temporary scroll dolly.
+   * The dolly-out fires immediately; the return is now driven by snap
+   * lifecycle events (onSnapStart / onSnapComplete) so the camera stays
+   * pulled back for the full duration of the snap animation.
+   * A fallback return is scheduled for edge cases where no snap fires.
    * @param {object} data - { delta, timestamp }
    */
   onTimelineScroll({ delta = 0 } = {}) {
@@ -551,9 +558,7 @@ class CameraSystem {
     const absoluteDelta = Math.abs(delta);
     const deltaForMax = CAMERA_CONFIG.SCROLL_ZOOM_DELTA_FOR_MAX_INTENSITY ?? 1.2;
     const minKick = CAMERA_CONFIG.SCROLL_ZOOM_MIN_KICK_FACTOR ?? 0.55;
-    const holdDelayMs = CAMERA_CONFIG.SCROLL_ZOOM_HOLD_MS ?? 180;
-    const outDuration = CAMERA_CONFIG.SCROLL_ZOOM_DOLLY_OUT_DURATION ?? 0.22;
-    const returnDuration = CAMERA_CONFIG.SCROLL_ZOOM_DOLLY_RETURN_DURATION ?? 0.55;
+    const outDuration = CAMERA_CONFIG.SCROLL_ZOOM_DOLLY_OUT_DURATION ?? 0.18;
 
     const normalizedDelta = Math.min(1, absoluteDelta / Math.max(0.0001, deltaForMax));
     const targetFactor = Math.max(minKick, normalizedDelta);
@@ -574,17 +579,96 @@ class CameraSystem {
       overwrite: 'auto'
     });
 
+    this.scheduleDollyFallbackReturn();
+  }
+
+  /**
+   * Called when a snap animation begins.
+   * Keeps the camera pulled back for the snap duration.
+   */
+  onSnapStart() {
+    if (!CAMERA_CONFIG.SCROLL_ZOOM_ENABLED) return;
+
+    if (this.dollyFallbackTimeout) {
+      clearTimeout(this.dollyFallbackTimeout);
+      this.dollyFallbackTimeout = null;
+    }
+
+    if (this.scrollReturnTween) {
+      this.scrollReturnTween.kill();
+      this.scrollReturnTween = null;
+    }
+
+    const minKick = CAMERA_CONFIG.SCROLL_ZOOM_MIN_KICK_FACTOR ?? 0.55;
+    if (this.scrollDollyFactor < minKick) {
+      if (this.scrollDollyTween) {
+        this.scrollDollyTween.kill();
+      }
+      this.scrollDollyTween = gsap.to(this, {
+        scrollDollyFactor: minKick,
+        duration: 0.15,
+        ease: 'power2.out',
+        overwrite: 'auto'
+      });
+    }
+  }
+
+  /**
+   * Called when a snap animation finishes.
+   * If no more snaps are queued, smoothly returns the camera.
+   * @param {object} data - { offset, index, hasPendingSteps }
+   */
+  onSnapComplete({ hasPendingSteps = false } = {}) {
+    if (!CAMERA_CONFIG.SCROLL_ZOOM_ENABLED) return;
+
+    if (hasPendingSteps) return;
+
+    this.startDollyReturn();
+  }
+
+  /**
+   * Smooth camera dolly return to resting Z.
+   */
+  startDollyReturn() {
+    if (this.dollyFallbackTimeout) {
+      clearTimeout(this.dollyFallbackTimeout);
+      this.dollyFallbackTimeout = null;
+    }
+    if (this.scrollDollyTween) {
+      this.scrollDollyTween.kill();
+      this.scrollDollyTween = null;
+    }
+    if (this.scrollReturnTween) {
+      this.scrollReturnTween.kill();
+    }
+
+    const returnDuration = CAMERA_CONFIG.SCROLL_ZOOM_DOLLY_RETURN_DURATION ?? 0.6;
+
     this.scrollReturnTween = gsap.to(this, {
       scrollDollyFactor: 0,
       duration: returnDuration,
-      delay: holdDelayMs / 1000,
       ease: 'power2.inOut',
-      overwrite: 'auto',
       onComplete: () => {
         this.scrollReturnTween = null;
         this.snapToTimelineDefaultDistanceAndZoom();
       }
     });
+  }
+
+  /**
+   * Safety net: if no snap event fires (e.g. at timeline boundary),
+   * return the camera to resting position after a delay.
+   */
+  scheduleDollyFallbackReturn() {
+    if (this.dollyFallbackTimeout) {
+      clearTimeout(this.dollyFallbackTimeout);
+    }
+    this.dollyFallbackTimeout = setTimeout(() => {
+      this.dollyFallbackTimeout = null;
+      if (!this.scrollReturnTween) {
+        this.startDollyReturn();
+      }
+    }, 800);
   }
 
   /**
@@ -707,6 +791,10 @@ class CameraSystem {
     if (this.pullbackCheckRafId !== null) {
       cancelAnimationFrame(this.pullbackCheckRafId);
       this.pullbackCheckRafId = null;
+    }
+    if (this.dollyFallbackTimeout) {
+      clearTimeout(this.dollyFallbackTimeout);
+      this.dollyFallbackTimeout = null;
     }
 
     for (const unsubscribe of this.unsubscribeFns) {

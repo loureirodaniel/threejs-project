@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { gsap } from 'gsap';
-import { TIMELINE_COLUMN_GAP_PX, TIMELINE_FIRST_IMAGE_LEFT_PADDING_PX, TIMELINE_FIRST_IMAGE_TOP_PX, TIMELINE_IMAGE_WIDTH_PERCENTAGES, TIMELINE_IMAGE_WIDTHS_PX, TIMELINE_PLANE_WIDTH, getTimelineAdditionalPlaneX, getTimelineLayoutSlot, getTimelinePlaneX } from '../config/timelineLayout.js';
+import { TIMELINE_BOTTOM_SLOT_UPSHIFT_PX, TIMELINE_COLUMN_GAP_PX, TIMELINE_FIRST_IMAGE_LEFT_PADDING_PX, TIMELINE_FIRST_IMAGE_TOP_PX, TIMELINE_IMAGE_WIDTH_PERCENTAGES, TIMELINE_IMAGE_WIDTHS_PX, TIMELINE_PLANE_WIDTH, getTimelineAdditionalPlaneX, getTimelineLayoutSlot, getTimelinePlaneX } from '../config/timelineLayout.js';
 
 const TIMELINE_SCALE_REFERENCE_Z = 0;
 
@@ -143,11 +143,12 @@ export class TimelineScene {
         const thirdHeightPx = this.getSlotWidthPx(2) * 0.75;
 
         const firstBottomPx = TIMELINE_FIRST_IMAGE_TOP_PX + firstHeightPx;
+        const upshift = TIMELINE_BOTTOM_SLOT_UPSHIFT_PX ?? 20;
         // Diagram layout:
-        // - image2 top aligned to image1 bottom
-        // - image3 bottom aligned to image1 bottom
-        const secondCenterPx = firstBottomPx + (secondHeightPx / 2);
-        const thirdCenterPx = firstBottomPx - (thirdHeightPx / 2);
+        // - image2 top aligned to image1 bottom (shifted up to prevent metadata overlap)
+        // - image3 bottom aligned to image1 bottom (shifted up to prevent metadata overlap)
+        const secondCenterPx = firstBottomPx + (secondHeightPx / 2) - upshift;
+        const thirdCenterPx = firstBottomPx - (thirdHeightPx / 2) - upshift;
         const firstCenterPx = TIMELINE_FIRST_IMAGE_TOP_PX + (firstHeightPx / 2);
 
         return [

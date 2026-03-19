@@ -18,6 +18,7 @@ import { RenderSystem } from '../systems/RenderSystem.js';
 import { CameraSystem } from '../systems/CameraSystem.js';
 import { AnimationChoreographer } from '../systems/AnimationChoreographer.js';
 import { ImageDetailPage } from '../ui/ImageDetailPage.js';
+import { ImageDetailController } from './ImageDetailController.js';
 import { TitleScrollAnimation } from '../../animations/TitleScrollAnimation.js';
 import * as TimelineUtils from '../utils/TimelineUtils.js';
 import { TIMELINE_CONFIG } from '../utils/TimelineConstants.js';
@@ -30,7 +31,7 @@ class TimelineController {
     this.camera = camera;
     this.sceneManager = sceneManager;
     this.timelineScene = timelineScene;
-    this.effects = effects; // { vignetteEffect, liquidDistortionEffect, backgroundBlurEffect }
+    this.effects = effects; // { vignetteEffect, backgroundBlurEffect }
 
     // Core state and event bus
     this.state = new TimelineState();
@@ -52,6 +53,23 @@ class TimelineController {
       this.eventBus
     );
 
+    // Create ImageDetailController, share UIManager and RippleAnimation from RenderSystem
+    this.imageDetailController = new ImageDetailController(
+      this.state,
+      this.eventBus,
+      this.renderSystem.rippleAnimation,
+      this.renderSystem.uiManager,
+      this.effects,
+      {
+        render:               () => this.renderSystem.render(),
+        updateImagePositions: (offset, dt) => this.renderSystem.updateImagePositions(offset, dt),
+        triggerDreamEffect:   () => this.renderSystem.triggerDreamEffect(),
+        fadeOutDreamEffect:   () => this.renderSystem.fadeOutDreamEffect(),
+      }
+    );
+    // Inject back into RenderSystem so backward-compat wrappers can delegate
+    this.renderSystem.imageDetailController = this.imageDetailController;
+
     this.unsubscribeFns = [];
     this.lastFrameTime = 0;
 
@@ -65,7 +83,10 @@ class TimelineController {
     // External coordination hooks
     this.unsubscribeFns.push(
       this.eventBus.on('timeline:year:change', this.onYearChange.bind(this)),
-      this.eventBus.on('scene:transition:complete', this.onTransitionComplete.bind(this))
+      this.eventBus.on('scene:transition:complete', this.onTransitionComplete.bind(this)),
+      // RenderSystem delegates pause/resume here so sibling-system access stays in the orchestrator
+      this.eventBus.on('systems:pause', () => this.pauseTimeline()),
+      this.eventBus.on('systems:resume', () => this.resumeTimeline())
     );
 
     // Initialize title scroll animation
@@ -181,28 +202,31 @@ class TimelineController {
    */
   pauseTimeline() {
     console.log('⏸️ Pausing timeline - disabling all systems');
-    
-    // Disable physics
+
     if (this.physicsSystem) {
       this.physicsSystem.enabled = false;
-      console.log('🔒 PhysicsSystem disabled:', this.physicsSystem.enabled);
+      this.physicsSystem.scrollEnabled = false;
+      this.physicsSystem.velocity = 0;
+      console.log('🔒 PhysicsSystem disabled');
     }
-    
-    // Disable input
+
     if (this.inputSystem) {
       this.inputSystem.enabled = false;
       console.log('🔒 InputSystem disabled');
     }
-    
-    // Disable choreographer
+
     if (this.animationChoreographer) {
       this.animationChoreographer.enabled = false;
       console.log('🔒 AnimationChoreographer disabled');
     }
-    
+
+    if (this.cameraSystem?.freezeCamera) {
+      this.cameraSystem.freezeCamera();
+    }
+
     // ⚠️ DO NOT STOP THE ANIMATION LOOP HERE
     // The loop must keep running to render the fullscreen plane
-    
+
     console.log('✅ Timeline paused - all systems disabled');
   }
 
@@ -211,22 +235,27 @@ class TimelineController {
    */
   resumeTimeline() {
     console.log('▶️ Resuming timeline - enabling all systems');
-    
-    // Re-enable physics
+
     if (this.physicsSystem) {
       this.physicsSystem.enabled = true;
+      this.physicsSystem.scrollEnabled = true;
     }
-    
-    // Re-enable input
+
     if (this.inputSystem) {
       this.inputSystem.enabled = true;
     }
-    
-    // Re-enable choreographer
+
     if (this.animationChoreographer) {
       this.animationChoreographer.enabled = true;
     }
-    
+
+    if (this.cameraSystem?.unfreezeCamera) {
+      this.cameraSystem.unfreezeCamera();
+    }
+
+    // Notify render system that the timeline has resumed
+    this.eventBus.emit('timeline:resume', {});
+
     console.log('✅ Timeline resumed');
   }
 
@@ -369,6 +398,10 @@ class TimelineController {
 
     this.inputSystem.dispose();
     this.physicsSystem.dispose();
+    if (this.imageDetailController) {
+      this.imageDetailController.dispose();
+      this.imageDetailController = null;
+    }
     this.renderSystem.dispose();
     this.cameraSystem.dispose();
     if (this.animationChoreographer) {

@@ -46,11 +46,12 @@ export class TimelineNavigation {
         this.element.style.cssText = `
             position: fixed;
             bottom: 40px;
-            left: 40px;
-            right: 40px;
+            left: 50%;
+            transform: translateX(-50%);
             height: 60px;
             display: none;
             flex-direction: column;
+            align-items: center;
             justify-content: flex-end;
             z-index: -1;
             opacity: 0;
@@ -66,6 +67,7 @@ export class TimelineNavigation {
             margin-bottom: 10px;
             font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             letter-spacing: 0.04em;
+            text-align: center;
         `;
         this.yearDisplay.textContent = this.currentYear.toString();
 
@@ -73,7 +75,7 @@ export class TimelineNavigation {
         this.ticksContainer.style.cssText = `
             display: flex;
             align-items: flex-end;
-            gap: 10px;
+            gap: 18px;
             height: 28px;
         `;
 
@@ -174,8 +176,8 @@ export class TimelineNavigation {
             style.id = 'timeline-navigation-styles';
             style.textContent = `
                 @keyframes timelineNavFadeIn {
-                    from { opacity: 0; transform: translateY(8px); }
-                    to   { opacity: 1; transform: translateY(0); }
+                    from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+                    to   { opacity: 1; transform: translateX(-50%) translateY(0); }
                 }
             `;
             document.head.appendChild(style);
