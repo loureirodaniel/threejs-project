@@ -1,22 +1,15 @@
-const DEFAULT_COMMENTS = Object.freeze([
-  Object.freeze({ date: '24/06/26', text: 'Comment1' }),
-  Object.freeze({ date: '24/06/26', text: 'Comment 2' }),
-  Object.freeze({ date: '24/06/26', text: 'Comment3' })
-]);
-
 /**
  * Reusable timeline metadata box component.
- * Encapsulates the DOM for year/title plus optional ghost year + comments.
+ * Encapsulates the DOM for year/title plus an optional ghost year overlay.
+ * Comments are no longer rendered here — they appear in the hover tooltip.
  */
 export class TimelineMetaBox {
   constructor({
     variant = 'secondary',
     includeGhostAndComments = false,
-    comments = DEFAULT_COMMENTS
   } = {}) {
     this.variant = variant;
     this.includeGhostAndComments = includeGhostAndComments;
-    this.comments = Array.isArray(comments) ? comments : DEFAULT_COMMENTS;
 
     this.element = null;
     this.yearEl = null;
@@ -59,32 +52,6 @@ export class TimelineMetaBox {
       ghostYear = document.createElement('div');
       ghostYear.className = 'timeline-meta-ghost-year';
       content.appendChild(ghostYear);
-
-      const commentsContainer = document.createElement('div');
-      commentsContainer.className = 'timeline-meta-comments-container';
-
-      const comments = document.createElement('div');
-      comments.className = 'timeline-meta-comments';
-
-      this.comments.forEach((item) => {
-        const block = document.createElement('div');
-        block.className = 'timeline-meta-comment-item';
-
-        const date = document.createElement('div');
-        date.className = 'timeline-meta-comment-date';
-        date.textContent = item.date || '';
-
-        const text = document.createElement('div');
-        text.className = 'timeline-meta-comment-text';
-        text.textContent = item.text || '';
-
-        block.appendChild(date);
-        block.appendChild(text);
-        comments.appendChild(block);
-      });
-
-      commentsContainer.appendChild(comments);
-      content.appendChild(commentsContainer);
     }
 
     card.appendChild(content);

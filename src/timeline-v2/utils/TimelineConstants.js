@@ -61,10 +61,19 @@ export const PHYSICS_CONFIG = Object.freeze({
   SCROLL_FRICTION: 0.72,
   /** Maximum scroll/drag velocity magnitude in offset units per frame. */
   MAX_SCROLL_VELOCITY: 0.45,
-  /** Accumulated wheel/trackpad delta required to move exactly one timeline step. */
+  /** Accumulated wheel/trackpad delta required to move exactly one timeline step.
+   *  Corresponds to ~130px on a trackpad (0.9 / 0.007). */
   SCROLL_STEP_THRESHOLD: 0.9,
   /** Duration (seconds) for each wheel/trackpad step snap. */
-  SCROLL_STEP_DURATION: 0.72,
+  SCROLL_STEP_DURATION: 0.58,
+  /** Accumulated delta that triggers "very long" fast-scroll mode (queues MAX_STEPS_PER_GESTURE steps).
+   *  Corresponds to ~285px on a trackpad (2.0 / 0.007). Gestures below this always move 1 step. */
+  SCROLL_FAST_GESTURE_THRESHOLD: 2.0,
+  /** Number of steps queued when a very long gesture (≥ SCROLL_FAST_GESTURE_THRESHOLD) is detected. */
+  MAX_STEPS_PER_GESTURE: 6,
+  /** Maximum number of steps that can be queued while a snap is already playing.
+   *  Allows rapid consecutive scrolls to chain without dropping input. */
+  MAX_PENDING_SNAP_STEPS: 3,
 
   // Snapping
   /** Distance threshold for snapping. */
@@ -297,7 +306,15 @@ export const CAMERA_CONFIG = Object.freeze({
   SCROLL_ZOOM_MIN_KICK_FACTOR: 0.5,          // minimum dolly factor per snap start (held during burst)
   SCROLL_ZOOM_HOLD_MS: 260,                  // fallback hold (snap lifecycle controls main return)
   SCROLL_ZOOM_DOLLY_OUT_DURATION: 0.28,      // dolly-out punch speed
-  SCROLL_ZOOM_DOLLY_RETURN_DURATION: 0.65    // cinematic return-to-base after last snap
+  SCROLL_ZOOM_DOLLY_RETURN_DURATION: 0.65,   // cinematic return-to-base after last snap
+  SCROLL_ZOOM_RETURN_DELAY_MS: 400,          // ms to wait after last snap before starting return
+
+  // Hover-to-navigate: smooth camera pan when hovering an overflowing image
+  /** Duration (seconds) for the hover-triggered camera pan. Slow and cinematic. */
+  HOVER_NAV_DURATION: 1.8,
+  /** NDC x threshold (0–1) beyond which a plane is considered "overflowing" the viewport.
+   *  0.5 means images whose projected center is in the outer 25% on either side will trigger. */
+  HOVER_OVERFLOW_NDC_THRESHOLD: 0.5
 });
 
 // -----------------------------------------------------------------------------

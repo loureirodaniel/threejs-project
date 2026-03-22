@@ -555,6 +555,12 @@ class CameraSystem {
   onTimelineScroll({ delta = 0 } = {}) {
     if (!CAMERA_CONFIG.SCROLL_ZOOM_ENABLED) return;
 
+    // Cancel any pending return — user is still scrolling
+    if (this.dollyReturnDelayTimeout) {
+      clearTimeout(this.dollyReturnDelayTimeout);
+      this.dollyReturnDelayTimeout = null;
+    }
+
     const absoluteDelta = Math.abs(delta);
     const deltaForMax = CAMERA_CONFIG.SCROLL_ZOOM_DELTA_FOR_MAX_INTENSITY ?? 1.2;
     const minKick = CAMERA_CONFIG.SCROLL_ZOOM_MIN_KICK_FACTOR ?? 0.55;
@@ -588,6 +594,12 @@ class CameraSystem {
    */
   onSnapStart() {
     if (!CAMERA_CONFIG.SCROLL_ZOOM_ENABLED) return;
+
+    // Cancel any pending return — a new snap means the user is still navigating
+    if (this.dollyReturnDelayTimeout) {
+      clearTimeout(this.dollyReturnDelayTimeout);
+      this.dollyReturnDelayTimeout = null;
+    }
 
     if (this.dollyFallbackTimeout) {
       clearTimeout(this.dollyFallbackTimeout);
@@ -623,7 +635,18 @@ class CameraSystem {
 
     if (hasPendingSteps) return;
 
-    this.startDollyReturn();
+    // Defer the return so rapid consecutive swipes — where the next swipe
+    // arrives just after the snap completes — don't cause the camera to dip
+    // back between each step. The delay is cancelled if new scroll or snap
+    // input arrives before it fires.
+    if (this.dollyReturnDelayTimeout) {
+      clearTimeout(this.dollyReturnDelayTimeout);
+    }
+    const returnDelay = CAMERA_CONFIG.SCROLL_ZOOM_RETURN_DELAY_MS ?? 400;
+    this.dollyReturnDelayTimeout = setTimeout(() => {
+      this.dollyReturnDelayTimeout = null;
+      this.startDollyReturn();
+    }, returnDelay);
   }
 
   /**

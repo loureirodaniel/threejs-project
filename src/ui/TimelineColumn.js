@@ -81,7 +81,6 @@ export class TimelineColumn {
    * @param {number} options.index - Zero-based position in the planes array
    * @param {'primary'|'secondary'|'tertiary'} [options.variant='tertiary']
    * @param {boolean} [options.includeGhostAndComments=false]
-   * @param {Array<{date:string,text:string}>} [options.comments=[]]
    */
   constructor({
     panel,
@@ -89,7 +88,6 @@ export class TimelineColumn {
     index,
     variant = 'tertiary',
     includeGhostAndComments = false,
-    comments = []
   } = {}) {
     this.panel = panel;
     this.plane = plane;
@@ -100,7 +98,7 @@ export class TimelineColumn {
     this.isHovered = false;
     this.isFocused = false;
 
-    this.metaBox = new TimelineMetaBox({ variant, includeGhostAndComments, comments });
+    this.metaBox = new TimelineMetaBox({ variant, includeGhostAndComments });
     this.panel.appendChild(this.metaBox.getElement());
 
     // Start hidden – the manager activates columns as needed

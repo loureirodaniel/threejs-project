@@ -24,7 +24,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { RippleAnimation } from './RippleAnimation.js';
 import * as TimelineUtils from '../utils/TimelineUtils.js';
-import { EFFECTS_CONFIG, SCENE_CONFIG, TIMELINE_CONFIG, TIMELINE_LAYOUT_CONFIG, IMAGE_ASPECT_RATIO, SLOT_1_WIDTH_PX, SLOT_1_HEIGHT_PX, SLOT_1_TOP_PX, getTimelineLayoutSlot, getSceneMargins } from '../utils/TimelineConstants.js';
+import { EFFECTS_CONFIG, SCENE_CONFIG, TIMELINE_CONFIG, TIMELINE_LAYOUT_CONFIG, IMAGE_ASPECT_RATIO, SLOT_1_WIDTH_PX, SLOT_1_HEIGHT_PX, SLOT_1_TOP_PX, getTimelineLayoutSlot, getSceneMargins, CAMERA_CONFIG } from '../utils/TimelineConstants.js';
 import { GlitchShader } from '../../shaders/GlitchShader.js';
 import { UIManager } from '../../ui/UIManager.js';
 import { LayoutEngine } from '../utils/LayoutEngine.js';
@@ -798,7 +798,52 @@ class RenderSystem {
     if (newHovered !== this._hoveredPlane) {
       this._triggerHoverAnimation(this._hoveredPlane, newHovered);
       this._hoveredPlane = newHovered;
+
+      // Hover-to-navigate: when the user moves onto an overflowing image,
+      // smoothly pan the timeline to bring it into focus without changing
+      // the camera's Z distance.
+      if (newHovered && this._isPlaneOverflowing(newHovered, camera)) {
+        const planeIndex = newHovered.userData._timelineIndex;
+        if (Number.isFinite(planeIndex)) {
+          this.eventBus.emit('timeline:hover:navigate', { targetIndex: planeIndex });
+        }
+      }
     }
+
+    // Emit cursor position every frame so the hover comment tooltip can follow
+    // the mouse while it stays over the same plane.
+    if (this._hoveredPlane) {
+      const planeIndex = this._hoveredPlane.userData._timelineIndex;
+      this.eventBus.emit('timeline:plane:cursor', {
+        clientX: event.clientX,
+        clientY: event.clientY,
+        planeIndex: Number.isFinite(planeIndex) ? planeIndex : null,
+        isHovered: true,
+      });
+    } else {
+      this.eventBus.emit('timeline:plane:cursor', {
+        clientX: event.clientX,
+        clientY: event.clientY,
+        planeIndex: null,
+        isHovered: false,
+      });
+    }
+  }
+
+  /**
+   * Returns true when the plane's projected screen-space center is in the
+   * outer portion of the viewport (NDC |x| > threshold), meaning the image
+   * is overflowing or near the edge and the camera should pan to it.
+   * @param {THREE.Mesh} plane
+   * @param {THREE.Camera} camera
+   * @returns {boolean}
+   */
+  _isPlaneOverflowing(plane, camera) {
+    if (!plane || !camera) return false;
+    const threshold = CAMERA_CONFIG.HOVER_OVERFLOW_NDC_THRESHOLD ?? 0.5;
+    const worldPos = new THREE.Vector3().copy(plane.position);
+    worldPos.project(camera);
+    return Math.abs(worldPos.x) > threshold;
   }
 
   /**

@@ -13,12 +13,7 @@
 import { TimelineColumn } from './TimelineColumn.js';
 import { getSceneMargins } from '../timeline-v2/utils/TimelineConstants.js';
 import { timelineEventBus } from '../timeline-v2/core/EventBus.js';
-
-const PRIMARY_COMMENT_ITEMS = [
-  { date: '24/06/26', text: 'Comment1' },
-  { date: '24/06/26', text: 'Comment 2' },
-  { date: '24/06/26', text: 'Comment3' }
-];
+import { HoverCommentTooltip } from './HoverCommentTooltip.js';
 
 export class EventsPanel {
   constructor(imageData = []) {
@@ -39,6 +34,13 @@ export class EventsPanel {
     // Phase 2 – event bus unsubscribe handles
     this._busUnsubs = [];
 
+    /** @type {HoverCommentTooltip|null} Cursor-following comment tooltip */
+    this._hoverTooltip = null;
+
+    /** True while the user is scrolling or the camera is pulling back */
+    this._isScrolling = false;
+    this._scrollEndTimer = null;
+
     this.boundOnYearChange = this.onYearChange.bind(this);
     this.boundOnSceneChange = this.onSceneChange.bind(this);
     this.boundOnTransitionComplete = this.onTransitionComplete.bind(this);
@@ -49,6 +51,7 @@ export class EventsPanel {
   init() {
     this.createPanel();
     this.injectStyles();
+    this._hoverTooltip = new HoverCommentTooltip();
     this.setupEventListeners();
     this.updateEvents(this.currentYear);
     this.hide();
@@ -92,10 +95,8 @@ export class EventsPanel {
         panel: this.panel,
         plane,
         index,
-        // All columns are built with ghost+comments in the DOM.
-        // CSS hides ghost/comments for non-primary variants.
+        // Ghost year is rendered only for the primary column via CSS.
         includeGhostAndComments: true,
-        comments: PRIMARY_COMMENT_ITEMS
       })
     );
 
@@ -304,6 +305,50 @@ export class EventsPanel {
         color: rgba(255, 255, 255, 0.9);
       }
 
+      /* ── Non-primary cards: text hidden by default ───────────────────── */
+      #timeline-meta-overlay .timeline-meta-card-secondary .timeline-meta-year,
+      #timeline-meta-overlay .timeline-meta-card-tertiary .timeline-meta-year {
+        opacity: 0;
+        transform: translateY(-10px);
+        transition: opacity 0.28s ease 0s, transform 0.28s ease 0s;
+      }
+
+      #timeline-meta-overlay .timeline-meta-card-secondary .timeline-meta-title,
+      #timeline-meta-overlay .timeline-meta-card-tertiary .timeline-meta-title {
+        opacity: 0;
+        transform: translateY(-10px);
+        transition: opacity 0.28s ease 0s, transform 0.28s ease 0s;
+      }
+
+      #timeline-meta-overlay .timeline-meta-card-secondary .timeline-meta-description,
+      #timeline-meta-overlay .timeline-meta-card-tertiary .timeline-meta-description {
+        opacity: 0;
+        transform: translateY(-10px);
+        transition: opacity 0.28s ease 0s, transform 0.28s ease 0s;
+      }
+
+      /* ── Stagger reveal on hover (year → title → description) ───────── */
+      #timeline-meta-overlay .timeline-meta-card-secondary.timeline-column--hovered .timeline-meta-year,
+      #timeline-meta-overlay .timeline-meta-card-tertiary.timeline-column--hovered .timeline-meta-year {
+        opacity: 1;
+        transform: translateY(0);
+        transition: opacity 0.28s ease 0s, transform 0.28s ease 0s;
+      }
+
+      #timeline-meta-overlay .timeline-meta-card-secondary.timeline-column--hovered .timeline-meta-title,
+      #timeline-meta-overlay .timeline-meta-card-tertiary.timeline-column--hovered .timeline-meta-title {
+        opacity: 1;
+        transform: translateY(-2px);
+        transition: opacity 0.28s ease 0.07s, transform 0.28s ease 0.07s;
+      }
+
+      #timeline-meta-overlay .timeline-meta-card-secondary.timeline-column--hovered .timeline-meta-description,
+      #timeline-meta-overlay .timeline-meta-card-tertiary.timeline-column--hovered .timeline-meta-description {
+        opacity: 1;
+        transform: translateY(0);
+        transition: opacity 0.28s ease 0.14s, transform 0.28s ease 0.14s;
+      }
+
       @media (max-width: 980px) {
         #timeline-meta-overlay .timeline-meta-divider {
           display: none;
@@ -338,6 +383,37 @@ export class EventsPanel {
       timelineEventBus.on('timeline:plane:hover', ({ planeIndex, isHovered }) => {
         const col = this.columns[planeIndex];
         if (col) col.onHoverChange(isHovered);
+      })
+    );
+
+    // Hide tooltip while scrolling or during camera pull-back; re-enable after
+    // scroll activity settles (300 ms of silence).
+    const markScrolling = () => {
+      this._isScrolling = true;
+      this._hoverTooltip?.hide();
+      clearTimeout(this._scrollEndTimer);
+      this._scrollEndTimer = setTimeout(() => {
+        this._isScrolling = false;
+      }, 300);
+    };
+    this._busUnsubs.push(
+      timelineEventBus.on('timeline:scroll', markScrolling),
+      timelineEventBus.on('timeline:drag:start', markScrolling)
+    );
+
+    // Cursor-following comment tooltip
+    this._busUnsubs.push(
+      timelineEventBus.on('timeline:plane:cursor', ({ clientX, clientY, isHovered }) => {
+        if (!this._hoverTooltip) return;
+        if (isHovered && !this._isScrolling) {
+          if (!this._hoverTooltip._isVisible) {
+            this._hoverTooltip.show(clientX, clientY);
+          } else {
+            this._hoverTooltip.updatePosition(clientX, clientY);
+          }
+        } else {
+          this._hoverTooltip.hide();
+        }
       })
     );
 
@@ -657,6 +733,7 @@ export class EventsPanel {
     this.panel?.setAttribute('aria-hidden', 'true');
     document.body.classList.remove('timeline-meta-active');
     this.stopTracking();
+    this._hoverTooltip?.hide();
   }
 
   // ---------------------------------------------------------------------------
@@ -670,6 +747,12 @@ export class EventsPanel {
 
     this._busUnsubs.forEach((unsub) => unsub());
     this._busUnsubs = [];
+
+    clearTimeout(this._scrollEndTimer);
+    this._scrollEndTimer = null;
+
+    this._hoverTooltip?.destroy();
+    this._hoverTooltip = null;
 
     this.hide();
     this.columns.forEach((col) => col.destroy());

@@ -18,7 +18,7 @@
  */
 
 import { gsap } from 'gsap';
-import { PHYSICS_CONFIG, TIMING_CONFIG, TIMELINE_CONFIG } from '../utils/TimelineConstants.js';
+import { PHYSICS_CONFIG, TIMING_CONFIG, TIMELINE_CONFIG, CAMERA_CONFIG } from '../utils/TimelineConstants.js';
 
 class PhysicsSystem {
   constructor(state, eventBus) {
@@ -45,6 +45,9 @@ class PhysicsSystem {
     this.snapStartTime = 0;
     this.accumulatedScrollDelta = 0;
 
+    // Hover-to-navigate tween (separate from snap system, no camera pullback)
+    this._hoverNavTween = null;
+
     // Timers
     this.scrollStopTimeout = null;
     this.snapCheckTimeout = null;
@@ -57,6 +60,7 @@ class PhysicsSystem {
     this.eventBus.on('timeline:drag:move', this.onDragMove.bind(this));
     this.eventBus.on('timeline:drag:end', this.onDragEnd.bind(this));
     this.eventBus.on('timeline:navigate', this.onNavigate.bind(this));
+    this.eventBus.on('timeline:hover:navigate', this.onHoverNavigate.bind(this));
 
     // console.log('✅ PhysicsSystem initialized');
   }
@@ -142,6 +146,11 @@ class PhysicsSystem {
   onScroll({ delta, timestamp }) {
     if (!this.scrollEnabled) return;
 
+    if (this._hoverNavTween) {
+      this._hoverNavTween.kill();
+      this._hoverNavTween = null;
+    }
+
     if (Math.abs(delta) < 0.08) return;
 
     const now = performance.now();
@@ -150,14 +159,15 @@ class PhysicsSystem {
 
     // --- Guard: while a snap is playing, or during the post-snap cooldown ---
     if (this.isSnapping) {
-      // Only queue the next step if the delta is large enough to indicate
-      // a deliberate new gesture. Trackpad coast/momentum events are small
-      // and decaying; a genuine new swipe always peaks higher than 0.25.
-      if (this.pendingScrollSteps.length === 0 && Math.abs(delta) >= 0.25) {
-        this.pendingScrollSteps = [direction];
+      // Allow up to MAX_PENDING_SNAP_STEPS to queue so rapid consecutive scrolls
+      // chain without dropping input. Coast/momentum events (delta < 0.25) are still
+      // filtered to prevent trackpad deceleration from stacking phantom steps.
+      const maxPending = PHYSICS_CONFIG.MAX_PENDING_SNAP_STEPS ?? 3;
+      if (this.pendingScrollSteps.length < maxPending && Math.abs(delta) >= 0.25) {
+        this.pendingScrollSteps.push(direction);
 
         if ((now - this.lastGestureAt) <= 1000) {
-          this.burstCount = Math.min(6, this.burstCount + 1);
+          this.burstCount = Math.min(8, this.burstCount + 1);
         } else {
           this.burstCount = 1;
         }
@@ -183,16 +193,25 @@ class PhysicsSystem {
 
     if (Math.abs(this.accumulatedScrollDelta) >= threshold) {
       const stepDirection = Math.sign(this.accumulatedScrollDelta);
+
+      // Two-tier gesture model:
+      //   Short  (~130–285px / 0.9–1.9 normalized) → 1 step
+      //   Fast   (~285px+ / 2.0+ normalized)        → MAX_STEPS_PER_GESTURE steps
+      const fastThreshold = PHYSICS_CONFIG.SCROLL_FAST_GESTURE_THRESHOLD ?? 3.5;
+      const numSteps = Math.abs(this.accumulatedScrollDelta) >= fastThreshold
+        ? (PHYSICS_CONFIG.MAX_STEPS_PER_GESTURE ?? 4)
+        : 1;
+
       this.accumulatedScrollDelta = 0;
 
       if ((now - this.lastGestureAt) <= 800) {
-        this.burstCount = Math.min(5, this.burstCount + 1);
+        this.burstCount = Math.min(6, this.burstCount + numSteps);
       } else {
-        this.burstCount = 1;
+        this.burstCount = numSteps;
       }
       this.lastGestureAt = now;
 
-      this.pendingScrollSteps = [stepDirection];
+      this.pendingScrollSteps = Array(numSteps).fill(stepDirection);
       this.processNextScrollStep();
     }
 
@@ -230,9 +249,9 @@ class PhysicsSystem {
       return;
     }
 
-    const baseDuration = PHYSICS_CONFIG.SCROLL_STEP_DURATION ?? 0.72;
-    const burstBoost = Math.min(0.58, Math.max(0, this.burstCount - 1) * 0.12);
-    const dynamicDuration = Math.max(0.28, baseDuration * (1 - burstBoost));
+    const baseDuration = PHYSICS_CONFIG.SCROLL_STEP_DURATION ?? 0.58;
+    const burstBoost = Math.min(0.72, Math.max(0, this.burstCount - 1) * 0.15);
+    const dynamicDuration = Math.max(0.18, baseDuration * (1 - burstBoost));
 
     this.snapToOffset(
       targetOffset,
@@ -249,6 +268,11 @@ class PhysicsSystem {
     if (!this.scrollEnabled) {
       // console.log('🔒 Drag move BLOCKED - system disabled');
       return;
+    }
+
+    if (this._hoverNavTween) {
+      this._hoverNavTween.kill();
+      this._hoverNavTween = null;
     }
 
     const currentOffset = this.state.get('timelineOffset');
@@ -309,6 +333,65 @@ class PhysicsSystem {
     const clampedIndex = Math.max(0, Math.min(yearCount - 1, Number.isFinite(targetIndex) ? Math.round(targetIndex) : 0));
     const targetOffset = firstPosition + (clampedIndex * calculatedSpacing);
     this.snapToOffset(targetOffset, clampedIndex, 0.5);
+  }
+
+  /**
+   * Handle hover-to-navigate events.
+   * Smoothly pans the timeline to the hovered image without triggering the
+   * camera pullback that normal snaps produce. The tween is intentionally
+   * slow (HOVER_NAV_DURATION) for a cinematic feel and keeps camera Z fixed.
+   * Cancelled immediately if the user scrolls or drags.
+   * @param {object} data - { targetIndex }
+   */
+  onHoverNavigate({ targetIndex }) {
+    if (!this.scrollEnabled) return;
+    if (this.isSnapping) return;
+
+    const calculatedSpacing = this.state.get('calculatedSpacing') || 1.8;
+    const firstPosition = TIMELINE_CONFIG.FIRST_POSITION || -4.5;
+    const yearCount = TIMELINE_CONFIG.YEAR_COUNT || 10;
+    const clampedIndex = Math.max(0, Math.min(yearCount - 1, Number.isFinite(targetIndex) ? Math.round(targetIndex) : 0));
+    const targetOffset = firstPosition + (clampedIndex * calculatedSpacing);
+
+    const currentIndex = this.state.get('currentSnapIndex');
+    if (clampedIndex === currentIndex) return;
+
+    // Don't restart the tween if already heading to the same target
+    if (this._hoverNavTween && this._hoverNavTargetIndex === clampedIndex) return;
+
+    if (this._hoverNavTween) {
+      this._hoverNavTween.kill();
+      this._hoverNavTween = null;
+    }
+
+    this.velocity = 0;
+    this._hoverNavTargetIndex = clampedIndex;
+
+    const duration = CAMERA_CONFIG.HOVER_NAV_DURATION ?? 1.8;
+    const fromOffset = this.state.get('timelineOffset');
+    const animTarget = { value: fromOffset };
+
+    this._hoverNavTween = gsap.to(animTarget, {
+      value: targetOffset,
+      duration,
+      ease: 'power2.inOut',
+      onUpdate: () => {
+        this.state.setState({
+          timelineOffset: animTarget.value,
+          scrollVelocity: 0
+        });
+      },
+      onComplete: () => {
+        this._hoverNavTween = null;
+        this._hoverNavTargetIndex = null;
+        this.state.setState({
+          currentSnapIndex: clampedIndex,
+          targetOffset: targetOffset,
+          scrollVelocity: 0
+        });
+        console.debug('PhysicsSystem: Hover navigate complete to index', clampedIndex);
+      }
+    });
   }
 
   /**
@@ -558,6 +641,11 @@ class PhysicsSystem {
     if (this.snapAnimation) {
       this.snapAnimation.kill();
       this.snapAnimation = null;
+    }
+
+    if (this._hoverNavTween) {
+      this._hoverNavTween.kill();
+      this._hoverNavTween = null;
     }
 
     // console.log('PhysicsSystem disposed');
